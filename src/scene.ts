@@ -114,13 +114,13 @@ export class ForestScene {
         this.scene,
       );
       source.material = this.mat(color);
+      source.receiveShadows = true;
       source.setEnabled(false);
       this.templates.set(key, source);
     }
     const mesh = source.createInstance(name);
     mesh.position.set(pos[0], pos[1], pos[2]);
     mesh.parent = parent ?? null;
-    mesh.receiveShadows = true;
     return mesh;
   }
 
