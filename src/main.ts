@@ -345,9 +345,9 @@ dialog.addEventListener("keydown", (event) => {
     event.stopPropagation();
     menu.hidden = false;
     trigger.setAttribute("aria-expanded", "true");
-    const options = [
-      ...menu.querySelectorAll<HTMLButtonElement>('[role="option"]'),
-    ];
+    const options = Array.from(
+      menu.querySelectorAll<HTMLButtonElement>('[role="option"]'),
+    );
     const current = options.indexOf(
       document.activeElement as HTMLButtonElement,
     );
