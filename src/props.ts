@@ -193,7 +193,7 @@ export class ForestProps {
     return material;
   }
 
-  texture(surface: "fabric" | "leather") {
+  texture(surface: "fabric" | "leather" | "stone") {
     return this.material(surface).diffuseTexture;
   }
   foliageTexture() {
@@ -489,8 +489,55 @@ export class ForestProps {
     return mesh;
   }
 
-  create(type: "log" | "arch" | "rock", seed: number) {
+  create(type: "log" | "arch" | "rock", seed: number, canyon = false) {
     const root = new TransformNode(`natural-${type}`, this.scene);
+    if (canyon) {
+      if (type === "log") {
+        const pillar = this.stone(
+          "fallen-stone-column",
+          [1.95, 0.92, 0.98],
+          seed,
+          root,
+        );
+        pillar.position.y = 0.46;
+        for (const side of [-1, 1])
+          this.stone(
+            "column-rubble",
+            [0.38, 0.28, 0.4],
+            seed + side,
+            root,
+          ).position.set(side * 0.8, 0.12, 0.2);
+      } else if (type === "arch") {
+        for (const side of [-1, 1])
+          this.stone(
+            "rock-beam-support",
+            [0.34, 2.7, 0.55],
+            seed + side,
+            root,
+          ).position.set(side * 1.04, 1.3, 0);
+        const beam = this.stone(
+          "hanging-rock-beam",
+          [2.38, 1.04, 0.64],
+          seed,
+          root,
+        );
+        beam.position.y = 2.05;
+      } else {
+        this.stone(
+          "canyon-rock-pile",
+          [1.82, 2.58, 1.6],
+          seed,
+          root,
+        ).position.y = 1.27;
+        this.stone(
+          "canyon-rock-chip",
+          [0.7, 0.6, 0.85],
+          seed + 4,
+          root,
+        ).position.set(-0.5, 0.25, -0.3);
+      }
+      return root;
+    }
     if (type === "log") {
       const log = this.timber("fallen-trunk", 1.9, 1.04, seed);
       log.rotation.z = Math.PI / 2;

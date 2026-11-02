@@ -8,7 +8,6 @@ import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
@@ -29,6 +28,8 @@ import type { RunnerGame, TrackItem } from "./game.ts";
 import { INTRO_TIMING } from "./game.ts";
 import { RunnerMotion } from "./motion.ts";
 import { ForestProps } from "./props.ts";
+import { TerrainScene } from "./terrain-scene.ts";
+import { sectionAt, tunnelDarkness } from "./track.ts";
 
 type Triple = [number, number, number];
 type Particle = {
@@ -53,7 +54,6 @@ const smooth = (value: number) => {
 };
 const REST_X = 4.85;
 const REST_Z = 0.65;
-const GRASS_TILE_SIZE = 2.5;
 
 export class ForestScene {
   engine: Engine;
@@ -84,7 +84,19 @@ export class ForestScene {
   private particles: Particle[] = [];
   private pool: Mesh[] = [];
   private softTexture!: DynamicTexture;
-  private grassTexture!: Texture;
+  private terrainView!: TerrainScene;
+  private forestBackdrop!: TransformNode;
+  private sky: HemisphericLight;
+  private sun: DirectionalLight;
+  private shieldAura!: Mesh;
+  private magnetAura!: Mesh;
+  private boostJets: Mesh[] = [];
+  private boosterPods: Mesh[] = [];
+  private entries: Mesh[] = [];
+  private lastShieldBreak = 0;
+  private lastClear = 0;
+  private lastEffectTick = -1;
+  private forestVisible = true;
   private particleMaterials = new Map<string, StandardMaterial>();
   private time = 0;
   private lastCoins = 0;
@@ -113,6 +125,7 @@ export class ForestScene {
     this.camera.minZ = 0.1;
     this.camera.maxZ = 230;
     const sky = new HemisphericLight("sky", new Vector3(0, 1, 0), this.scene);
+    this.sky = sky;
     sky.intensity = 0.75;
     sky.groundColor = Color3.FromHexString("#698463");
     const sun = new DirectionalLight(
@@ -121,6 +134,7 @@ export class ForestScene {
       this.scene,
     );
     sun.position.set(24, 40, -25);
+    this.sun = sun;
     sun.intensity = 0.85;
     sun.diffuse = Color3.FromHexString("#fff0d4");
     this.shadows = new ShadowGenerator(1024, sun);
@@ -159,6 +173,7 @@ export class ForestScene {
     );
     this.shock.material = this.mat("#ffdb8c", true);
     this.shock.setEnabled(false);
+    this.createRunEffects();
     this.setQuality(highQuality);
     window.addEventListener("resize", () => this.resize());
     this.resize();
@@ -382,26 +397,9 @@ export class ForestScene {
   }
 
   private createWorld() {
-    const meadow = CreateGround(
-      "forest-floor",
-      { width: 300, height: 350 },
-      this.scene,
-    );
-    meadow.position.set(0, 0, 115);
-    const floor = new StandardMaterial("woodland-grass-floor", this.scene);
-    this.grassTexture = new Texture(
-      import.meta.env.BASE_URL + "art/woodland-grass.jpg",
-      this.scene,
-    );
-    this.grassTexture.uScale = 300 / GRASS_TILE_SIZE;
-    this.grassTexture.vScale = 350 / GRASS_TILE_SIZE;
-    this.grassTexture.wrapU = this.grassTexture.wrapV =
-      Texture.WRAP_ADDRESSMODE;
-    this.grassTexture.anisotropicFilteringLevel = 8;
-    floor.diffuseTexture = this.grassTexture;
-    floor.specularColor = Color3.Black();
-    meadow.material = floor;
-    meadow.receiveShadows = true;
+    this.terrainView = new TerrainScene(this.scene, this.props);
+    this.terrainView.update(0);
+    this.forestBackdrop = new TransformNode("forest-hills", this.scene);
     for (let i = 0; i < 12; i++)
       this.part(
         "sphere",
@@ -409,32 +407,13 @@ export class ForestScene {
         [30 + i * 2, 17 + (i % 3) * 6, 40],
         i % 2 ? "#91aa96" : "#a6b49b",
         [(i % 2 ? 1 : -1) * (35 + i * 3), 0, 100 + i * 8],
-        undefined,
+        this.forestBackdrop,
         12,
       );
-    const trail = new StandardMaterial("painted-trail", this.scene);
-    const trailTexture = new Texture(
-      import.meta.env.BASE_URL + "art/woodland-trail.jpg",
-      this.scene,
-    );
-    trailTexture.uScale = 1;
-    trailTexture.vScale = 5;
-    trail.diffuseTexture = trailTexture;
-    trail.diffuseColor = Color3.FromHexString("#e3dccc").toLinearSpace();
-    trail.specularColor = Color3.Black();
     for (let chunk = 0; chunk < 5; chunk++) {
       const root = new TransformNode("woodland-" + chunk, this.scene);
       this.chunks.push(root);
       const chunkStart = ((chunk * 40 + 40) % 200) - 60;
-      const ground = CreateGround(
-        "painted-earth",
-        { width: 8.6, height: 40 },
-        this.scene,
-      );
-      ground.material = trail;
-      ground.parent = root;
-      ground.position.set(0, 0.06, 20);
-      ground.receiveShadows = true;
       for (const side of [-1, 1]) {
         for (let i = 0; i < 7; i++) {
           const z = i * 5.7 + 1;
@@ -1174,13 +1153,66 @@ export class ForestScene {
   }
 
   private createItem(item: TrackItem) {
+    if (item.type === "magnet" || item.type === "shield") {
+      const root = new TransformNode(item.type, this.scene);
+      const color = item.type === "magnet" ? "#df9b65" : "#8abbd0";
+      if (item.type === "magnet") {
+        this.seam(
+          "magnet-pickup",
+          [
+            [-0.22, 0.2, 0],
+            [-0.22, -0.1, 0],
+            [-0.12, -0.22, 0],
+            [0.12, -0.22, 0],
+            [0.22, -0.1, 0],
+            [0.22, 0.2, 0],
+          ],
+          0.075,
+          color,
+          root,
+        );
+      } else
+        this.part(
+          "sphere",
+          "shield-pickup",
+          [0.5, 0.6, 0.14],
+          color,
+          [0, 0, 0],
+          root,
+          16,
+        );
+      const ring = CreateTorus(
+        "pickup-halo",
+        { diameter: 0.85, thickness: 0.025, tessellation: 24 },
+        this.scene,
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.material = this.mat(color, true);
+      ring.parent = root;
+      root.position.set(item.lane * 2.5, item.y, item.z);
+      return root;
+    }
+    if (item.type === "wall-rock") {
+      const root = this.props.create("rock", item.id, true);
+      root.scaling.set(0.65, 0.5, 0.65);
+      root.position.set((item.side ?? 1) * 4.9, item.y - 0.65, item.z);
+      return root;
+    }
     if (item.type !== "coin") {
-      const root = this.props.create(item.type, item.id);
+      const root = this.props.create(
+        item.type,
+        item.id,
+        sectionAt(item.worldZ).biome === "canyon",
+      );
       root.position.set(item.lane * 2.5, 0, item.z);
       return root;
     }
     const root = new TransformNode("coin", this.scene);
-    root.position.set(item.lane * 2.5, item.y, item.z);
+    root.position.set(
+      item.route === "wall" ? (item.side ?? 1) * 4.95 : item.lane * 2.5,
+      item.y,
+      item.z,
+    );
     const coin = CreateCylinder(
       "coin-medallion",
       { height: 0.13, diameter: 0.68, tessellation: 24 },
@@ -1287,6 +1319,138 @@ export class ForestScene {
     this.engine.resize();
   }
 
+  private createRunEffects() {
+    this.shieldAura = CreateSphere(
+      "shield-aura",
+      { diameter: 2.4, segments: 20 },
+      this.scene,
+    );
+    const shieldMat = new StandardMaterial("shield-aura-material", this.scene);
+    shieldMat.diffuseColor = Color3.FromHexString("#9bc9dd");
+    shieldMat.emissiveColor = shieldMat.diffuseColor.scale(0.18);
+    shieldMat.alpha = 0.16;
+    shieldMat.backFaceCulling = false;
+    this.shieldAura.material = shieldMat;
+    this.shieldAura.parent = this.runner;
+    this.shieldAura.position.y = 1.15;
+    this.magnetAura = CreateTorus(
+      "magnet-field",
+      { diameter: 1.8, thickness: 0.028, tessellation: 32 },
+      this.scene,
+    );
+    this.magnetAura.parent = this.runner;
+    this.magnetAura.position.y = 1.1;
+    this.magnetAura.material = this.mat("#d9ae72", true);
+    for (const side of [-1, 1]) {
+      const jet = CreateCylinder(
+        "booster-jet",
+        {
+          height: 0.55,
+          diameterTop: 0.18,
+          diameterBottom: 0,
+          tessellation: 16,
+        },
+        this.scene,
+      );
+      jet.parent = this.backpack;
+      jet.position.set(side * 0.22, -0.42, -0.23);
+      jet.material = this.mat("#ffd38c", true);
+      this.boostJets.push(jet);
+      const pod = CreateCylinder(
+        "booster-pod",
+        { height: 0.4, diameter: 0.21, tessellation: 20 },
+        this.scene,
+      );
+      pod.parent = this.backpack;
+      pod.position.set(side * 0.22, -0.05, -0.23);
+      pod.material = this.mat("#8b9992");
+      this.boosterPods.push(pod);
+      const entry = CreateTorus(
+        "wall-entry-ring",
+        { diameter: 1.7, thickness: 0.08, tessellation: 32 },
+        this.scene,
+      );
+      entry.rotation.x = Math.PI / 2;
+      entry.material = this.mat("#a9d5c5", true);
+      this.entries.push(entry);
+    }
+  }
+  private updateRunEffects(game: RunnerGame) {
+    this.shieldAura.setEnabled(game.shield || game.protectionTime > 0);
+    this.shieldAura.visibility = game.shield
+      ? 0.8
+      : 0.25 + Math.sin(this.time * 25) * 0.15;
+    this.magnetAura.setEnabled(game.magnetTime > 0);
+    this.magnetAura.rotation.y = this.time * 2;
+    this.magnetAura.rotation.x = Math.sin(this.time * 2) * 0.3;
+    this.boostJets.forEach((jet, i) => {
+      jet.setEnabled(game.boostBlend > 0.05);
+      jet.scaling.set(
+        1,
+        (0.8 + Math.sin(this.time * 40 + i) * 0.2) * game.boostBlend,
+        1,
+      );
+    });
+    this.boosterPods.forEach((pod) => {
+      pod.setEnabled(game.boostBlend > 0.05);
+      pod.scaling.setAll(game.boostBlend);
+    });
+    this.entries.forEach((entry, i) => {
+      const gap = game.gapWarning;
+      entry.setEnabled(
+        !!gap && !game.boosting && !game.wallSide && game.mode === "running",
+      );
+      if (gap)
+        entry.position.set(
+          (i === 0 ? -1 : 1) * 5.1,
+          1.95,
+          gap.start - 10 - game.distance,
+        );
+    });
+    if (this.lastShieldBreak !== game.shieldBreakSerial)
+      this.burst(
+        this.runner.position.add(new Vector3(0, 1, 0)),
+        "#a8d4e2",
+        18,
+        4,
+        0.7,
+        0.14,
+        2,
+      );
+    this.lastShieldBreak = game.shieldBreakSerial;
+    if (this.lastClear !== game.clearSerial)
+      for (const item of game.shattered)
+        this.burst(
+          new Vector3(
+            item.route === "wall" ? (item.side ?? 1) * 4.95 : item.lane * 2.5,
+            item.route === "wall" ? item.y : 1,
+            item.worldZ - game.distance,
+          ),
+          "#bcb5a1",
+          5,
+          3,
+          0.7,
+          0.2,
+          4,
+        );
+    this.lastClear = game.clearSerial;
+    const tick = Math.floor(this.time * 18);
+    if (
+      tick !== this.lastEffectTick &&
+      (game.boosting || game.mode === "rewinding")
+    )
+      this.burst(
+        this.runner.position.add(new Vector3(0, 0.7, -0.4)),
+        game.boosting ? "#ffd18b" : "#b4dcdf",
+        2,
+        1.5,
+        0.55,
+        0.15,
+        0,
+      );
+    this.lastEffectTick = tick;
+  }
+
   getRewardAnchor() {
     const width = this.engine.getRenderWidth();
     const height = this.engine.getRenderHeight();
@@ -1315,7 +1479,10 @@ export class ForestScene {
       if (
         ready ||
         (introducing && oldMode !== "paused") ||
-        (running && oldMode !== "paused" && oldMode !== "intro")
+        (running &&
+          oldMode !== "paused" &&
+          oldMode !== "intro" &&
+          oldMode !== "rewinding")
       ) {
         this.lastCoins = 0;
         this.lastLanding = 0;
@@ -1338,9 +1505,31 @@ export class ForestScene {
     }
     const pose = this.motion.update(game, dt);
     const scroll = ready || introducing ? 0 : game.distance;
-    this.grassTexture.vOffset = (scroll / GRASS_TILE_SIZE) % 1;
+    this.terrainView.update(scroll);
+    const darkness = tunnelDarkness(scroll);
+    const section = sectionAt(scroll);
+    const environment =
+      section.biome === "tunnel"
+        ? sectionAt(
+            scroll < (section.start + section.end) / 2
+              ? section.start - 1
+              : section.end + 1,
+          ).biome
+        : section.biome;
+    const fog = Color3.FromHexString(
+      environment === "canyon" ? "#ddc9ad" : "#d9e9db",
+    ).scale(1 - darkness);
+    this.scene.fogColor = fog;
+    this.scene.clearColor = new Color4(fog.r, fog.g, fog.b, 1);
+    this.sky.intensity = 0.75 * (1 - darkness);
+    this.sun.intensity = 0.85 * (1 - darkness);
+    this.forestVisible = environment === "forest";
+    this.forestBackdrop.setEnabled(this.forestVisible);
     this.chunks.forEach((root, i) => {
       root.position.z = ((((i * 40 - scroll + 40) % 200) + 200) % 200) - 60;
+      root.setEnabled(
+        sectionAt(root.position.z + scroll + 20).biome === "forest",
+      );
     });
     const blend = 1 - pose.slide,
       airborne = !ready && !introducing && game.y > 0;
@@ -1393,6 +1582,15 @@ export class ForestScene {
       ? Math.sin(walkPhase) * 0.025 * walking
       : -pose.turn * 0.26 * blend - pose.slide * 0.09 + pose.death * 0.65;
     this.runner.rotation.x = pose.death * 0.7;
+    if (!opening) {
+      this.runner.position.x +=
+        (game.wallVisualSide * 5.4 - game.x) * game.wallBlend;
+      this.runner.position.y +=
+        game.wallY * game.wallBlend + game.boostBlend * 5.5;
+      this.runner.rotation.z += game.wallVisualSide * 0.95 * game.wallBlend;
+      this.runner.rotation.x -= game.boostBlend * 0.22;
+      if (game.lastHit === "gap") this.runner.position.y -= pose.death * 8;
+    }
     this.hips.position.y =
       (opening
         ? 0.79 + 0.16 * stand + Math.abs(Math.sin(walkPhase)) * 0.018 * walking
@@ -1424,6 +1622,7 @@ export class ForestScene {
     this.head.rotation.y = opening
       ? Math.sin(this.time * 0.7) * 0.12 * (1 - prepare)
       : -pose.turn * 0.17;
+    this.head.rotation.z = -game.wallVisualSide * 0.18 * game.wallBlend;
     this.head.rotation.x =
       pose.slide * 0.33 - runWeight * 0.08 - pose.dive * 0.18;
     this.backpack.position.z = -0.33 + pose.slide * 0.13;
@@ -1496,6 +1695,21 @@ export class ForestScene {
           0.8 * pose.dive -
           0.35 * (1 - pose.run) * (1 - pose.air) * blend;
     }
+    for (const leg of this.legs) {
+      leg.upper.rotation.z += leg.side * game.wallBlend * 0.12;
+      leg.upper.rotation.x =
+        leg.upper.rotation.x * (1 - game.boostBlend) -
+        game.boostBlend * (leg.side > 0 ? 0.15 : 0.4);
+      leg.lower.rotation.x =
+        leg.lower.rotation.x * (1 - game.boostBlend) + game.boostBlend * 0.75;
+    }
+    for (const arm of this.arms)
+      arm.upper.rotation.z +=
+        arm.side * (game.wallBlend * 0.35 + game.boostBlend * 0.25);
+    this.updateRunEffects(game);
+    this.contact.setEnabled(
+      game.wallBlend < 0.1 && game.boostBlend < 0.1 && game.lastHit !== "gap",
+    );
     this.contact.position.x = this.runner.position.x;
     this.contact.position.z = this.runner.position.z;
     this.restStop.position.z = REST_Z - scroll;
@@ -1607,6 +1821,7 @@ export class ForestScene {
     });
     if (this.high)
       this.leaves.forEach((leaf, i) => {
+        leaf.setEnabled(this.forestVisible);
         leaf.position.set(
           Math.sin(this.time * 0.23 + i * 2.4) * 7,
           1 + ((((i * 0.73 - this.time * 0.3) % 5) + 5) % 5),
@@ -1630,26 +1845,35 @@ export class ForestScene {
     const homeCameraX = 0.5;
     this.camera.position.x = damp(
       this.camera.position.x,
-      homeCameraX * (1 - cameraProgress) + game.x * 0.05 * cameraProgress,
+      homeCameraX * (1 - cameraProgress) +
+        game.x * 0.05 * cameraProgress +
+        game.wallVisualSide * 0.9 * game.wallBlend,
       5,
       dt,
     );
     this.camera.position.y = damp(
       this.camera.position.y,
-      3.1 + 1.3 * cameraProgress,
+      3.1 +
+        1.3 * cameraProgress +
+        game.wallBlend * (1 + game.wallY * 0.7) +
+        game.boostBlend * 2.5,
       5,
       dt,
     );
     this.camera.position.z = damp(
       this.camera.position.z,
-      -7.4 - (mobile ? 5.4 : 4.0) * cameraProgress,
+      -7.4 - (mobile ? 5.4 : 4.0) * cameraProgress - game.wallBlend * 2.6,
       4,
       dt,
     );
     const target = new Vector3(
       (mobile ? 3.95 : 3) * (1 - cameraProgress) +
-        game.x * 0.025 * cameraProgress,
-      1.1 - cameraProgress * 0.1,
+        game.x * 0.025 * cameraProgress +
+        game.wallVisualSide * 2.4 * game.wallBlend,
+      1.1 -
+        cameraProgress * 0.1 +
+        game.wallBlend * game.wallY * 0.75 +
+        game.boostBlend * 3.2,
       1.5 + 9.0 * cameraProgress,
     );
     Vector3.LerpToRef(

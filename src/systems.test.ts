@@ -1,0 +1,356 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { CONFIG } from "./config.ts";
+import { Economy, PROGRESS_KEY } from "./economy.ts";
+import { RunnerGame } from "./game.ts";
+import {
+  sectionAt,
+  gapAt,
+  gapsNear,
+  obstacleAllowed,
+  tunnelDarkness,
+} from "./track.ts";
+
+test("progress migrates independently and purchases atomically persist currency and goods", () => {
+  const memory = new Map<string, string>([["wild-dash:best", "5000"]]);
+  const storage = {
+    getItem: (key: string) => memory.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      memory.set(key, value);
+    },
+  };
+  const economy = new Economy(storage);
+  assert.equal(economy.state.wallet, 0);
+  economy.credit(500);
+  assert.equal(economy.buy("booster"), "ok");
+  assert.equal(economy.buy("booster"), "owned");
+  assert.equal(economy.state.wallet, 200);
+  assert.equal(economy.buy("hourglass"), "ok");
+  assert.equal(economy.state.hourglasses, 1);
+  const reloaded = new Economy(storage);
+  assert.deepEqual(reloaded.state, economy.state);
+  assert.equal(reloaded.consumeHourglass(), true);
+  assert.equal(reloaded.consumeHourglass(), false);
+  assert.equal(memory.get("wild-dash:best"), "5000");
+  assert.equal(JSON.parse(memory.get(PROGRESS_KEY)!).hourglasses, 0);
+  assert.equal(reloaded.buy("hourglass"), "ok");
+  assert.equal(reloaded.buy("hourglass"), "funds");
+  assert.equal(reloaded.state.wallet, 0);
+});
+
+test("failed purchase writes neither charge nor grant an item", () => {
+  let raw: string | null = null;
+  let failing = false;
+  const economy = new Economy({
+    getItem: () => raw,
+    setItem: (_, value) => {
+      if (failing) throw new Error("storage unavailable");
+      raw = value;
+    },
+  });
+  economy.credit(400);
+  failing = true;
+  assert.equal(economy.buy("hourglass"), "storage");
+  assert.equal(economy.state.wallet, 400);
+  assert.equal(economy.state.hourglasses, 0);
+  assert.equal(economy.buy("booster"), "storage");
+  assert.equal(economy.state.boosterUnlocked, false);
+  failing = false;
+  assert.equal(economy.buy("hourglass"), "ok");
+  failing = true;
+  assert.equal(economy.consumeHourglass(), false);
+  assert.equal(economy.state.hourglasses, 1);
+});
+
+test("route boundaries, dark tunnel interiors and gap approach buffers use one plan", () => {
+  assert.equal(sectionAt(599.9).biome, "forest");
+  assert.equal(sectionAt(600).biome, "tunnel");
+  assert.equal(sectionAt(660).biome, "canyon");
+  assert.equal(sectionAt(1260).biome, "tunnel");
+  assert.equal(sectionAt(1320).biome, "forest");
+  assert.equal(tunnelDarkness(630), 1);
+  assert.equal(tunnelDarkness(600), 0);
+  assert.ok(tunnelDarkness(605) > 0 && tunnelDarkness(605) < 1);
+  for (const gap of gapsNear(800)) {
+    assert.equal(sectionAt(gap.start).biome, "canyon");
+    assert.equal(sectionAt(gap.end).biome, "canyon");
+    assert.equal(obstacleAllowed(gap.start - CONFIG.wallEntry), false);
+    assert.equal(obstacleAllowed(gap.end + 10), false);
+  }
+});
+
+test("magnet collects all routes and refreshes duration; pause freezes effects", () => {
+  let credited = 0;
+  const game = new RunnerGame({
+    autoSpawn: false,
+    onCoins: (count) => (credited += count),
+  });
+  game.start();
+  game.addItem("magnet", 0, 1);
+  for (const lane of [-1, 0, 1]) game.addItem("coin", lane, 8);
+  const wallCoin = game.addItem("coin", 1, 10, 4);
+  wallCoin.route = "wall";
+  wallCoin.side = 1;
+  game.update(0.1);
+  assert.equal(game.coins, 4);
+  assert.equal(credited, 4);
+  assert.ok(game.magnetTime > 9.8 && game.magnetTime <= 10);
+  game.addItem("magnet", 0, 1);
+  game.update(0.1);
+  assert.ok(game.magnetTime > 9.8 && game.magnetTime <= 10);
+  const duration = game.magnetTime;
+  game.pause();
+  game.update(20);
+  assert.equal(game.magnetTime, duration);
+  game.resume();
+  game.update(11);
+  assert.equal(game.magnetTime, 0);
+});
+
+test("shield absorbs one ordinary hit and protects briefly, but cannot prevent a fall", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  game.addItem("shield", 0, 1);
+  game.update(0.1);
+  assert.equal(game.shield, true);
+  game.addItem("rock", 0, 1);
+  game.update(0.1);
+  assert.equal(game.mode, "running");
+  assert.equal(game.shield, false);
+  assert.ok(game.protectionTime > 0);
+  game.addItem("rock", 0, 1);
+  game.update(0.1);
+  assert.equal(game.mode, "running");
+  game.update(1);
+  game.addItem("rock", 0, 1);
+  game.update(0.1);
+  assert.equal(game.mode, "over");
+  game.start();
+  game.shield = true;
+  game.distance = gapsNear(800)[0].start - 0.1;
+  game.jump();
+  game.update(0.02);
+  assert.equal(game.mode, "over");
+  assert.equal(game.lastHit, "gap");
+  assert.equal(game.shield, true);
+});
+
+test("booster sweeps every coin without picking passive items and uses a real-time cooldown", () => {
+  let credited = 0;
+  const game = new RunnerGame({
+    autoSpawn: false,
+    onCoins: (n) => (credited += n),
+  });
+  game.start();
+  for (const lane of [-1, 0, 1]) game.addItem("coin", lane, 5);
+  const wallCoin = game.addItem("coin", -1, 6, 4);
+  wallCoin.route = "wall";
+  wallCoin.side = -1;
+  game.addItem("magnet", 0, 5);
+  game.addItem("rock", 0, 7);
+  assert.equal(game.activateBooster(false), false);
+  assert.equal(game.activateBooster(true), true);
+  assert.equal(game.jump(), false);
+  assert.equal(game.move(1), false);
+  game.update(1);
+  assert.equal(game.coins, 4);
+  assert.equal(credited, 4);
+  assert.equal(game.magnetTime, 0);
+  assert.equal(game.mode, "running");
+  assert.ok(Math.abs(game.boostCooldown - 59) < 0.001);
+  const cooldown = game.boostCooldown;
+  game.pause();
+  game.update(10);
+  assert.equal(game.boostCooldown, cooldown);
+  game.resume();
+  assert.equal(game.activateBooster(true), false);
+});
+
+test("booster crosses a tunnel and extends its flight to a safe landing beyond a gap", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  game.distance = 580;
+  game.activateBooster(true);
+  for (let n = 0; n < 200 && game.boosting; n++) game.update(0.05);
+  assert.equal(game.terrain.biome, "canyon");
+  assert.equal(game.mode, "running");
+  assert.equal(game.boosting, false);
+  game.start();
+  const gap = gapsNear(800)[0];
+  game.distance = gap.start - 10;
+  game.activateBooster(true);
+  game.boostRemaining = 25;
+  for (let n = 0; n < 200 && game.boosting; n++) game.update(0.05);
+  assert.equal(game.boosting, false);
+  assert.equal(game.mode, "running");
+  assert.ok(game.distance >= gap.end + 6);
+  assert.equal(gapAt(game.distance), undefined);
+  assert.ok(game.protectionTime > 0);
+});
+
+test("wall entry needs an extra outward gesture, height has limits and exit returns automatically", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  game.lane = -1;
+  game.x = -2.5;
+  game.move(-1);
+  assert.equal(game.wallSide, 0);
+  const gap = gapsNear(800)[0];
+  game.distance = gap.start - 10;
+  assert.equal(game.move(-1), true);
+  assert.equal(game.wallSide, -1);
+  assert.equal(game.jump(), true);
+  assert.equal(game.wallLevel, 2);
+  assert.equal(game.jump(), false);
+  game.slide();
+  assert.equal(game.wallLevel, 1);
+  game.move(1);
+  assert.equal(game.wallSide, -1);
+  for (let n = 0; n < 200 && game.wallSide; n++) game.update(0.02);
+  assert.equal(game.mode, "running");
+  assert.equal(game.wallSide, 0);
+  assert.equal(game.lane, -1);
+  assert.ok(game.distance >= gap.end);
+});
+
+test("wall generation leaves a reachable height and the first wall section is obstacle-free", () => {
+  const game = new RunnerGame({ random: () => 0.5 });
+  game.start();
+  game.distance = 790;
+  game.update(0.001);
+  assert.ok(game.items.some((i) => i.route === "wall" && i.type === "coin"));
+  assert.equal(
+    game.items.some((i) => i.type === "wall-rock" && i.worldZ < 900),
+    false,
+  );
+  game.distance = 800;
+  game.lane = -1;
+  game.x = -2.5;
+  game.move(-1);
+  for (let n = 0; n < 200 && game.wallSide; n++) game.update(0.02);
+  game.distance = 1038;
+  game.update(0.001);
+  const rows = new Map<string, Set<number>>();
+  for (const item of game.items.filter((i) => i.type === "wall-rock")) {
+    const key = `${item.side}/${item.worldZ}`;
+    if (!rows.has(key)) rows.set(key, new Set());
+    rows.get(key)!.add(item.level!);
+  }
+  assert.ok(rows.size > 0);
+  assert.ok([...rows.values()].every((levels) => levels.size === 2));
+});
+
+test("rewind spends once, keeps unique coin income and clears obstacles without resetting cooldowns", () => {
+  let credited = 0,
+    spent = 0;
+  const game = new RunnerGame({
+    autoSpawn: false,
+    onCoins: (n) => (credited += n),
+  });
+  game.start();
+  const coin = game.addItem("coin", 0, 15);
+  game.addItem("rock", 0, 60);
+  game.update(3);
+  assert.equal(credited, 1);
+  game.boostCooldown = 20;
+  game.magnetTime = 2;
+  game.addItem("rock", 0, 1);
+  game.update(0.1);
+  assert.equal(game.mode, "over");
+  const deathDistance = game.distance;
+  assert.equal(
+    game.useHourglass(() => {
+      spent++;
+      return true;
+    }),
+    true,
+  );
+  assert.equal(game.mode, "rewinding");
+  game.update(CONFIG.rewindDuration + 0.01);
+  assert.equal(game.mode, "running");
+  assert.ok(game.distance < deathDistance);
+  assert.equal(game.hourglassUsed, true);
+  assert.equal(spent, 1);
+  assert.equal(game.coins, 1);
+  assert.equal(credited, 1);
+  assert.equal(
+    game.items.some((item) => item.id === coin.id),
+    false,
+  );
+  assert.equal(
+    game.items.some(
+      (item) => item.type === "rock" && item.z >= -2 && item.z <= 60,
+    ),
+    false,
+  );
+  assert.ok(game.boostCooldown > 18 && game.boostCooldown < 20);
+  assert.ok(game.magnetTime < 2);
+  assert.ok(game.protectionTime > 0);
+  game.update(2);
+  assert.equal(credited, 1);
+  game.mode = "over";
+  assert.equal(
+    game.useHourglass(() => {
+      spent++;
+      return true;
+    }),
+    false,
+  );
+  assert.equal(spent, 1);
+});
+
+test("rewinding to a wall state restores an attached route that can still exit", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  const gap = gapsNear(800)[0];
+  game.distance = gap.start - 10;
+  game.lane = -1;
+  game.x = -2.5;
+  game.move(-1);
+  for (let n = 0; n < 200 && game.wallSide; n++) game.update(0.02);
+  game.update(1.2);
+  game.addItem("rock", -1, 1);
+  game.update(0.1);
+  assert.equal(game.mode, "over");
+  assert.equal(
+    game.useHourglass(() => true),
+    true,
+  );
+  game.update(CONFIG.rewindDuration + 0.01);
+  assert.equal(game.wallSide, -1);
+  assert.ok(game.distance >= gap.start && game.distance < gap.end);
+  game.update(3);
+  assert.equal(game.mode, "running");
+  assert.equal(game.wallSide, 0);
+});
+
+test("procedurally generated coins retain identity across rewind and never credit twice", () => {
+  let credited = 0;
+  const game = new RunnerGame({
+    random: () => 0.5,
+    onCoins: (n) => (credited += n),
+  });
+  game.start();
+  const ids = new Set(
+    game.items.filter((item) => item.type === "coin").map((item) => item.id),
+  );
+  game.update(3);
+  const earnings = credited;
+  assert.ok(earnings > 0);
+  game.addItem("rock", 0, 1);
+  game.update(0.1);
+  assert.equal(game.mode, "over");
+  assert.equal(
+    game.useHourglass(() => true),
+    true,
+  );
+  game.update(CONFIG.rewindDuration + 0.01);
+  assert.ok(
+    game.items
+      .filter((item) => item.type === "coin" && item.worldZ < 40)
+      .every((item) => ids.has(item.id)),
+  );
+  game.update(3);
+  assert.equal(credited, earnings);
+  assert.equal(game.coins, earnings);
+});

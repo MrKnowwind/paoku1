@@ -1,10 +1,21 @@
 import "./style.css";
 import { RunnerGame } from "./game.ts";
 import { ForestScene } from "./scene.ts";
+import { Economy } from "./economy.ts";
+import { CONFIG } from "./config.ts";
 import { messages, resolveLanguage, languageTags } from "./i18n.ts";
 import type { MessageKey } from "./i18n.ts";
 
 const icons: Record<string, string> = {
+  shop: '<path d="M4 9h16l-2-5H6L4 9Zm1 0v11h14V9M9 20v-7h6v7"/>',
+  rocket:
+    '<path d="M9 15c-1-5 3-11 10-12 1 7-2 12-7 13l-3-1Zm0-3-5 1-1 5 6-3m5 1-1 5 5-1 1-6"/><circle cx="15" cy="8" r="2"/><path d="m7 18-3 3"/>',
+  hourglass: '<path d="M6 3h12M6 21h12M7 3v5l10 8v5M17 3v5L7 16v5M9 18h6"/>',
+  magnet:
+    '<path d="M5 4v9a7 7 0 0 0 14 0V4h-5v9a2 2 0 0 1-4 0V4H5Zm0 4h5m4 0h5"/>',
+  shield:
+    '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>',
+  lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/>',
   bolt: '<path d="m13 2-9 12h7l-1 8 10-12h-7l2-8Z"/>',
   arrow: '<path d="M5 12h14m-6-6 6 6-6 6"/>',
   leaf: '<path d="m3 19 6-12 4 7 2-4 6 9H3Z" fill="currentColor" fill-opacity=".12"/><path d="m3 19 6-12 4 7 2-4 6 9H3Z"/><path d="m8 19 3-5"/>',
@@ -58,7 +69,22 @@ let quality = read("quality") !== "low";
 let best = Math.max(0, Number(read("best")) || 0);
 let newBest = false;
 let resultDelay = 0;
-let activeDialog: "settings" | "pause" | "over" | "guide" | null = null;
+let activeDialog:
+  "settings" | "pause" | "over" | "guide" | "shop" | "revive" | null = null;
+let runFinalized = false;
+let buyBusyUntil = 0;
+let lastPickupSerial = 0;
+let lastClearSerial = 0;
+let toastTimer = 0;
+let statusMarkup = "";
+const seenHints = new Set<string>();
+try {
+  const hints = JSON.parse(read("tutorials") ?? "[]");
+  if (Array.isArray(hints))
+    hints
+      .filter((v) => v === "magnet" || v === "shield")
+      .forEach((v) => seenHints.add(v));
+} catch {}
 let resumeOnClose = false;
 let focusBeforeDialog: HTMLElement | null = null;
 let world: ForestScene | null = null;
@@ -70,7 +96,11 @@ const languages = [
   { code: "ja", name: "日本語", mark: "あ" },
   { code: "ko", name: "한국어", mark: "한" },
 ] as const;
-const game = new RunnerGame();
+const economy = new Economy({
+  getItem: (key) => localStorage.getItem(key),
+  setItem: (key, value) => localStorage.setItem(key, value),
+});
+const game = new RunnerGame({ onCoins: (count) => economy.credit(count) });
 const t = (key: MessageKey) => messages[language][key];
 const n = (value: number) => numberFormatter.format(Math.floor(value));
 const text = (key: MessageKey, tag = "span", cls = "") =>
@@ -103,6 +133,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         <h1>${text("titleA", "span")}${text("titleB", "span", "title-accent")}</h1>
         <p class="wordmark" aria-hidden="true">WILD DASH</p>
         <button class="primary-button start-button" data-action="start" disabled>${icon("play")}${text("start")}</button>
+        <button class="supply-button" data-action="shop">${icon("shop")}${text("shop")}<span>${icon("coin")}<b class="wallet-count">${n(economy.state.wallet)}</b></span></button>
         <div class="best-record">${icon("trophy")}${text("best", "small")}<strong id="home-best">${n(best)} <span>${t("bestUnit")}</span></strong></div>
       </section>
       <div class="live-hint" id="live-hint" hidden>${text("liveHint", "span", "keyboard-only")}${text("mobileHint", "span", "touch-only")}</div>
@@ -110,6 +141,10 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <footer><button class="icon-button help-button" data-action="guide" data-label="howTo">${icon("help")}</button></footer>
   </div>
   <div class="coin-pop" id="coin-pop" aria-hidden="true"></div>
+  <div class="run-status" id="run-status" hidden></div>
+  <div class="route-notice" id="route-notice" hidden role="status"></div>
+  <button class="active-tool" id="booster-button" data-action="boost" data-label="activateBoost" hidden>${icon("rocket")}<span id="booster-status"></span></button>
+  <div class="notice-toast" id="notice-toast" hidden role="status"></div>
   <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
   <div id="countdown" class="countdown" hidden aria-live="polite" aria-atomic="true"></div>
   <div class="loader" id="loader"><div class="loader-leaf">${icon("leaf")}</div>${text("loading")}</div>
@@ -171,7 +206,27 @@ const dialog = document.querySelector<HTMLDialogElement>("#dialog")!;
 function renderDialog() {
   dialog.dataset.view = activeDialog ?? "";
   const close = `<button class="icon-button dialog-close" data-action="close" aria-label="${t("close")}">${icon("close")}</button>`;
-  if (activeDialog === "settings") {
+  if (activeDialog === "shop") {
+    const state = economy.state;
+    const product = (
+      kind: "booster" | "hourglass",
+      glyph: string,
+      price: number,
+    ) => {
+      const owned = kind === "booster" && state.boosterUnlocked;
+      const unavailable = state.wallet < price;
+      return `<article class="supply-card"><span class="supply-icon">${icon(glyph)}</span><div><h3>${t(kind)}</h3><p>${t(kind === "booster" ? "boosterDesc" : "hourglassDesc")}</p><small>${kind === "booster" ? t("permanent") : `${t("stock")} · ${n(state.hourglasses)}`}</small></div><div class="purchase-row"><span>${icon("coin")}${n(price)}</span><button class="secondary-button" data-action="buy-${kind}" ${owned || unavailable ? "disabled" : ""}>${t(owned ? "owned" : unavailable ? "insufficient" : "buy")}</button></div></article>`;
+    };
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("shop")}</span><h2 id="dialog-title">${t("shop")}</h2></div><div class="shop-wallet">${t("wallet")}<strong>${icon("coin")}<span class="wallet-count">${n(state.wallet)}</span></strong></div>${product("booster", "rocket", CONFIG.boosterPrice)}${product("hourglass", "hourglass", CONFIG.hourglassPrice)}<button class="secondary-button full-width" data-action="close">${t("closeShop")}</button>`;
+  } else if (activeDialog === "revive") {
+    const usable = game.canRewind && economy.state.hourglasses > 0;
+    const hint = game.hourglassUsed
+      ? "alreadyRevived"
+      : economy.state.hourglasses === 0
+        ? "noHourglass"
+        : "reviveHint";
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div><p class="revive-copy">${t(hint)}</p><div class="revive-stock">${icon("hourglass")}${t("stock")} · ${n(economy.state.hourglasses)}</div><button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
+  } else if (activeDialog === "settings") {
     const selected = languages.find((item) => item.code === language)!;
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("settings")}</span><h2 id="dialog-title">${t("settings")}</h2></div>
       <div class="setting-row language-row"><span class="setting-label" id="language-label">${icon("language")}${t("language")}</span>
@@ -195,17 +250,25 @@ function renderDialog() {
         )
         .join(
           "",
-        )}</div><button class="primary-button full-width" data-action="close">${t("gotIt")}${icon("check")}</button>`;
+        )}</div><p class="powers-guide">${t("powersGuide")}</p><button class="primary-button full-width" data-action="close">${t("gotIt")}${icon("check")}</button>`;
   } else if (activeDialog === "pause") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
     const hint =
-      game.lastHit === "log"
-        ? "hitLog"
-        : game.lastHit === "arch"
-          ? "hitArch"
-          : "hitRock";
-    dialog.innerHTML = `<div class="result-heading"><span class="result-seal">${icon("trophy")}</span><h2 id="dialog-title">${t("over")}</h2>${newBest ? `<span class="record-tag">${t("newBest")}</span>` : ""}</div><div class="final-score"><span>${t("score")}</span><strong>${n(game.score)}</strong></div><div class="result-stats"><div><span class="stat-label">${icon("route")}${t("totalDistance")}</span><strong>${n(game.distance)}<small>m</small></strong></div><div><span class="stat-label">${icon("coin")}${t("collected")}</span><strong>${n(game.coins)}</strong></div></div><p class="collision-tip">${icon("help")}<span>${t(hint)}</span></p><div class="result-actions"><button class="primary-button" data-action="restart">${icon("restart")}${t("again")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
+      game.lastHit === "wall-rock"
+        ? "wallHint"
+        : game.lastHit === "gap"
+          ? "fallHint"
+          : game.lastHit === "log"
+            ? game.terrain.biome === "canyon"
+              ? "canyonLogHint"
+              : "hitLog"
+            : game.lastHit === "arch"
+              ? game.terrain.biome === "canyon"
+                ? "canyonArchHint"
+                : "hitArch"
+              : "hitRock";
+    dialog.innerHTML = `<div class="result-heading"><span class="result-seal">${icon("trophy")}</span><h2 id="dialog-title">${t("over")}</h2>${newBest ? `<span class="record-tag">${t("newBest")}</span>` : ""}</div><div class="final-score"><span>${t("score")}</span><strong>${n(game.score)}</strong></div><div class="result-stats"><div><span class="stat-label">${icon("route")}${t("totalDistance")}</span><strong>${n(game.distance)}<small>m</small></strong></div><div><span class="stat-label">${icon("coin")}${t("collected")}</span><strong>${n(game.coins)}</strong></div></div><p class="collision-tip">${icon("help")}<span>${t(hint)}</span></p><p class="wallet-receipt">${t("walletEarned")} · ${n(game.coins)}</p><div class="result-actions"><button class="primary-button" data-action="restart">${icon("restart")}${t("again")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button><button class="secondary-button" data-action="shop">${icon("shop")}${t("shop")}</button></div>`;
   }
 }
 
@@ -223,6 +286,17 @@ function openDialog(type: NonNullable<typeof activeDialog>) {
   }
 }
 function closeDialog() {
+  if (activeDialog === "revive") {
+    finishRun();
+    activeDialog = "over";
+    renderDialog();
+    return;
+  }
+  if (activeDialog === "shop" && game.mode === "over") {
+    activeDialog = "over";
+    renderDialog();
+    return;
+  }
   const type = activeDialog;
   dialog.close();
   activeDialog = null;
@@ -249,6 +323,7 @@ dialog.addEventListener("click", (event) => {
 
 function syncView() {
   const ready = game.mode === "ready";
+  document.body.classList.toggle("rewinding", game.mode === "rewinding");
   document.body.classList.toggle("playing", !ready);
   document.body.classList.toggle("starting", game.introducing);
   document.querySelector<HTMLElement>("#intro")!.hidden = !ready;
@@ -256,7 +331,8 @@ function syncView() {
     ready || game.introducing;
   document.querySelector<HTMLElement>("#live-hint")!.hidden =
     ready || game.introducing;
-  document.querySelector<HTMLElement>(".pause-button")!.hidden = ready;
+  document.querySelector<HTMLElement>(".pause-button")!.hidden =
+    ready || game.mode === "rewinding";
 }
 function start() {
   if (!loaded) return;
@@ -264,6 +340,8 @@ function start() {
     dialog.close();
     activeDialog = null;
   }
+  if (game.mode === "over") finishRun();
+  runFinalized = false;
   resumeOnClose = false;
   newBest = false;
   resultDelay = 0;
@@ -272,7 +350,142 @@ function start() {
   syncView();
   (document.activeElement as HTMLElement)?.blur();
 }
+function finishRun() {
+  if (runFinalized) return;
+  runFinalized = true;
+  newBest = game.score > best;
+  if (newBest) {
+    best = game.score;
+    save("best", String(best));
+  }
+}
+function showToast(message: string) {
+  if (dialog.open) {
+    let inline = dialog.querySelector<HTMLElement>("#inline-notice");
+    if (!inline) {
+      inline = document.createElement("p");
+      inline.id = "inline-notice";
+      inline.className = "inline-notice";
+      inline.setAttribute("role", "status");
+      dialog.append(inline);
+    }
+    inline.textContent = message;
+    return;
+  }
+  const toast = document.querySelector<HTMLElement>("#notice-toast")!;
+  toast.textContent = message;
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toast.hidden = true;
+  }, 3200);
+}
+function updateFeatureUi() {
+  const state = economy.state;
+  document
+    .querySelectorAll<HTMLElement>(".wallet-count")
+    .forEach((el) => (el.textContent = n(state.wallet)));
+  const runningView = game.mode !== "ready" && !game.introducing;
+  const status = document.querySelector<HTMLElement>("#run-status")!;
+  status.hidden = !runningView;
+  const markup = `<span>${t(game.terrain.biome === "forest" ? "forest" : game.terrain.biome)}</span>${game.magnetTime > 0 ? `<span class="magnet-status">${icon("magnet")}${Math.ceil(game.magnetTime)}s</span>` : ""}${game.shield ? `<span data-label="shieldReady">${icon("shield")}${t("shield")}</span>` : ""}`;
+  if (markup !== statusMarkup) {
+    statusMarkup = markup;
+    status.innerHTML = markup;
+  }
+  const button = document.querySelector<HTMLButtonElement>("#booster-button")!;
+  button.hidden = !runningView;
+  button.disabled =
+    !state.boosterUnlocked ||
+    game.mode !== "running" ||
+    game.boosting ||
+    game.boostCooldown > 0;
+  button.classList.toggle("tool-live", game.boosting);
+  document.querySelector("#booster-status")!.textContent =
+    !state.boosterUnlocked
+      ? t("toolLocked")
+      : game.boosting
+        ? `${Math.ceil(game.boostRemaining)}m`
+        : game.boostCooldown > 0
+          ? `${Math.ceil(game.boostCooldown)}s`
+          : t("toolReady");
+  const notice = document.querySelector<HTMLElement>("#route-notice")!;
+  const message =
+    game.mode === "rewinding"
+      ? t("rewinding")
+      : game.mode === "running" && game.wallSide
+        ? `${t("wallHint")} · ${t((["wallLow", "wallMid", "wallHigh"] as const)[game.wallLevel])}`
+        : game.mode === "running" && game.gapWarning && !game.boosting
+          ? t("gapHint")
+          : "";
+  notice.hidden = !message;
+  if (notice.textContent !== message) notice.textContent = message;
+  if (lastPickupSerial !== game.pickupSerial) {
+    lastPickupSerial = game.pickupSerial;
+    if (!seenHints.has(game.lastPickup)) {
+      seenHints.add(game.lastPickup);
+      save("tutorials", JSON.stringify([...seenHints]));
+      showToast(t(game.lastPickup === "magnet" ? "magnetHint" : "shieldHint"));
+    }
+    beep("start");
+  }
+  if (lastClearSerial !== game.clearSerial) {
+    lastClearSerial = game.clearSerial;
+    showToast(t("continueHint"));
+  }
+}
 function act(action: string) {
+  if (action === "shop") {
+    if (game.mode === "ready" || (game.mode === "over" && runFinalized))
+      openDialog("shop");
+    return;
+  }
+  if (action === "buy-booster" || action === "buy-hourglass") {
+    if (activeDialog !== "shop" || performance.now() < buyBusyUntil) return;
+    buyBusyUntil = performance.now() + 400;
+    const result = economy.buy(
+      action === "buy-booster" ? "booster" : "hourglass",
+    );
+    renderDialog();
+    showToast(
+      t(
+        result === "ok"
+          ? "buySuccess"
+          : result === "funds"
+            ? "insufficient"
+            : result === "owned"
+              ? "owned"
+              : "storageError",
+      ),
+    );
+    return;
+  }
+  if (action === "boost") {
+    if (game.activateBooster(economy.state.boosterUnlocked)) {
+      beep("start");
+      showToast(t("boostHint"));
+    }
+    return;
+  }
+  if (action === "rewind") {
+    if (game.useHourglass(() => economy.consumeHourglass())) {
+      dialog.close();
+      activeDialog = null;
+      resumeOnClose = false;
+      resultDelay = 0;
+      document.body.classList.remove("crashed");
+      syncView();
+      beep("tick");
+    } else if (economy.state.hourglasses > 0 && game.canRewind)
+      showToast(t("storageError"));
+    return;
+  }
+  if (action === "finish") {
+    finishRun();
+    activeDialog = "over";
+    renderDialog();
+    return;
+  }
   if (action === "start" || action === "restart") start();
   else if (action === "settings") openDialog("settings");
   else if (action === "guide") openDialog("guide");
@@ -305,6 +518,7 @@ function act(action: string) {
     }
     if (sound) beep("coin");
   } else if (action === "home") {
+    if (game.mode !== "ready") finishRun();
     if (dialog.open) dialog.close();
     activeDialog = null;
     resumeOnClose = false;
@@ -398,6 +612,11 @@ function control(direction: "left" | "right" | "jump" | "slide") {
 }
 window.addEventListener("keydown", (event) => {
   if (activeDialog) return;
+  if (event.code === "KeyB") {
+    if (!event.repeat) act("boost");
+    event.preventDefault();
+    return;
+  }
   if (event.code === "Escape" || event.code === "KeyP") {
     if (game.mode === "running" || game.mode === "intro") act("pause");
     return;
@@ -542,6 +761,7 @@ try {
       rewards.style.top = `${anchor.y}px`;
       rewards.style.visibility = anchor.visible ? "visible" : "hidden";
     }
+    updateFeatureUi();
     lastCoins = game.coins;
     document.querySelector("#score")!.textContent = n(game.score);
     document.querySelector("#distance")!.textContent = n(game.distance);
@@ -551,17 +771,12 @@ try {
       .classList.toggle("faded", game.distance > 48);
     if (wasRunning && game.mode === "over") {
       beep("hit");
-      newBest = game.score > best;
-      if (newBest) {
-        best = game.score;
-        save("best", String(best));
-      }
       resultDelay = 0.65;
       document.body.classList.add("crashed");
     }
     if (game.mode === "over" && !activeDialog) {
       resultDelay -= dt;
-      if (resultDelay <= 0) openDialog("over");
+      if (resultDelay <= 0) openDialog(runFinalized ? "over" : "revive");
     }
   });
 } catch (error) {
@@ -572,3 +787,8 @@ try {
     .querySelector("#reload")!
     .addEventListener("click", () => location.reload());
 }
+
+window.addEventListener("pagehide", () => {
+  if (game.mode === "over") finishRun();
+  economy.flush();
+});
