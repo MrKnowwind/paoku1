@@ -2,7 +2,7 @@ import "./style.css";
 import { RunnerGame } from "./game.ts";
 import { ForestScene } from "./scene.ts";
 import { messages, resolveLanguage, languageTags } from "./i18n.ts";
-import type { Language, MessageKey } from "./i18n.ts";
+import type { MessageKey } from "./i18n.ts";
 
 const icons: Record<string, string> = {
   bolt: '<path d="m13 2-9 12h7l-1 8 10-12h-7l2-8Z"/>',
@@ -26,6 +26,10 @@ const icons: Record<string, string> = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 1v2m0 18v2M1 12h2m18 0h2M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
   play: '<path d="m9 5 10 7-10 7V5Z"/>',
+  language:
+    '<path d="M3 5h12M9 3v2m-4 3c1 4 4 7 8 9m0-12c0 5-4 10-9 12m10 3 4-10 4 10m-6-3h4"/>',
+  chevron: '<path d="m7 10 5 5 5-5"/>',
+  quality: '<path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
 };
 const icon = (name: string, cls = "") =>
   `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] ?? icons.leaf}</svg>`;
@@ -49,12 +53,19 @@ let sound = read("sound") !== "false";
 let quality = read("quality") !== "low";
 let best = Math.max(0, Number(read("best")) || 0);
 let newBest = false;
+let resultDelay = 0;
 let activeDialog: "settings" | "pause" | "over" | "guide" | null = null;
 let resumeOnClose = false;
 let focusBeforeDialog: HTMLElement | null = null;
 let world: ForestScene | null = null;
 let loaded = false;
 let audio: AudioContext | null = null;
+const languages = [
+  { code: "zh", name: "简体中文", mark: "中" },
+  { code: "en", name: "English", mark: "EN" },
+  { code: "ja", name: "日本語", mark: "あ" },
+  { code: "ko", name: "한국어", mark: "한" },
+] as const;
 const game = new RunnerGame();
 const t = (key: MessageKey) => messages[language][key];
 const n = (value: number) => numberFormatter.format(Math.floor(value));
@@ -63,14 +74,12 @@ const text = (key: MessageKey, tag = "span", cls = "") =>
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <canvas id="world" aria-label="3D"></canvas>
-  <div class="vignette"></div>
+  <div class="vignette"></div><div class="impact-flash"></div>
   <div class="shell">
     <header class="header">
       <a class="brand" href="#" data-action="home" data-label="brand">
-        <span class="brand-mark">${icon("bolt")}</span>
-        <span>${text("brand", "strong")}<small>WILD DASH</small></span>
+        <span class="brand-mark">${icon("leaf")}</span>${text("brand", "strong")}
       </a>
-      <div class="location"><span class="status-dot"></span>${text("forest")}<span class="location-separator">/</span>${icon("sun")}${text("weather")}</div>
       <div class="header-actions">
         <button class="icon-button pause-button" data-action="pause" data-label="pause" hidden>${icon("pause")}</button>
         <button class="icon-button" id="sound-toggle" data-action="sound" data-label="sound" aria-pressed="${sound}">${icon(sound ? "sound" : "mute")}</button>
@@ -79,36 +88,27 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     </header>
     <main>
       <section class="intro" id="intro">
-        <div class="eyebrow"><span class="eyebrow-line"></span>${text("eyebrow")}</div>
-        <h1>${text("titleA", "span")}<br>${text("titleB", "span", "title-accent")}<span class="title-star">✳</span></h1>
-        ${text("description", "p", "intro-description")}
-        <div class="intro-actions"><button class="primary-button start-button" data-action="start" disabled>${text("start")}${icon("arrow")}</button><button class="help-button" data-action="guide" data-label="howTo">${icon("help")}</button></div>
-        ${text("startHint", "p", "start-hint keyboard-only")}
-        <div class="best-record">${icon("trophy")}<div>${text("best", "small")}<strong id="home-best">${n(best)} <span>${t("bestUnit")}</span></strong></div><span class="record-divider"></span>${text("ready", "span", "ready-label")}</div>
+        <div class="trail-badge">${icon("leaf")}${text("forest")}</div>
+        <h1>${text("titleA", "span")}${text("titleB", "span", "title-accent")}</h1>
+        <p class="wordmark" aria-hidden="true">WILD DASH</p>
+        <button class="primary-button start-button" data-action="start" disabled>${icon("play")}${text("start")}${icon("arrow")}</button>
+        <div class="best-record">${icon("trophy")}${text("best", "small")}<strong id="home-best">${n(best)} <span>${t("bestUnit")}</span></strong></div>
       </section>
       <section class="hud" id="hud" hidden data-label="score">
         <div class="hud-main">${text("score", "small")}<strong id="score">000000</strong></div>
-        <div class="hud-secondary"><div>${icon("route")}<span><b id="distance">0</b><small> m</small></span></div><span class="hud-divider"></span><div class="coin-score">${icon("coin")}<b id="coins">0</b></div></div>
+        <div class="hud-secondary"><span class="distance-counter"><b id="distance">0</b><small> m</small></span><span class="coin-counter">${icon("coin")}<b id="coins">0</b></span></div>
       </section>
-      <div class="scene-label" id="scene-label"><span class="scene-label-number">01</span><div>${text("forest", "strong")}<small>THE WOODLAND TRAIL</small></div><span class="scene-label-line"></span></div>
-      <div class="run-info" id="run-info" hidden><span class="status-dot"></span>${text("speed")}<strong id="speed">12</strong><small>m/s</small></div>
       <div class="coin-pop" id="coin-pop">+50</div>
-      <div class="control-deck" id="controls">
-        <div class="deck-heading">${icon("route")}${text("keyboard", "span", "keyboard-only")}${text("touch", "span", "touch-only")}</div>
-        <div class="control-item"><div class="key-pair keyboard-only"><kbd>←</kbd><kbd>→</kbd></div><span class="gesture touch-only">↔</span><div>${text("move", "strong")}${text("moveHint", "small", "touch-only")}</div></div>
-        <div class="control-item"><kbd class="keyboard-only">↑</kbd><span class="gesture touch-only">↑</span><div>${text("jump", "strong")}${text("jumpHint", "small", "touch-only")}</div></div>
-        <div class="control-item"><kbd class="keyboard-only">↓</kbd><span class="gesture touch-only">↓</span><div>${text("slide", "strong")}${text("slideHint", "small", "touch-only")}</div></div>
-        <span class="deck-tip">${t("tip")}</span>
-      </div>
       <div class="live-hint" id="live-hint" hidden>${text("liveHint", "span", "keyboard-only")}${text("mobileHint", "span", "touch-only")}</div>
     </main>
-    <footer><span class="footer-tag">${icon("leaf")}${text("footer")}</span><span class="footer-right">${text("level")}<span class="footer-dot">·</span><span>BABYLON.JS</span></span></footer>
+    <footer><span class="trail-coordinate" aria-hidden="true">01 — WOODLAND</span><button class="icon-button help-button" data-action="guide" data-label="howTo">${icon("help")}</button></footer>
   </div>
   <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+  <div id="countdown" class="countdown" hidden aria-live="polite" aria-atomic="true"></div>
   <div class="loader" id="loader"><div class="loader-leaf">${icon("leaf")}</div>${text("loading")}</div>
 `;
 
-function beep(kind: "coin" | "jump" | "slide" | "hit" | "start") {
+function beep(kind: "coin" | "jump" | "slide" | "hit" | "start" | "tick") {
   if (!sound) return;
   try {
     audio ??= new AudioContext();
@@ -122,6 +122,7 @@ function beep(kind: "coin" | "jump" | "slide" | "hit" | "start") {
       slide: 210,
       hit: 110,
       start: 523,
+      tick: 440,
     };
     osc.type = kind === "hit" ? "triangle" : "sine";
     osc.frequency.setValueAtTime(frequencies[kind], now);
@@ -154,7 +155,6 @@ function localize() {
   });
   document.querySelector("#home-best")!.innerHTML =
     `${n(best)} <span>${t("bestUnit")}</span>`;
-  document.querySelector(".deck-tip")!.textContent = t("tip");
   document
     .querySelector('meta[name="description"]')!
     .setAttribute("content", t("description").replace("\n", " "));
@@ -164,26 +164,15 @@ const dialog = document.querySelector<HTMLDialogElement>("#dialog")!;
 function renderDialog() {
   const close = `<button class="icon-button dialog-close" data-action="close" aria-label="${t("close")}">${icon("close")}</button>`;
   if (activeDialog === "settings") {
-    dialog.innerHTML = `${close}<span class="dialog-kicker">PREFERENCES</span><h2 id="dialog-title">${t("settings")}</h2>
-      <section class="setting-section"><h3>${t("language")}</h3><p>${t("languageHint")}</p>
-      <div class="language-grid">${(
-        [
-          ["zh", "简体中文", "你好"],
-          ["en", "English", "Hello"],
-          ["ja", "日本語", "こんにちは"],
-          ["ko", "한국어", "안녕하세요"],
-        ] as const
-      )
-        .map(
-          ([code, name, hello]) =>
-            `<button class="language-option ${code === language ? "selected" : ""}" data-language="${code}" aria-pressed="${code === language}"><span><strong>${name}</strong><small>${hello}</small></span>${code === language ? icon("check") : '<span class="radio-dot"></span>'}</button>`,
-        )
-        .join("")}</div></section>
-      <div class="setting-row"><div><h3>${t("sound")}</h3><p>${t("soundHint")}</p></div><button class="toggle ${sound ? "is-on" : ""}" data-action="sound" role="switch" aria-checked="${sound}" aria-label="${t("sound")}"><span></span></button></div>
-      <div class="setting-row quality-row"><div><h3>${t("quality")}</h3><p>${t("qualityHint")}</p></div><div class="segmented"><button class="${quality ? "selected" : ""}" data-quality="high">${t("high")}</button><button class="${!quality ? "selected" : ""}" data-quality="low">${t("low")}</button></div></div>
-      <p class="storage-hint">${icon("check")}${t("storageHint")}</p>`;
+    const selected = languages.find((item) => item.code === language)!;
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("settings")}</span><h2 id="dialog-title">${t("settings")}</h2></div>
+      <div class="setting-row language-row"><span class="setting-label" id="language-label">${icon("language")}${t("language")}</span>
+      <div class="language-picker"><button id="language-trigger" class="language-trigger" data-action="language-menu" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="language-label language-current"><span class="language-mark">${selected.mark}</span><span id="language-current">${selected.name}</span>${icon("chevron")}</button>
+      <div class="language-menu" id="language-menu" role="listbox" aria-labelledby="language-label" hidden>${languages.map((item) => `<button class="language-choice ${item.code === language ? "selected" : ""}" role="option" aria-selected="${item.code === language}" tabindex="-1" data-language="${item.code}"><span class="language-mark">${item.mark}</span><span>${item.name}</span>${item.code === language ? icon("check") : ""}</button>`).join("")}</div></div></div>
+      <div class="setting-row"><span class="setting-label">${icon("sound")}${t("sound")}</span><button class="toggle ${sound ? "is-on" : ""}" data-action="sound" role="switch" aria-checked="${sound}" aria-label="${t("sound")}"><span></span></button></div>
+      <div class="setting-row"><span class="setting-label">${icon("quality")}${t("quality")}</span><div class="segmented"><button class="${quality ? "selected" : ""}" data-quality="high" aria-pressed="${quality}">${t("high")}</button><button class="${!quality ? "selected" : ""}" data-quality="low" aria-pressed="${!quality}">${t("low")}</button></div></div>`;
   } else if (activeDialog === "guide") {
-    dialog.innerHTML = `${close}<span class="dialog-kicker">FIELD GUIDE</span><h2 id="dialog-title">${t("guideTitle")}</h2><div class="guide-list">
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("help")}</span><h2 id="dialog-title">${t("howTo")}</h2></div><div class="guide-list">
       ${(
         [
           ["route", "move", "guideMove"],
@@ -200,7 +189,7 @@ function renderDialog() {
           "",
         )}</div><button class="primary-button full-width" data-action="close">${t("gotIt")}${icon("check")}</button>`;
   } else if (activeDialog === "pause") {
-    dialog.innerHTML = `${close}<div class="result-icon">${icon("leaf")}</div><span class="dialog-kicker">TAKE A BREATH</span><h2 id="dialog-title">${t("paused")}</h2><p class="dialog-description">${t("pauseHint")}</p><button class="primary-button full-width" data-action="resume">${t("resume")}${icon("play")}</button><button class="text-button full-width" data-action="restart">${t("restart")}</button><button class="text-button full-width subdued" data-action="home">${t("home")}</button>`;
+    dialog.innerHTML = `${close}<div class="result-icon">${icon("pause")}</div><h2 id="dialog-title" class="centered">${t("paused")}</h2><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="text-button" data-action="restart">${t("restart")}</button><button class="text-button" data-action="home">${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
     const hint =
       game.lastHit === "log"
@@ -208,13 +197,13 @@ function renderDialog() {
         : game.lastHit === "arch"
           ? "hitArch"
           : "hitRock";
-    dialog.innerHTML = `<div class="result-icon orange">${icon("trophy")}</div><span class="dialog-kicker">${newBest ? t("newBest") : "KEEP EXPLORING"}</span><h2 id="dialog-title">${t("over")}</h2><p class="dialog-description">${t(hint)}</p><div class="final-score"><strong>${n(game.score)}</strong><span>${t("score")}</span></div><div class="result-stats"><div><small>${t("totalDistance")}</small><strong>${n(game.distance)} <span>m</span></strong></div><div><small>${t("collected")}</small><strong>${icon("coin")}${n(game.coins)}</strong></div></div><button class="primary-button full-width" data-action="restart">${t("again")}${icon("arrow")}</button><button class="text-button full-width" data-action="home">${t("home")}</button>`;
+    dialog.innerHTML = `<div class="result-icon orange">${icon("trophy")}</div><h2 id="dialog-title" class="centered">${newBest ? t("newBest") : t("over")}</h2><div class="final-score"><strong>${n(game.score)}</strong><span>${t("score")}</span></div><div class="result-stats"><div>${icon("route")}<strong>${n(game.distance)}<small>m</small></strong></div><div>${icon("coin")}<strong>${n(game.coins)}</strong></div></div><p class="collision-tip">${t(hint)}</p><button class="primary-button full-width" data-action="restart">${t("again")}${icon("arrow")}</button><button class="text-button full-width" data-action="home">${t("home")}</button>`;
   }
 }
 
 function openDialog(type: NonNullable<typeof activeDialog>) {
   focusBeforeDialog = document.activeElement as HTMLElement;
-  resumeOnClose = game.mode === "running";
+  resumeOnClose = game.mode === "running" || game.mode === "intro";
   if (resumeOnClose) game.pause();
   activeDialog = type;
   renderDialog();
@@ -248,12 +237,12 @@ dialog.addEventListener("click", (event) => {
 function syncView() {
   const ready = game.mode === "ready";
   document.body.classList.toggle("playing", !ready);
+  document.body.classList.toggle("starting", game.introducing);
   document.querySelector<HTMLElement>("#intro")!.hidden = !ready;
-  document.querySelector<HTMLElement>("#controls")!.hidden = !ready;
-  document.querySelector<HTMLElement>("#scene-label")!.hidden = !ready;
-  document.querySelector<HTMLElement>("#hud")!.hidden = ready;
-  document.querySelector<HTMLElement>("#live-hint")!.hidden = ready;
-  document.querySelector<HTMLElement>("#run-info")!.hidden = ready;
+  document.querySelector<HTMLElement>("#hud")!.hidden =
+    ready || game.introducing;
+  document.querySelector<HTMLElement>("#live-hint")!.hidden =
+    ready || game.introducing;
   document.querySelector<HTMLElement>(".pause-button")!.hidden = ready;
 }
 function start() {
@@ -264,8 +253,9 @@ function start() {
   }
   resumeOnClose = false;
   newBest = false;
-  game.start();
-  beep("start");
+  resultDelay = 0;
+  document.body.classList.remove("crashed");
+  game.begin();
   syncView();
   (document.activeElement as HTMLElement)?.blur();
 }
@@ -273,8 +263,20 @@ function act(action: string) {
   if (action === "start" || action === "restart") start();
   else if (action === "settings") openDialog("settings");
   else if (action === "guide") openDialog("guide");
-  else if (action === "pause" && game.mode === "running") openDialog("pause");
-  else if (action === "close" || action === "resume") closeDialog();
+  else if (
+    action === "pause" &&
+    (game.mode === "running" || game.mode === "intro")
+  )
+    openDialog("pause");
+  else if (action === "language-menu") {
+    const trigger =
+      dialog.querySelector<HTMLButtonElement>("#language-trigger")!;
+    const menu = dialog.querySelector<HTMLElement>("#language-menu")!;
+    menu.hidden = !menu.hidden;
+    trigger.setAttribute("aria-expanded", String(!menu.hidden));
+    if (!menu.hidden)
+      menu.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+  } else if (action === "close" || action === "resume") closeDialog();
   else if (action === "sound") {
     sound = !sound;
     save("sound", String(sound));
@@ -284,12 +286,17 @@ function act(action: string) {
     document
       .querySelector("#sound-toggle")!
       .setAttribute("aria-pressed", String(sound));
-    if (activeDialog === "settings") renderDialog();
+    if (activeDialog === "settings") {
+      renderDialog();
+      dialog.querySelector<HTMLButtonElement>('[data-action="sound"]')?.focus();
+    }
     if (sound) beep("coin");
   } else if (action === "home") {
     if (dialog.open) dialog.close();
     activeDialog = null;
     resumeOnClose = false;
+    resultDelay = 0;
+    document.body.classList.remove("crashed");
     game.mode = "ready";
     syncView();
     localize();
@@ -297,7 +304,7 @@ function act(action: string) {
 }
 document.addEventListener("click", (event) => {
   const target = (event.target as HTMLElement).closest<HTMLElement>(
-    "[data-action], [data-language], [data-quality]",
+    "[data-action], [data-quality], [data-language]",
   );
   if (!target) return;
   event.preventDefault();
@@ -306,13 +313,67 @@ document.addEventListener("click", (event) => {
     save("language", language);
     localize();
     renderDialog();
-    dialog.querySelector<HTMLElement>(`[data-language="${language}"]`)?.focus();
+    dialog.querySelector<HTMLButtonElement>("#language-trigger")?.focus();
   } else if (target.dataset.quality) {
     quality = target.dataset.quality === "high";
     save("quality", quality ? "high" : "low");
     world?.setQuality(quality);
     renderDialog();
+    dialog
+      .querySelector<HTMLButtonElement>(
+        `[data-quality="${quality ? "high" : "low"}"]`,
+      )
+      ?.focus();
   } else if (target.dataset.action) act(target.dataset.action);
+});
+
+dialog.addEventListener("keydown", (event) => {
+  const picker = (event.target as HTMLElement).closest(".language-picker");
+  if (!picker) return;
+  const menu = picker.querySelector<HTMLElement>("#language-menu")!;
+  const trigger = picker.querySelector<HTMLButtonElement>("#language-trigger")!;
+  if (event.key === "Escape" && !menu.hidden) {
+    event.preventDefault();
+    event.stopPropagation();
+    menu.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.focus();
+    return;
+  }
+  if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    event.stopPropagation();
+    menu.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    const options = [
+      ...menu.querySelectorAll<HTMLButtonElement>('[role="option"]'),
+    ];
+    const current = options.indexOf(
+      document.activeElement as HTMLButtonElement,
+    );
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? options.length - 1
+          : (current + (event.key === "ArrowUp" ? -1 : 1) + options.length) %
+            options.length;
+    options[next]?.focus();
+  }
+  if (event.key === "Tab") {
+    menu.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  }
+});
+dialog.addEventListener("click", (event) => {
+  if ((event.target as HTMLElement).closest(".language-picker")) return;
+  const menu = dialog.querySelector<HTMLElement>("#language-menu");
+  if (menu) {
+    menu.hidden = true;
+    dialog
+      .querySelector("#language-trigger")
+      ?.setAttribute("aria-expanded", "false");
+  }
 });
 
 function control(direction: "left" | "right" | "jump" | "slide") {
@@ -331,7 +392,7 @@ function control(direction: "left" | "right" | "jump" | "slide") {
 window.addEventListener("keydown", (event) => {
   if (activeDialog) return;
   if (event.code === "Escape" || event.code === "KeyP") {
-    if (game.mode === "running") act("pause");
+    if (game.mode === "running" || game.mode === "intro") act("pause");
     return;
   }
   if (event.code === "Space" && game.mode === "ready") {
@@ -388,10 +449,11 @@ window.addEventListener("pointercancel", () => {
   gesture = null;
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && game.mode === "running") openDialog("pause");
+  if (document.hidden && (game.mode === "running" || game.mode === "intro"))
+    openDialog("pause");
 });
 window.addEventListener("blur", () => {
-  if (game.mode === "running") openDialog("pause");
+  if (game.mode === "running" || game.mode === "intro") openDialog("pause");
 });
 
 localize();
@@ -415,7 +477,20 @@ try {
       dt = Math.min((now - previous) / 1000, 0.06);
     previous = now;
     const wasRunning = game.mode === "running";
+    const previousMode = game.mode;
     game.update(dt);
+    if (game.mode !== previousMode) syncView();
+    const countdown = document.querySelector<HTMLElement>("#countdown")!;
+    const count = game.mode === "intro" && !activeDialog ? game.countdown : "";
+    if (countdown.textContent !== count) {
+      countdown.textContent = count;
+      countdown.hidden = !count;
+      countdown.classList.toggle("go", count === "GO!");
+      countdown.classList.remove("beat");
+      void countdown.offsetWidth;
+      countdown.classList.add("beat");
+      if (count) beep(count === "GO!" ? "start" : "tick");
+    }
     world!.update(game, dt);
     if (game.coins > lastCoins) {
       beep("coin");
@@ -423,15 +498,18 @@ try {
       pop.classList.remove("pop");
       void pop.offsetWidth;
       pop.classList.add("pop");
+      const counter = document.querySelector<HTMLElement>(".coin-counter")!;
+      counter.classList.remove("pulse");
+      void counter.offsetWidth;
+      counter.classList.add("pulse");
     }
     lastCoins = game.coins;
-    document.querySelector("#score")!.textContent = String(game.score).padStart(
-      6,
-      "0",
-    );
+    document.querySelector("#score")!.textContent = n(game.score);
     document.querySelector("#distance")!.textContent = n(game.distance);
     document.querySelector("#coins")!.textContent = n(game.coins);
-    document.querySelector("#speed")!.textContent = game.speed.toFixed(1);
+    document
+      .querySelector<HTMLElement>("#live-hint")!
+      .classList.toggle("faded", game.distance > 48);
     if (wasRunning && game.mode === "over") {
       beep("hit");
       newBest = game.score > best;
@@ -439,7 +517,12 @@ try {
         best = game.score;
         save("best", String(best));
       }
-      openDialog("over");
+      resultDelay = 0.65;
+      document.body.classList.add("crashed");
+    }
+    if (game.mode === "over" && !activeDialog) {
+      resultDelay -= dt;
+      if (resultDelay <= 0) openDialog("over");
     }
   });
 } catch (error) {

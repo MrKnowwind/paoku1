@@ -1,4 +1,10 @@
-export type GameMode = "ready" | "running" | "paused" | "over";
+export type GameMode = "ready" | "intro" | "running" | "paused" | "over";
+export const INTRO_TIMING = { stand: 1.15, walk: 3, countdown: 3, go: 0.5 };
+const INTRO_DURATION =
+  INTRO_TIMING.stand +
+  INTRO_TIMING.walk +
+  INTRO_TIMING.countdown +
+  INTRO_TIMING.go;
 export type ItemType = "coin" | "log" | "arch" | "rock";
 export interface TrackItem {
   id: number;
@@ -16,10 +22,13 @@ export class RunnerGame {
   velocity = 0;
   slideTime = 0;
   distance = 0;
+  introTime = 0;
   coins = 0;
   lastHit: ItemType | null = null;
   items: TrackItem[] = [];
   private nextId = 0;
+  private horizontalVelocity = 0;
+  private resumeMode: "running" | "intro" = "running";
   private nextRow = 65;
   private autoSpawn: boolean;
   private random: () => number;
@@ -33,14 +42,37 @@ export class RunnerGame {
   get score() {
     return Math.floor(this.distance * 2) + this.coins * 50;
   }
+  get introducing() {
+    return (
+      this.mode === "intro" ||
+      (this.mode === "paused" && this.resumeMode === "intro")
+    );
+  }
+  get countdown() {
+    if (!this.introducing) return "";
+    const elapsed = this.introTime - INTRO_TIMING.stand - INTRO_TIMING.walk;
+    return elapsed < 0
+      ? ""
+      : elapsed < INTRO_TIMING.countdown
+        ? String(INTRO_TIMING.countdown - Math.floor(elapsed))
+        : "GO!";
+  }
+  begin() {
+    this.start();
+    this.mode = "intro";
+    this.introTime = 0;
+  }
   start() {
     this.mode = "running";
     this.lane = 0;
     this.x = 0;
+    this.horizontalVelocity = 0;
     this.y = 0;
     this.velocity = 0;
     this.slideTime = 0;
     this.distance = 0;
+    this.introTime = INTRO_DURATION;
+    this.resumeMode = "running";
     this.items = [];
     this.coins = 0;
     this.lastHit = null;
@@ -69,10 +101,13 @@ export class RunnerGame {
       this.slideTime = 0.75;
   }
   pause() {
-    if (this.mode === "running") this.mode = "paused";
+    if (this.mode === "running" || this.mode === "intro") {
+      this.resumeMode = this.mode;
+      this.mode = "paused";
+    }
   }
   resume() {
-    if (this.mode === "paused") this.mode = "running";
+    if (this.mode === "paused") this.mode = this.resumeMode;
   }
   private fillTrack() {
     while (this.nextRow - this.distance < 145) {
@@ -94,12 +129,26 @@ export class RunnerGame {
     }
   }
   update(dt: number) {
+    if (this.mode === "intro") {
+      this.introTime = Math.min(INTRO_DURATION, this.introTime + dt);
+      if (this.introTime >= INTRO_DURATION) this.mode = "running";
+      return;
+    }
     while (dt > 0 && this.mode === "running") {
       const step = Math.min(dt, 1 / 120);
       const travel = step * this.speed;
       this.distance += travel;
       this.slideTime = Math.max(0, this.slideTime - step);
-      this.x += (this.lane * 2.5 - this.x) * Math.min(1, step * 16);
+      const targetX = this.lane * 2.5;
+      const offset = this.x - targetX;
+      const decay = Math.exp(-20 * step);
+      const impulse = (this.horizontalVelocity + 20 * offset) * step;
+      this.x = Math.max(
+        -2.5,
+        Math.min(2.5, targetX + (offset + impulse) * decay),
+      );
+      this.horizontalVelocity =
+        (this.horizontalVelocity - 20 * impulse) * decay;
       this.velocity -= 23 * step;
       this.y = Math.max(0, this.y + this.velocity * step);
       if (this.y === 0) this.velocity = 0;
@@ -114,7 +163,7 @@ export class RunnerGame {
             Math.abs(this.y + (this.sliding ? 0.4 : 0.95) - item.y) < 0.9
           ) {
             this.coins++;
-            item.z = -10;
+            item.z = -1000;
           } else if (
             item.type === "rock" ||
             (item.type === "log" && this.y < 0.9) ||
@@ -125,7 +174,8 @@ export class RunnerGame {
           }
         }
       }
-      this.items = this.items.filter((item) => item.z > -5);
+      // Keep passed props until their full geometry is behind the chase camera.
+      this.items = this.items.filter((item) => item.z > -24);
       if (this.autoSpawn) this.fillTrack();
       dt -= step;
     }

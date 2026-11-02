@@ -17,6 +17,23 @@ test("starts in the middle lane and never leaves the three lanes", () => {
   assert.ok(game.distance > 0);
 });
 
+test("lane changes ease into motion and settle without overshooting", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  game.move(1);
+  game.update(0.02);
+  assert.ok(game.x > 0 && game.x < 0.3);
+  game.update(0.35);
+  assert.ok(game.x > 2.3 && game.x <= 2.5);
+  game.move(-1);
+  game.move(-1);
+  for (let i = 0; i < 90; i++) {
+    game.update(1 / 120);
+    assert.ok(game.x >= -2.5 && game.x <= 2.5);
+  }
+  assert.ok(game.x < -2.49);
+});
+
 test("a jump clears a log and lands; staying on the ground causes a collision", () => {
   const game = new RunnerGame({ autoSpawn: false });
   game.start();
