@@ -7,32 +7,36 @@ import type { MessageKey } from "./i18n.ts";
 const icons: Record<string, string> = {
   bolt: '<path d="m13 2-9 12h7l-1 8 10-12h-7l2-8Z"/>',
   arrow: '<path d="M5 12h14m-6-6 6 6-6 6"/>',
-  leaf: '<path d="M20 4C9 2 2 10 7 17s15 1 13-13Z"/><path d="m5 21 10-10"/>',
+  leaf: '<path d="m3 19 6-12 4 7 2-4 6 9H3Z" fill="currentColor" fill-opacity=".12"/><path d="m3 19 6-12 4 7 2-4 6 9H3Z"/><path d="m8 19 3-5"/>',
   settings:
-    '<path d="m9 3-1 3-3 1-2 3 2 2-1 3 2 3h3l2 3h3l1-3 3-1 2-3-2-2 1-3-2-3h-3l-2-3Z"/><circle cx="12" cy="12" r="3"/>',
+    '<path d="M4 6h5m4 0h7M4 12h10m4 0h2M4 18h2m4 0h10"/><rect x="9" y="3.5" width="4" height="5" rx="1.2"/><rect x="14" y="9.5" width="4" height="5" rx="1.2"/><rect x="6" y="15.5" width="4" height="5" rx="1.2"/>',
   sound:
     '<path d="m11 4-6 5H2v6h3l6 5V4Z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
   mute: '<path d="m11 4-6 5H2v6h3l6 5V4Z"/><path d="m16 9 6 6m0-6-6 6"/>',
-  pause: '<path d="M8 5v14M16 5v14"/>',
+  pause:
+    '<rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
   trophy:
-    '<path d="M8 3h8v7a4 4 0 0 1-8 0V3Zm0 2H4v3a4 4 0 0 0 4 4m8-7h4v3a4 4 0 0 1-4 4m-4 2v6m-5 1h10"/>',
-  coin: '<circle cx="12" cy="12" r="9"/><path d="m12 7-3 5 3 5 3-5-3-5Z"/>',
-  route: '<path d="M5 20V4m0 0 5 4M5 4 1 8m18-4v16m0 0-5-4m5 4 4-4"/>',
+    '<path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" fill="currentColor" fill-opacity=".12"/><path d="M7 6H4v2a4 4 0 0 0 4 4m9-6h3v2a4 4 0 0 1-4 4M12 14v5m-4 2h8m-6-2h4"/>',
+  coin: '<circle cx="12" cy="12" r="9" fill="currentColor" fill-opacity=".12"/><circle cx="12" cy="12" r="6.5" stroke-opacity=".5"/><path d="M15 7c-6 0-8 5-5 9 4-1 6-4 5-9Z"/><path d="m9 17 4-7"/>',
+  route:
+    '<circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 16v-3a4 4 0 0 1 4-4h4a4 4 0 0 0 4-3M10 18h10M4 6h6"/>',
   jump: '<path d="M5 19h14M12 15V3m-5 5 5-5 5 5"/>',
   slide:
     '<path d="m4 6 6 5-3 5h12m-4-4 4 4-4 4"/><circle cx="16" cy="6" r="2"/>',
-  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4m0 3v.1"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 1v2m0 18v2M1 12h2m18 0h2M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
-  play: '<path d="m9 5 10 7-10 7V5Z"/>',
+  play: '<path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/>',
+  restart: '<path d="M4 10a8 8 0 1 1 .8 7M4 4v6h6"/>',
+  home: '<path d="m3 11 9-8 9 8M6 10v10h12V10M10 20v-6h4v6"/>',
   language:
     '<path d="M3 5h12M9 3v2m-4 3c1 4 4 7 8 9m0-12c0 5-4 10-9 12m10 3 4-10 4 10m-6-3h4"/>',
   chevron: '<path d="m7 10 5 5 5-5"/>',
   quality: '<path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
 };
 const icon = (name: string, cls = "") =>
-  `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] ?? icons.leaf}</svg>`;
+  `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] ?? icons.leaf}</svg>`;
 const read = (key: string) => {
   try {
     return localStorage.getItem(`wild-dash:${key}`);
@@ -91,7 +95,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         <div class="trail-badge">${icon("leaf")}${text("forest")}</div>
         <h1>${text("titleA", "span")}${text("titleB", "span", "title-accent")}</h1>
         <p class="wordmark" aria-hidden="true">WILD DASH</p>
-        <button class="primary-button start-button" data-action="start" disabled>${icon("play")}${text("start")}${icon("arrow")}</button>
+        <button class="primary-button start-button" data-action="start" disabled>${icon("play")}${text("start")}</button>
         <div class="best-record">${icon("trophy")}${text("best", "small")}<strong id="home-best">${n(best)} <span>${t("bestUnit")}</span></strong></div>
       </section>
       <section class="hud" id="hud" hidden data-label="score">
@@ -101,7 +105,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div class="coin-pop" id="coin-pop">+50</div>
       <div class="live-hint" id="live-hint" hidden>${text("liveHint", "span", "keyboard-only")}${text("mobileHint", "span", "touch-only")}</div>
     </main>
-    <footer><span class="trail-coordinate" aria-hidden="true">01 — WOODLAND</span><button class="icon-button help-button" data-action="guide" data-label="howTo">${icon("help")}</button></footer>
+    <footer><button class="icon-button help-button" data-action="guide" data-label="howTo">${icon("help")}</button></footer>
   </div>
   <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
   <div id="countdown" class="countdown" hidden aria-live="polite" aria-atomic="true"></div>
@@ -162,6 +166,7 @@ function localize() {
 
 const dialog = document.querySelector<HTMLDialogElement>("#dialog")!;
 function renderDialog() {
+  dialog.dataset.view = activeDialog ?? "";
   const close = `<button class="icon-button dialog-close" data-action="close" aria-label="${t("close")}">${icon("close")}</button>`;
   if (activeDialog === "settings") {
     const selected = languages.find((item) => item.code === language)!;
@@ -189,7 +194,7 @@ function renderDialog() {
           "",
         )}</div><button class="primary-button full-width" data-action="close">${t("gotIt")}${icon("check")}</button>`;
   } else if (activeDialog === "pause") {
-    dialog.innerHTML = `${close}<div class="result-icon">${icon("pause")}</div><h2 id="dialog-title" class="centered">${t("paused")}</h2><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="text-button" data-action="restart">${t("restart")}</button><button class="text-button" data-action="home">${t("home")}</button></div>`;
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
     const hint =
       game.lastHit === "log"
@@ -197,7 +202,7 @@ function renderDialog() {
         : game.lastHit === "arch"
           ? "hitArch"
           : "hitRock";
-    dialog.innerHTML = `<div class="result-icon orange">${icon("trophy")}</div><h2 id="dialog-title" class="centered">${newBest ? t("newBest") : t("over")}</h2><div class="final-score"><strong>${n(game.score)}</strong><span>${t("score")}</span></div><div class="result-stats"><div>${icon("route")}<strong>${n(game.distance)}<small>m</small></strong></div><div>${icon("coin")}<strong>${n(game.coins)}</strong></div></div><p class="collision-tip">${t(hint)}</p><button class="primary-button full-width" data-action="restart">${t("again")}${icon("arrow")}</button><button class="text-button full-width" data-action="home">${t("home")}</button>`;
+    dialog.innerHTML = `<div class="result-heading"><span class="result-seal">${icon("trophy")}</span><h2 id="dialog-title">${t("over")}</h2>${newBest ? `<span class="record-tag">${t("newBest")}</span>` : ""}</div><div class="final-score"><span>${t("score")}</span><strong>${n(game.score)}</strong></div><div class="result-stats"><div><span class="stat-label">${icon("route")}${t("totalDistance")}</span><strong>${n(game.distance)}<small>m</small></strong></div><div><span class="stat-label">${icon("coin")}${t("collected")}</span><strong>${n(game.coins)}</strong></div></div><p class="collision-tip">${icon("help")}<span>${t(hint)}</span></p><div class="result-actions"><button class="primary-button" data-action="restart">${icon("restart")}${t("again")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   }
 }
 
@@ -208,6 +213,11 @@ function openDialog(type: NonNullable<typeof activeDialog>) {
   activeDialog = type;
   renderDialog();
   if (!dialog.open) dialog.showModal();
+  const title = dialog.querySelector<HTMLElement>("#dialog-title");
+  if (title) {
+    title.tabIndex = -1;
+    title.focus({ preventScroll: true });
+  }
 }
 function closeDialog() {
   const type = activeDialog;

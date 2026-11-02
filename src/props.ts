@@ -10,12 +10,22 @@ import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
-type Surface = "bark" | "cut" | "stone" | "plank" | "rope";
+type Surface =
+  | "bark"
+  | "cut"
+  | "stone"
+  | "plank"
+  | "rope"
+  | "foliage"
+  | "fabric"
+  | "leather";
 
 export class ForestProps {
   private scene: Scene;
   private materials = new Map<Surface, StandardMaterial>();
+  private sceneryMeshes = new Map<string, Mesh>();
   constructor(scene: Scene) {
     this.scene = scene;
   }
@@ -45,9 +55,55 @@ export class ForestProps {
         cut: "#c9aa79",
         stone: "#92998e",
         plank: "#aa8259",
+        foliage: "#788660",
+        fabric: "#efede3",
+        leather: "#e1d9c8",
       }[surface];
       ctx.fillRect(0, 0, 512, 512);
-      if (surface === "cut") {
+      if (surface === "fabric") {
+        ctx.lineWidth = 0.7;
+        for (let n = 0; n < 512; n += 4) {
+          ctx.globalAlpha = n % 8 ? 0.07 : 0.13;
+          ctx.strokeStyle = "#817d70";
+          ctx.beginPath();
+          ctx.moveTo(n, 0);
+          ctx.lineTo(n, 512);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(0, n);
+          ctx.lineTo(512, n);
+          ctx.stroke();
+        }
+      } else if (surface === "foliage") {
+        for (let i = 0; i < 1700; i++) {
+          const x = random() * 512,
+            y = random() * 512;
+          ctx.globalAlpha = 0.12 + random() * 0.28;
+          ctx.fillStyle = ["#bdc49a", "#3f593d", "#9daa79", "#667847"][i % 4];
+          ctx.beginPath();
+          ctx.ellipse(
+            x,
+            y,
+            2 + random() * 7,
+            1 + random() * 3,
+            random() * 6.28,
+            0,
+            Math.PI * 2,
+          );
+          ctx.fill();
+        }
+      } else if (surface === "leather") {
+        for (let i = 0; i < 9000; i++) {
+          ctx.globalAlpha = 0.06 + random() * 0.1;
+          ctx.fillStyle = i % 2 ? "#736958" : "#ffffff";
+          ctx.fillRect(
+            random() * 512,
+            random() * 512,
+            1 + random() * 2,
+            1 + random() * 2,
+          );
+        }
+      } else if (surface === "cut") {
         ctx.strokeStyle = "#896943";
         for (let ring = 18; ring < 251; ring += 13 + random() * 8) {
           ctx.lineWidth = 1 + random() * 1.8;
@@ -135,6 +191,219 @@ export class ForestProps {
     }
     this.materials.set(surface, material);
     return material;
+  }
+
+  texture(surface: "fabric" | "leather") {
+    return this.material(surface).diffuseTexture;
+  }
+  foliageTexture() {
+    return this.material("foliage").diffuseTexture as Texture;
+  }
+
+  private crown(
+    name: string,
+    size: [number, number, number],
+    seed: number,
+    parent: TransformNode,
+  ) {
+    const mesh = CreateSphere(
+      name,
+      { diameter: 1, segments: 14, updatable: true },
+      this.scene,
+    );
+    this.reshape(mesh, (x, y, z) => {
+      const angle = Math.atan2(z, x);
+      const lobes =
+        1 +
+        Math.sin(angle * 7 + seed) * 0.11 +
+        Math.cos(y * 23 + x * 9 + seed) * 0.055 +
+        Math.sin(z * 31 + x * 17) * 0.025;
+      return [
+        x * size[0] * lobes,
+        y * size[1] * (1 + Math.sin(x * 13 + seed) * 0.09),
+        z * size[2] * lobes,
+      ];
+    });
+    const vertices = mesh.getVerticesData(VertexBuffer.PositionKind)!,
+      colors: number[] = [];
+    for (let i = 0; i < vertices.length; i += 3) {
+      const y = vertices[i + 1] / size[1] + 0.5;
+      const shade =
+        0.68 +
+        y * 0.3 +
+        Math.sin(vertices[i] * 19 + vertices[i + 2] * 13 + seed) * 0.045;
+      colors.push(shade * 0.86, shade, shade * 0.78, 1);
+    }
+    mesh.setVerticesData(VertexBuffer.ColorKind, colors);
+    mesh.useVertexColors = true;
+    mesh.material = this.material("foliage");
+    mesh.parent = parent;
+    return mesh;
+  }
+
+  scenery(kind: "tree" | "bush" | "grass" | "stones", variant = 0) {
+    const key = `${kind}-${variant % 3}`;
+    const cached = this.sceneryMeshes.get(key);
+    if (cached) return cached;
+    const root = new TransformNode(key, this.scene);
+    if (kind === "tree") {
+      const trunk = this.timber("textured-trunk", 4.1, 0.42, variant + 3);
+      trunk.position.y = 1.9;
+      trunk.parent = root;
+      for (const side of [-1, 1]) {
+        const branch = this.timber("forked-branch", 1.7, 0.15, variant + side);
+        branch.position.set(side * 0.45, 2.9, side * 0.18);
+        branch.rotation.z = -side * 0.55;
+        branch.parent = root;
+      }
+      if (variant % 3 === 0) {
+        for (let tier = 0; tier < 4; tier++) {
+          const width = 3.2 - tier * 0.65;
+          const needles = CreateCylinder(
+            "fir-needles",
+            {
+              height: 2.0 - tier * 0.15,
+              diameterBottom: width,
+              diameterTop: 0.1,
+              tessellation: 24,
+              subdivisions: 8,
+              updatable: true,
+            },
+            this.scene,
+          );
+          this.reshape(needles, (x, y, z) => {
+            const a = Math.atan2(z, x),
+              rough =
+                1 +
+                Math.sin(a * 9 + y * 19 + tier) * 0.085 +
+                Math.cos(a * 15 - y * 8) * 0.035;
+            return [x * rough, y + Math.sin(a * 7) * 0.07, z * rough];
+          });
+          needles.position.y = 2.9 + tier * 0.82;
+          needles.rotation.y = tier * 0.41;
+          needles.material = this.material("foliage");
+          needles.parent = root;
+        }
+      } else {
+        this.crown("branch-crown", [3.2, 2.0, 3.1], variant, root).position.set(
+          0,
+          4.2,
+          0,
+        );
+        this.crown(
+          "side-crown",
+          [2.1, 1.45, 2.15],
+          variant + 4,
+          root,
+        ).position.set(-1.05, 3.65, 0.2);
+        this.crown(
+          "upper-crown",
+          [2.4, 1.6, 2.3],
+          variant + 9,
+          root,
+        ).position.set(0.55, 5.0, -0.1);
+        this.crown(
+          "small-crown",
+          [1.7, 1.35, 1.9],
+          variant + 12,
+          root,
+        ).position.set(1.05, 3.95, 0.35);
+      }
+    } else if (kind === "bush") {
+      for (let i = 0; i < 4; i++) {
+        const angle = i * 2.1 + variant;
+        const stem = this.timber("shrub-stem", 0.5, 0.045, i);
+        stem.position.set(Math.cos(angle) * 0.23, 0.2, Math.sin(angle) * 0.17);
+        stem.rotation.z = Math.cos(angle) * 0.4;
+        stem.parent = root;
+        this.crown(
+          "shrub-foliage",
+          [0.75 + i * 0.08, 0.65, 0.8],
+          i + variant,
+          root,
+        ).position.set(
+          Math.cos(angle) * 0.32,
+          0.48 + (i % 2) * 0.16,
+          Math.sin(angle) * 0.22,
+        );
+      }
+    } else if (kind === "stones") {
+      for (let i = 0; i < 3; i++) {
+        const stone = this.stone(
+          "roadside-stone",
+          [0.5 - i * 0.09, 0.34 - i * 0.06, 0.54 - i * 0.08],
+          variant + i * 4,
+          root,
+        );
+        stone.position.set((i - 1) * 0.26, 0.1 - i * 0.02, i * 0.14);
+        stone.rotation.y = i * 0.9;
+      }
+    } else {
+      const positions: number[] = [],
+        indices: number[] = [],
+        uvs: number[] = [];
+      for (let blade = 0; blade < 6; blade++) {
+        const angle = blade * 2.4 + variant,
+          height = 0.36 + (blade % 3) * 0.13,
+          start = positions.length / 3;
+        for (let row = 0; row < 3; row++) {
+          const t = row / 2,
+            bend = t * t * 0.3,
+            half = row === 2 ? 0.001 : 0.032;
+          for (const edge of [-1, 1]) {
+            positions.push(
+              Math.cos(angle) * bend + Math.sin(angle) * half * edge,
+              height * t,
+              Math.sin(angle) * bend - Math.cos(angle) * half * edge,
+            );
+            uvs.push(edge > 0 ? 1 : 0, t);
+          }
+        }
+        indices.push(
+          start,
+          start + 1,
+          start + 2,
+          start + 1,
+          start + 3,
+          start + 2,
+          start + 2,
+          start + 3,
+          start + 4,
+          start + 3,
+          start + 5,
+          start + 4,
+        );
+      }
+      const normals: number[] = [];
+      VertexData.ComputeNormals(positions, indices, normals);
+      const mesh = new Mesh("grass-tuft", this.scene),
+        data = new VertexData();
+      data.positions = positions;
+      data.indices = indices;
+      data.normals = normals;
+      data.uvs = uvs;
+      data.applyToMesh(mesh);
+      const grass = this.material("foliage").clone("grass-material")!;
+      grass.backFaceCulling = false;
+      mesh.material = grass;
+      mesh.parent = root;
+    }
+    const meshes = root.getChildMeshes() as Mesh[];
+    const merged = Mesh.MergeMeshes(
+      meshes,
+      true,
+      true,
+      undefined,
+      false,
+      true,
+    )!;
+    merged.parent = null;
+    root.dispose();
+    merged.name = key;
+    merged.receiveShadows = true;
+    merged.setEnabled(false);
+    this.sceneryMeshes.set(key, merged);
+    return merged;
   }
 
   private reshape(

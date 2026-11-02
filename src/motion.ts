@@ -9,6 +9,7 @@ export class RunnerMotion {
     turn: 0,
     death: 0,
     run: 0,
+    air: 0,
   };
   private airborne = false;
   private distance = 0;
@@ -32,20 +33,24 @@ export class RunnerMotion {
     this.pose.run +=
       ((game.mode === "running" && game.y === 0 ? 1 : 0) - this.pose.run) *
       (1 - Math.exp(-dt * 12));
+    this.pose.air +=
+      ((game.y > 0 && game.mode === "running" ? 1 : 0) - this.pose.air) *
+      (1 - Math.exp(-dt * 22));
     this.pose.turn +=
-      ((game.lane * 2.5 - game.x) / 2.5 - this.pose.turn) *
+      (Math.max(-1, Math.min(1, game.lateralSpeed / 17)) - this.pose.turn) *
       (1 - Math.exp(-dt * 14));
     this.pose.death +=
       ((game.mode === "over" ? 1 : 0) - this.pose.death) *
       (1 - Math.exp(-dt * 6));
     this.pose.hipY =
       0.95 -
-      this.pose.slide * 0.57 -
-      this.pose.landing * 0.14 +
-      Math.cos(this.pose.phase * 2) *
-        0.025 *
+      this.pose.slide * 0.51 -
+      this.pose.landing * 0.14 * (1 - this.pose.slide) +
+      Math.abs(Math.sin(this.pose.phase)) *
+        0.065 *
         this.pose.run *
-        (1 - this.pose.slide);
+        (1 - this.pose.slide) *
+        (1 - this.pose.air);
     return this.pose;
   }
 }

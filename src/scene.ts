@@ -11,6 +11,8 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
 import "@babylonjs/core/Meshes/instancedMesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
@@ -85,6 +87,7 @@ export class ForestScene {
   private lastCoins = 0;
   private lastPhase = 0;
   private lastLanding = 0;
+  private lastTurn = 0;
   private airborne = false;
   private shake = 0;
   private mode = "";
@@ -99,10 +102,10 @@ export class ForestScene {
     this.scene.fogColor = Color3.FromHexString("#d9e9db");
     this.camera = new FreeCamera(
       "camera",
-      new Vector3(innerWidth < 700 ? 8.8 : 10.5, 4.5, -9.8),
+      new Vector3(0.5, 3.1, -7.4),
       this.scene,
     );
-    this.lookTarget.set(innerWidth < 700 ? 2.9 : 1.5, 1, 1.5);
+    this.lookTarget.set(innerWidth < 700 ? 3.95 : 3, 1.1, 1.5);
     this.camera.setTarget(this.lookTarget);
     this.camera.minZ = 0.1;
     this.camera.maxZ = 230;
@@ -172,6 +175,28 @@ export class ForestScene {
       material.diffuseColor = Color3.FromHexString(color).toLinearSpace();
       material.specularColor.setAll(0.035);
       material.specularPower = 48;
+      if (
+        [
+          "#dd7445",
+          "#b95e38",
+          "#c7673e",
+          "#345d50",
+          "#3e6c5b",
+          "#386e60",
+          "#5f9075",
+          "#52836d",
+          "#ddbf84",
+          "#e7d9ad",
+          "#d5be8c",
+          "#edc260",
+          "#d0b78d",
+        ].includes(color)
+      ) {
+        material.diffuseTexture = this.props.texture("fabric");
+        material.specularColor.setAll(0.01);
+      }
+      if (["#c68d56", "#8c6748", "#82664d"].includes(color))
+        material.diffuseTexture = this.props.texture("leather");
       if (glow)
         material.emissiveColor = Color3.FromHexString(color).scale(0.45);
       this.materials.set(key, material);
@@ -218,10 +243,26 @@ export class ForestScene {
                 )
               : CreateSphere(
                   key,
-                  { diameter: 1, segments: detail },
+                  {
+                    diameter: 1,
+                    segments: detail,
+                    updatable: name === "padded-jacket",
+                  },
                   this.scene,
                 );
       source.material = this.mat(color);
+      if (name === "padded-jacket") {
+        const vertices = source.getVerticesData(VertexBuffer.PositionKind)!;
+        for (let i = 0; i < vertices.length; i += 3) {
+          const y = vertices[i + 1];
+          vertices[i] *= 1 - Math.max(0, -y) * 0.24;
+          vertices[i + 2] *= 1 + Math.sin(y * 17 + vertices[i] * 13) * 0.025;
+        }
+        const normals: number[] = [];
+        VertexData.ComputeNormals(vertices, source.getIndices()!, normals);
+        source.updateVerticesData(VertexBuffer.PositionKind, vertices, true);
+        source.updateVerticesData(VertexBuffer.NormalKind, normals);
+      }
       source.receiveShadows = true;
       source.setEnabled(false);
       this.templates.set(key, source);
@@ -244,6 +285,22 @@ export class ForestScene {
     return node;
   }
 
+  private scenery(
+    kind: "tree" | "bush" | "grass" | "stones",
+    name: string,
+    pos: Triple,
+    parent: TransformNode,
+    variant = 0,
+    scale = 1,
+  ) {
+    const source = this.props.scenery(kind, variant);
+    const mesh = source.createInstance(name);
+    mesh.position.set(...pos);
+    mesh.scaling.setAll(scale);
+    mesh.parent = parent;
+    return mesh;
+  }
+
   private tree(
     x: number,
     z: number,
@@ -251,93 +308,57 @@ export class ForestScene {
     variant: number,
     parent: TransformNode,
   ) {
-    const tree = this.joint("tree", [x, 0, z], parent);
-    tree.scaling.setAll(scale);
-    if (Math.abs(x) < 12) this.swayingTrees.push(tree);
-    const trunk = this.part(
-      "cone",
-      "trunk",
-      [0.43, 3.3, 0.43],
-      "#7b5b40",
-      [0, 1.4, 0],
-      tree,
+    const tree = this.scenery(
+      "tree",
+      "woodland-tree",
+      [x, 0, z],
+      parent,
+      variant,
+      scale,
     );
-    if (variant % 3 === 0) {
-      for (let i = 0; i < 4; i++)
-        this.part(
-          "cone",
-          "fir-crown",
-          [3.6 - i * 0.65, 2.5 - i * 0.25, 3.5 - i * 0.6],
-          ["#36735c", "#47866a", "#529776", "#6ba784"][i],
-          [0, 2.6 + i * 0.95, 0],
-          tree,
-        ).rotation.y = i * 0.5;
-    } else {
-      this.part(
-        "sphere",
-        "canopy",
-        [3.7, 3.4, 3.6],
-        variant % 2 ? "#5d9668" : "#73a46b",
-        [0, 4.4, 0],
-        tree,
-        10,
-      );
-      this.part(
-        "sphere",
-        "canopy-side",
-        [2.8, 2.5, 2.7],
-        "#80b273",
-        [-1.1, 3.9, 0.4],
-        tree,
-        10,
-      );
-      this.part(
-        "sphere",
-        "canopy-top",
-        [2.7, 2.4, 2.6],
-        "#91bd7c",
-        [0.6, 5.5, -0.1],
-        tree,
-        10,
-      );
-      const branch = this.part(
-        "capsule",
-        "branch",
-        [0.16, 1.5, 0.16],
-        "#7b5b40",
-        [-0.45, 2.6, 0.15],
-        tree,
-      );
-      branch.rotation.z = -0.65;
-    }
-    if (Math.abs(x) < 11) this.shadows.addShadowCaster(trunk);
+    tree.rotation.y = variant * 0.73;
+    if (Math.abs(x) < 12) this.swayingTrees.push(tree);
+    if (Math.abs(x) < 9.5) this.shadows.addShadowCaster(tree);
   }
 
   private createWorld() {
-    this.part("box", "meadow", [300, 0.6, 350], "#91b678", [0, -0.5, 115]);
+    const meadow = CreateGround(
+      "forest-floor",
+      { width: 300, height: 350 },
+      this.scene,
+    );
+    meadow.position.set(0, -0.13, 115);
+    const floor = this.mat("#ffffff");
+    const floorTexture = this.props.foliageTexture().clone()!;
+    floorTexture.uScale = 42;
+    floorTexture.vScale = 48;
+    floor.diffuseTexture = floorTexture;
+    meadow.material = floor;
+    meadow.receiveShadows = true;
     for (let i = 0; i < 12; i++)
       this.part(
         "sphere",
         "distant-hill",
         [30 + i * 2, 17 + (i % 3) * 6, 40],
-        i % 2 ? "#8cb49c" : "#a1bf9b",
+        i % 2 ? "#91aa96" : "#a6b49b",
         [(i % 2 ? 1 : -1) * (35 + i * 3), 0, 100 + i * 8],
         undefined,
         12,
       );
     const trail = new StandardMaterial("painted-trail", this.scene);
     const trailTexture = new Texture(
-      `${import.meta.env.BASE_URL}art/woodland-trail.jpg`,
+      import.meta.env.BASE_URL + "art/woodland-trail.jpg",
       this.scene,
     );
     trailTexture.uScale = 1;
     trailTexture.vScale = 5;
     trail.diffuseTexture = trailTexture;
-    trail.diffuseColor = Color3.FromHexString("#f0e3ce").toLinearSpace();
+    trail.diffuseColor = Color3.FromHexString("#e3dccc").toLinearSpace();
     trail.specularColor = Color3.Black();
     for (let chunk = 0; chunk < 5; chunk++) {
-      const root = new TransformNode(`woodland-${chunk}`, this.scene);
+      const root = new TransformNode("woodland-" + chunk, this.scene);
       this.chunks.push(root);
+      const chunkStart = ((chunk * 40 + 40) % 200) - 60;
       const ground = CreateGround(
         "painted-earth",
         { width: 8.6, height: 40 },
@@ -348,96 +369,78 @@ export class ForestScene {
       ground.position.set(0, 0.06, 20);
       ground.receiveShadows = true;
       for (const side of [-1, 1]) {
-        this.part(
-          "box",
-          "earth-edge",
-          [0.1, 0.11, 40],
-          "#aa9265",
-          [side * 4.35, 0, 20],
-          root,
-        );
         for (let i = 0; i < 7; i++) {
+          const z = i * 5.7 + 1;
           this.part(
             "box",
             "lane-dash",
-            [0.045, 0.015, 0.85],
-            "#ebd5a6",
-            [side * 1.25, 0.072, i * 5.7 + 2],
+            [0.045, 0.012, 0.78],
+            "#dfcfa5",
+            [side * 1.25, 0.07, z + 1],
             root,
           );
-          const z = i * 5.7 + 1;
+          // Leave an actual clearing around the opening shot and seated explorer.
+          const clearing =
+            side === 1 && chunkStart + z > -8 && chunkStart + z < 10;
+          if (!clearing) {
+            this.tree(
+              side * (7.8 + ((i * 3 + chunk) % 4)),
+              z,
+              0.85 + (i % 3) * 0.13,
+              i + chunk,
+              root,
+            );
+            const shrub = this.scenery(
+              "bush",
+              "wild-shrub",
+              [side * (5.8 + (i % 2) * 0.45), 0, z + 0.3],
+              root,
+              i + chunk,
+              0.8 + (i % 3) * 0.12,
+            );
+            shrub.rotation.y = i * 1.3;
+          }
           this.tree(
-            side * (7 + ((i * 3 + chunk) % 5)),
-            z,
-            0.8 + (i % 3) * 0.16,
-            i + chunk,
-            root,
-          );
-          this.tree(
-            side * (19 + (i % 3) * 5),
+            side * (20 + (i % 3) * 5),
             z + 3,
-            1.25 + (i % 2) * 0.3,
+            1.3 + (i % 2) * 0.25,
             i + 1,
             root,
           );
-          this.part(
-            "sphere",
-            "bank-grass",
-            [1.9, 0.32, 3.8],
-            "#7caa60",
-            [side * 5.1, -0.02, z],
-            root,
-            8,
-          );
-          for (let j = 0; j < 3; j++) {
-            this.part(
-              "sphere",
-              "bush-leaf",
-              [0.85, 0.85 + j * 0.1, 0.95],
-              ["#548d58", "#6ba361", "#8ab774"][j],
-              [side * (5.9 + j * 0.38), 0.3 + j * 0.1, z + j * 0.25],
+          for (let g = 0; g < 2; g++)
+            this.scenery(
+              "grass",
+              "verge-grass",
+              [side * (4.65 + g * 0.42), 0.02, z + g * 1.4],
               root,
-              8,
-            );
-            const blade = this.part(
-              "sphere",
-              "grass-blade",
-              [0.12, 0.6, 0.08],
-              "#527e45",
-              [side * (4.65 + j * 0.12), 0.22, z + 1],
-              root,
-              6,
-            );
-            blade.rotation.z = (j - 1) * 0.42;
-          }
+              i + g,
+              0.85 + g * 0.2,
+            ).rotation.y = i;
           if (i % 2 === 0) {
-            const stone = this.part(
-              "sphere",
-              "trail-stone",
-              [0.7, 0.38, 0.6],
-              "#919e85",
-              [side * 5.3, 0.09, z + 2],
+            this.scenery(
+              "stones",
+              "weathered-stones",
+              [side * 5.3, 0, z + 2],
               root,
-              6,
-            );
-            stone.rotation.y = z;
+              i,
+            ).rotation.y = z;
             for (let m = 0; m < 2; m++) {
               this.part(
                 "capsule",
                 "mushroom-stem",
-                [0.06, 0.2, 0.06],
-                "#efe1bc",
-                [side * (5 + m * 0.2), 0.1, z + 2.7 + m * 0.15],
+                [0.045, 0.2, 0.045],
+                "#d8cab0",
+                [side * (5.05 + m * 0.2), 0.1, z + 2.7 + m * 0.16],
                 root,
               );
               this.part(
                 "sphere",
                 "mushroom-cap",
-                [0.26, 0.13, 0.25],
-                m ? "#e8ad61" : "#cb7852",
-                [side * (5 + m * 0.2), 0.22, z + 2.7 + m * 0.15],
+                [0.26, 0.12, 0.25],
+                m ? "#b99a64" : "#9b6f50",
+                [side * (5.05 + m * 0.2), 0.22, z + 2.7 + m * 0.16],
                 root,
-                8,
+                12,
               );
             }
           }
@@ -445,8 +448,8 @@ export class ForestScene {
             this.part(
               "capsule",
               "flower-stem",
-              [0.035, 0.35, 0.035],
-              "#4d8151",
+              [0.025, 0.36, 0.025],
+              "#637851",
               [side * 4.9, 0.15, z + 0.8],
               root,
             );
@@ -454,36 +457,36 @@ export class ForestScene {
               this.part(
                 "sphere",
                 "petal",
-                [0.13, 0.06, 0.13],
-                "#fff1d1",
+                [0.12, 0.04, 0.12],
+                "#e7dfc7",
                 [
-                  side * 4.9 + Math.cos(p * 1.256) * 0.1,
+                  side * 4.9 + Math.cos(p * 1.256) * 0.09,
                   0.33,
-                  z + 0.8 + Math.sin(p * 1.256) * 0.1,
+                  z + 0.8 + Math.sin(p * 1.256) * 0.09,
                 ],
                 root,
-                6,
+                8,
               );
             this.part(
               "sphere",
               "flower-center",
-              [0.1, 0.08, 0.1],
-              "#edba55",
+              [0.085, 0.06, 0.085],
+              "#bba468",
               [side * 4.9, 0.35, z + 0.8],
               root,
-              6,
+              8,
             );
           }
         }
       }
     }
-    for (let i = 0; i < 16; i++)
+    for (let i = 0; i < 12; i++)
       this.leaves.push(
         this.part(
           "sphere",
           "drifting-leaf",
-          [0.12, 0.025, 0.27],
-          i % 2 ? "#ddb05e" : "#8db768",
+          [0.1, 0.018, 0.22],
+          i % 2 ? "#b8a478" : "#88966a",
           [0, 0, 0],
           undefined,
           6,
@@ -493,26 +496,26 @@ export class ForestScene {
     this.part(
       "capsule",
       "sign-post",
-      [0.17, 2.4, 0.17],
+      [0.15, 2.4, 0.15],
       "#816145",
       [-5.3, 1.1, 14],
       post,
     );
     const board = this.part(
-      "capsule",
+      "box",
       "trail-sign",
-      [1.2, 0.48, 0.16],
-      "#d9a96c",
+      [1.1, 0.45, 0.12],
+      "#ba986b",
       [-5.3, 2.2, 14],
       post,
     );
     board.rotation.z = -0.08;
     this.part(
       "box",
-      "arrow-shaft",
-      [0.5, 0.055, 0.18],
-      "#6c6948",
-      [-5.3, 2.2, 13.99],
+      "sign-arrow",
+      [0.45, 0.045, 0.13],
+      "#5a5b41",
+      [-5.3, 2.2, 13.93],
       post,
     );
   }
@@ -583,32 +586,41 @@ export class ForestScene {
       this.head,
       16,
     );
-    this.part(
-      "sphere",
-      "cap",
-      [0.77, 0.4, 0.72],
-      "#e7d9ad",
-      [0, 0.56, -0.01],
-      this.head,
-      24,
+    const hat = CreateCylinder(
+      "canvas-hat",
+      {
+        height: 0.29,
+        diameterTop: 0.61,
+        diameterBottom: 0.73,
+        tessellation: 32,
+      },
+      this.scene,
     );
-    this.part(
-      "sphere",
-      "cap-brim",
-      [0.77, 0.08, 0.55],
-      "#d5be8c",
-      [0, 0.43, 0.25],
-      this.head,
-      16,
+    hat.position.set(0, 0.58, -0.015);
+    hat.material = this.mat("#d0b78d");
+    hat.parent = this.head;
+    const brim = CreateCylinder(
+      "hat-brim",
+      { height: 0.026, diameter: 0.91, tessellation: 40 },
+      this.scene,
     );
-    this.part(
-      "capsule",
-      "cap-seam",
-      [0.07, 0.025, 0.53],
-      "#b8a47b",
-      [0, 0.75, 0.01],
-      this.head,
+    brim.scaling.z = 1.1;
+    brim.position.set(0, 0.43, 0.015);
+    brim.material = this.mat("#d0b78d");
+    brim.parent = this.head;
+    const hatBand = CreateCylinder(
+      "hat-band",
+      {
+        height: 0.065,
+        diameterTop: 0.713,
+        diameterBottom: 0.729,
+        tessellation: 32,
+      },
+      this.scene,
     );
+    hatBand.position.set(0, 0.475, -0.015);
+    hatBand.material = this.mat("#82664d");
+    hatBand.parent = this.head;
     for (const side of [-1, 1]) {
       this.part(
         "sphere",
@@ -618,6 +630,22 @@ export class ForestScene {
         [side * 0.31, 0.22, 0.03],
         this.head,
         12,
+      );
+      this.part(
+        "capsule",
+        "eyebrow",
+        [0.11, 0.022, 0.025],
+        "#5b4935",
+        [side * 0.13, 0.37, 0.29],
+        this.head,
+      ).rotation.z = side * 0.06;
+      this.part(
+        "capsule",
+        "sideburn",
+        [0.1, 0.17, 0.08],
+        "#5b4935",
+        [side * 0.28, 0.4, -0.01],
+        this.head,
       );
       this.part(
         "sphere",
@@ -705,6 +733,49 @@ export class ForestScene {
       [0, -0.13, -0.27],
       this.backpack,
     ).rotation.z = -0.4;
+    const roll = CreateCylinder(
+      "rolled-groundsheet",
+      { height: 0.58, diameter: 0.15, tessellation: 20 },
+      this.scene,
+    );
+    roll.rotation.z = Math.PI / 2;
+    roll.position.set(0, -0.39, -0.03);
+    roll.material = this.mat("#ddbf84");
+    roll.parent = this.backpack;
+    for (const side of [-1, 1]) {
+      this.part(
+        "capsule",
+        "bedroll-strap",
+        [0.045, 0.19, 0.16],
+        "#82664d",
+        [side * 0.18, -0.37, -0.03],
+        this.backpack,
+      );
+      this.part(
+        "capsule",
+        "pocket-seam",
+        [0.018, 0.2, 0.018],
+        "#708b6e",
+        [side * 0.18, -0.15, -0.263],
+        this.backpack,
+      );
+    }
+    const bottle = CreateCylinder(
+      "water-bottle",
+      { height: 0.33, diameter: 0.14, tessellation: 20 },
+      this.scene,
+    );
+    bottle.position.set(0.355, -0.07, -0.02);
+    bottle.material = this.mat("#a4b0a1");
+    bottle.parent = this.backpack;
+    const bottleCap = CreateCylinder(
+      "bottle-cap",
+      { height: 0.055, diameter: 0.1, tessellation: 16 },
+      this.scene,
+    );
+    bottleCap.position.set(0.355, 0.12, -0.02);
+    bottleCap.material = this.mat("#455d50");
+    bottleCap.parent = this.backpack;
     this.part(
       "capsule",
       "scarf-collar",
@@ -775,6 +846,33 @@ export class ForestScene {
         [0, 0.13, 0.12],
         foot,
       );
+      this.part(
+        "capsule",
+        "rubber-toe",
+        [0.31, 0.09, 0.17],
+        "#82664d",
+        [0, 0.012, 0.265],
+        foot,
+      );
+      this.part(
+        "capsule",
+        "boot-heel",
+        [0.28, 0.1, 0.16],
+        "#82664d",
+        [0, -0.035, -0.075],
+        foot,
+      );
+      for (let lace = 0; lace < 3; lace++) {
+        const stitch = this.part(
+          "capsule",
+          "lace-crossing",
+          [0.18, 0.014, 0.025],
+          "#d8c7a3",
+          [0, 0.135 - lace * 0.005, 0.06 + lace * 0.048],
+          foot,
+        );
+        stitch.rotation.y = (lace % 2 ? 1 : -1) * 0.2;
+      }
       this.legs.push({ upper, lower, foot, side });
       const shoulder = this.joint(
         "shoulder",
@@ -824,6 +922,15 @@ export class ForestScene {
         elbow,
         12,
       );
+      for (let finger = 0; finger < 3; finger++)
+        this.part(
+          "capsule",
+          "knuckle",
+          [0.045, 0.1, 0.035],
+          "#dba57d",
+          [(finger - 1) * 0.055, -0.365, 0.12],
+          elbow,
+        );
       this.arms.push({ upper: shoulder, lower: elbow, side });
     }
   }
@@ -1004,9 +1111,12 @@ export class ForestScene {
     const walkPhase = (game.introTime - INTRO_TIMING.stand) * 9;
     const prepare = ready ? 0 : introducing ? smooth((walk - 0.78) / 0.22) : 1;
     const opening = ready || introducing;
+    const airWeight = airborne ? pose.air * blend : 0;
+    const runWeight = pose.run * (1 - airWeight) * blend;
+    const tuck = airborne ? Math.max(0, 1 - Math.abs(game.velocity) / 10.6) : 0;
     this.runner.position.set(
       opening ? REST_X * (1 - walkProgress) : game.x,
-      opening ? 0 : game.y,
+      opening ? 0 : game.y + Math.abs(pose.turn) * 0.045 * runWeight,
       opening ? REST_Z * (1 - walkProgress) : 0,
     );
     const openingYaw = (-2.3 + (2.3 - Math.PI / 2) * stand) * (1 - prepare);
@@ -1014,13 +1124,13 @@ export class ForestScene {
     else
       this.runner.rotation.y = damp(
         this.runner.rotation.y,
-        pose.turn * 0.13,
-        7,
+        pose.turn * 0.22 + pose.slide * 0.12,
+        10,
         dt,
       );
     this.runner.rotation.z = opening
       ? Math.sin(walkPhase) * 0.025 * walking
-      : -pose.turn * 0.15 + pose.death * 0.65;
+      : -pose.turn * 0.26 * blend - pose.slide * 0.09 + pose.death * 0.65;
     this.runner.rotation.x = pose.death * 0.7;
     this.hips.position.y =
       (opening
@@ -1028,59 +1138,92 @@ export class ForestScene {
         : pose.hipY) -
       pose.death * 0.48 +
       (ready ? Math.sin(this.time * 1.8) * 0.009 : 0);
-    this.torso.rotation.x =
-      0.08 +
-      pose.slide * 1.22 -
-      (opening ? 0 : Math.min(0.1, game.velocity * 0.009)) * blend +
-      sitting * 0.12 +
-      (introducing ? Math.sin(Math.PI * stand) * 0.22 : 0);
-    this.torso.rotation.z = Math.sin(pose.phase) * 0.035 * pose.run * blend;
+    this.hips.rotation.y = opening
+      ? 0
+      : Math.sin(pose.phase) * 0.035 * runWeight;
+    const flightPitch = -Math.max(-1, Math.min(1, game.velocity / 10.6)) * 0.16;
+    this.torso.rotation.x = opening
+      ? 0.08 +
+        sitting * 0.12 +
+        (introducing ? Math.sin(Math.PI * stand) * 0.22 : 0)
+      : (0.2 + (game.speed - 12) * 0.004) * runWeight -
+        pose.slide * 1.12 +
+        flightPitch * airWeight;
+    this.torso.rotation.z =
+      Math.sin(pose.phase) * 0.055 * runWeight - pose.slide * 0.07;
     this.torso.scaling.set(
-      1 + pose.landing * 0.035,
-      1 - pose.landing * 0.06,
+      1 + pose.landing * 0.025,
+      1 - pose.landing * 0.04,
       1,
     );
     this.head.rotation.y = opening
       ? Math.sin(this.time * 0.7) * 0.12
-      : -pose.turn * 0.2;
-    this.head.rotation.x = -pose.slide * 0.25;
-    this.backpack.rotation.x = Math.sin(pose.phase * 2) * 0.035 * pose.run;
+      : -pose.turn * 0.17;
+    this.head.rotation.x = pose.slide * 0.33 - runWeight * 0.08;
+    this.backpack.position.z = -0.33 + pose.slide * 0.13;
+    this.backpack.rotation.x =
+      Math.sin(pose.phase * 2) * 0.045 * runWeight - pose.slide * 0.1;
+    this.backpack.rotation.z = -Math.sin(pose.phase) * 0.025 * runWeight;
     this.scarf.rotation.x =
-      -0.2 + Math.sin(this.time * 13) * (running ? 0.15 : 0.04);
+      -0.2 + Math.sin(this.time * 13) * (running ? 0.18 : 0.04);
     this.scarf.rotation.z = Math.sin(this.time * 8) * 0.12;
     for (const leg of this.legs) {
       const stride = Math.sin(pose.phase + (leg.side > 0 ? Math.PI : 0));
-      leg.upper.rotation.x = opening
-        ? -sitting * 1.35 +
-          Math.sin(walkPhase + (leg.side > 0 ? Math.PI : 0)) * 0.44 * walking
-        : (stride * 0.68 * pose.run - (airborne ? 0.25 : 0)) * blend -
-          pose.slide * 1.15;
-      leg.lower.rotation.x = opening
-        ? sitting * 1.35 +
-          Math.max(0, -Math.sin(walkPhase + (leg.side > 0 ? Math.PI : 0))) *
-            0.65 *
-            walking +
-          (1 - sitting) * 0.08
-        : (Math.max(0, -stride) * 0.9 * pose.run + (airborne ? 0.45 : 0.1)) *
-            blend +
-          pose.slide * (leg.side > 0 ? 1.1 : 0.55);
-      leg.foot!.rotation.x = opening
+      if (opening) {
+        const walkStride = Math.sin(walkPhase + (leg.side > 0 ? Math.PI : 0));
+        leg.upper.rotation.x = -sitting * 1.35 + walkStride * 0.44 * walking;
+        leg.lower.rotation.x =
+          sitting * 1.35 +
+          Math.max(0, -walkStride) * 0.65 * walking +
+          (1 - sitting) * 0.08;
+        leg.foot!.rotation.x = 0;
+      } else {
+        const slideUpper = leg.side > 0 ? -1.25 : -1.78;
+        const slideKnee = leg.side > 0 ? 0.05 : 1.78;
+        const jumpUpper =
+          leg.side > 0 ? -0.35 - tuck * 0.55 : -0.15 - tuck * 0.3;
+        const jumpKnee = leg.side > 0 ? 0.55 + tuck : 0.8 + tuck * 0.55;
+        leg.upper.rotation.x =
+          stride * 0.92 * runWeight +
+          jumpUpper * airWeight +
+          slideUpper * pose.slide -
+          pose.landing * 0.5 * blend;
+        leg.lower.rotation.x =
+          (0.15 + Math.max(0, -stride) * 1.2 + Math.max(0, stride) * 0.35) *
+            runWeight +
+          jumpKnee * airWeight +
+          slideKnee * pose.slide +
+          pose.landing * 1.1 * blend;
+        leg.foot!.rotation.x =
+          (-Math.max(0, stride) * 0.45 + Math.max(0, -stride) * 0.12) *
+            runWeight +
+          (leg.side > 0 ? 1.2 : 0) * pose.slide -
+          pose.landing * 0.6 * blend;
+      }
+      leg.upper.rotation.z = opening
         ? 0
-        : -Math.max(0, stride) * 0.25 * pose.run * blend;
+        : -pose.turn * 0.1 * blend + leg.side * pose.slide * 0.065;
     }
     for (const arm of this.arms) {
       const stride = Math.sin(pose.phase + (arm.side > 0 ? 0 : Math.PI));
       arm.upper.rotation.x = opening
         ? -sitting * 0.4 +
           Math.sin(walkPhase + (arm.side > 0 ? 0 : Math.PI)) * 0.3 * walking
-        : stride * 0.55 * pose.run * blend -
-          (airborne ? 0.45 : 0) +
-          pose.slide * 0.7;
+        : stride * 0.78 * runWeight -
+          (0.65 + tuck * 0.2) * airWeight +
+          pose.slide * 0.72;
       arm.upper.rotation.z =
-        arm.side * (0.08 + Math.abs(pose.turn) * 0.12 + (airborne ? 0.22 : 0));
+        arm.side *
+        (0.07 +
+          Math.abs(pose.turn) * 0.22 * blend +
+          airWeight * 0.26 +
+          pose.slide * 0.12);
       arm.lower.rotation.x = opening
         ? -0.35 - sitting * 0.02
-        : -0.55 - Math.max(0, -stride) * 0.35 * pose.run * blend;
+        : (-0.95 - Math.max(0, -stride) * 0.3) * runWeight -
+          0.9 * airWeight -
+          0.15 * pose.slide -
+          0.35 * (1 - pose.run) * (1 - pose.air) * blend;
     }
     this.contact.position.x = this.runner.position.x;
     this.contact.position.z = this.runner.position.z;
@@ -1088,6 +1231,22 @@ export class ForestScene {
     this.restStop.setEnabled(this.restStop.position.z > -24);
     this.contact.scaling.setAll(1 / (1 + (ready ? 0 : game.y) * 0.3));
     this.contact.visibility = 1 / (1 + (ready ? 0 : game.y) * 0.65);
+    if (
+      running &&
+      !airborne &&
+      Math.abs(pose.turn) > 0.65 &&
+      this.lastTurn <= 0.65
+    )
+      this.burst(
+        new Vector3(game.x, 0.12, -0.1),
+        "#d0bd99",
+        7,
+        1.7,
+        0.38,
+        0.26,
+        0,
+      );
+    this.lastTurn = Math.abs(pose.turn);
     if (running && airborne && !this.airborne)
       this.burst(
         new Vector3(game.x, 0.12, 0),
@@ -1203,30 +1362,30 @@ export class ForestScene {
           )
         : 1;
     const mobile = innerWidth < 700;
-    const homeCameraX = mobile ? 8.8 : 10.5;
+    const homeCameraX = 0.5;
     this.camera.position.x = damp(
       this.camera.position.x,
-      homeCameraX * (1 - cameraProgress) + game.x * 0.12 * cameraProgress,
+      homeCameraX * (1 - cameraProgress) + game.x * 0.05 * cameraProgress,
       5,
       dt,
     );
     this.camera.position.y = damp(
       this.camera.position.y,
-      4.5 + 0.7 * cameraProgress,
+      3.1 + 1.3 * cameraProgress,
       5,
       dt,
     );
     this.camera.position.z = damp(
       this.camera.position.z,
-      -9.8 - 3.7 * cameraProgress,
+      -7.4 - (mobile ? 5.4 : 4.0) * cameraProgress,
       4,
       dt,
     );
     const target = new Vector3(
-      (mobile ? 2.9 : 1.5) * (1 - cameraProgress) +
-        game.x * 0.06 * cameraProgress,
-      1,
-      1.5 + 9.5 * cameraProgress,
+      (mobile ? 3.95 : 3) * (1 - cameraProgress) +
+        game.x * 0.025 * cameraProgress,
+      1.1 - cameraProgress * 0.1,
+      1.5 + 9.0 * cameraProgress,
     );
     Vector3.LerpToRef(
       this.lookTarget,
@@ -1235,12 +1394,12 @@ export class ForestScene {
       this.lookTarget,
     );
     this.camera.setTarget(this.lookTarget);
-    this.camera.rotation.z = -pose.turn * 0.018;
+    this.camera.rotation.z = -pose.turn * 0.012;
     this.camera.position.x += Math.sin(this.time * 70) * this.shake;
     this.camera.position.y += Math.cos(this.time * 57) * this.shake;
     this.camera.fov = damp(
       this.camera.fov,
-      (mobile ? 1.02 : 0.72 + cameraProgress * 0.08) +
+      (mobile ? 1.02 + cameraProgress * 0.06 : 0.74 + cameraProgress * 0.04) +
         (running ? (game.speed - 12) * 0.005 : 0),
       3,
       dt,

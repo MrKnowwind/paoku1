@@ -42,6 +42,9 @@ export class RunnerGame {
   get score() {
     return Math.floor(this.distance * 2) + this.coins * 50;
   }
+  get lateralSpeed() {
+    return this.horizontalVelocity;
+  }
   get introducing() {
     return (
       this.mode === "intro" ||
@@ -91,7 +94,7 @@ export class RunnerGame {
   }
   jump() {
     if (this.mode === "running" && this.y === 0 && !this.sliding)
-      this.velocity = 9;
+      this.velocity = 10.6;
   }
   get sliding() {
     return this.slideTime > 0;
@@ -149,7 +152,7 @@ export class RunnerGame {
       );
       this.horizontalVelocity =
         (this.horizontalVelocity - 20 * impulse) * decay;
-      this.velocity -= 23 * step;
+      this.velocity -= 25 * step;
       this.y = Math.max(0, this.y + this.velocity * step);
       if (this.y === 0) this.velocity = 0;
       for (const item of this.items) {
