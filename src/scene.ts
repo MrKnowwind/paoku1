@@ -329,7 +329,11 @@ export class ForestScene {
     );
     meadow.position.set(0, -0.13, 115);
     const floor = this.mat("#ffffff");
-    const floorTexture = this.props.foliageTexture().clone()!;
+    const foliageTexture = this.props.foliageTexture();
+    const floorTexture = foliageTexture.clone();
+    // DynamicTexture.clone creates an empty canvas; copy its painted pixels too.
+    floorTexture.getContext().drawImage(foliageTexture.getContext().canvas, 0, 0);
+    floorTexture.update();
     floorTexture.uScale = 42;
     floorTexture.vScale = 48;
     floor.diffuseTexture = floorTexture;

@@ -66,7 +66,7 @@ export const messages = {
     speed: "速度",
     loading: "正在唤醒森林…",
     unsupported: "暂时无法启动 3D 场景",
-    unsupportedHint: "请使用支持 WebGL 的浏览器，并开启硬件加速后刷新。",
+    unsupportedHint: "场景加载时遇到问题，请重新加载。",
     retry: "重新加载",
     storageHint: "纪录与设置保存在此设备",
     footer: "去奔跑，去发现。",
@@ -141,8 +141,7 @@ export const messages = {
     speed: "Speed",
     loading: "Waking up the forest…",
     unsupported: "Couldn’t start the 3D scene",
-    unsupportedHint:
-      "Use a WebGL-compatible browser with hardware acceleration enabled, then refresh.",
+    unsupportedHint: "Something went wrong while loading the scene. Please reload.",
     retry: "Reload",
     storageHint: "Records and settings are saved on this device",
     footer: "Run a little. Discover more.",
@@ -217,8 +216,7 @@ export const messages = {
     speed: "スピード",
     loading: "森が目を覚ましています…",
     unsupported: "3Dシーンを起動できませんでした",
-    unsupportedHint:
-      "WebGL対応ブラウザでハードウェアアクセラレーションを有効にして、再読み込みしてください。",
+    unsupportedHint: "シーンの読み込み中に問題が発生しました。再読み込みしてください。",
     retry: "再読み込み",
     storageHint: "きろくと設定はこの端末に保存されます",
     footer: "走るたび、新しい発見。",
@@ -293,8 +291,7 @@ export const messages = {
     speed: "속도",
     loading: "숲이 깨어나고 있어요…",
     unsupported: "3D 화면을 시작할 수 없어요",
-    unsupportedHint:
-      "WebGL 지원 브라우저에서 하드웨어 가속을 켜고 새로고침해 주세요.",
+    unsupportedHint: "장면을 불러오는 중 문제가 발생했어요. 새로고침해 주세요.",
     retry: "새로고침",
     storageHint: "기록과 설정은 이 기기에 저장돼요",
     footer: "달릴수록, 새로운 발견.",

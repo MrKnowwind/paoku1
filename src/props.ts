@@ -10,7 +10,7 @@ import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { mergeSceneryMeshes } from "./scenery-mesh";
 
 type Surface =
   | "bark"
@@ -197,7 +197,7 @@ export class ForestProps {
     return this.material(surface).diffuseTexture;
   }
   foliageTexture() {
-    return this.material("foliage").diffuseTexture as Texture;
+    return this.material("foliage").diffuseTexture as DynamicTexture;
   }
 
   private crown(
@@ -383,20 +383,15 @@ export class ForestProps {
       data.normals = normals;
       data.uvs = uvs;
       data.applyToMesh(mesh);
-      const grass = this.material("foliage").clone("grass-material")!;
+      const grass = new StandardMaterial("grass-material", this.scene);
+      grass.diffuseTexture = this.foliageTexture();
+      grass.specularColor.setAll(0.025);
       grass.backFaceCulling = false;
       mesh.material = grass;
       mesh.parent = root;
     }
     const meshes = root.getChildMeshes() as Mesh[];
-    const merged = Mesh.MergeMeshes(
-      meshes,
-      true,
-      true,
-      undefined,
-      false,
-      true,
-    )!;
+    const merged = mergeSceneryMeshes(meshes);
     merged.parent = null;
     root.dispose();
     merged.name = key;
