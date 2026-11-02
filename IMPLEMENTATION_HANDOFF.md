@@ -146,9 +146,9 @@
 
 ### 提交与验证
 
-- 实现提交：提交后回填。
-- GitHub Actions：等待本次推送触发，尚未声明通过。
-- 本地测试、构建、浏览器自动化和人工式验收：按项目约定均未执行。
+- 实现提交：33ac1f1a8caf7cb1e7b99b015195013d9eba68e5，已推送至 main / origin/main。
+- GitHub Actions：[运行 #41419885385](https://github.com/MrKnowwind/paoku1/actions/runs/41419885385) 已完成；build 与 deploy 均成功，Pages 部署步骤成功。
+- 本地测试、构建、浏览器自动化和人工式验收：按项目约定均未执行；CI 自动检查已通过。
 
 ### 待用户验收
 
