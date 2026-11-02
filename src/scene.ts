@@ -23,6 +23,8 @@ import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
+import { CreateLathe } from "@babylonjs/core/Meshes/Builders/latheBuilder";
+import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
 import type { RunnerGame, TrackItem } from "./game.ts";
 import { INTRO_TIMING } from "./game.ts";
 import { RunnerMotion } from "./motion.ts";
@@ -207,50 +209,91 @@ export class ForestScene {
     parent?: TransformNode,
     detail = 12,
   ) {
-    const key = `${kind}-${color}-${detail}`;
+    const sculpted = [
+      "padded-jacket",
+      "face",
+      "hair",
+      "backpack",
+      "backpack-flap",
+      "backpack-pocket",
+    ].includes(name);
+    const key = `${kind}-${color}-${detail}${sculpted ? `-${name}` : ""}`;
     let source = this.templates.get(key);
     if (!source) {
       source =
-        kind === "box"
-          ? CreateBox(key, { size: 1 }, this.scene)
-          : kind === "capsule"
-            ? CreateCapsule(
-                key,
-                {
-                  height: 1,
-                  radius: 0.25,
-                  tessellation: 12,
-                  capSubdivisions: 4,
-                },
-                this.scene,
-              )
-            : kind === "cone"
-              ? CreateCylinder(
+        name === "padded-jacket"
+          ? CreateLathe(
+              key,
+              {
+                shape: [
+                  new Vector3(0.43, -0.5, 0),
+                  new Vector3(0.46, -0.35, 0),
+                  new Vector3(0.49, -0.05, 0),
+                  new Vector3(0.49, 0.2, 0),
+                  new Vector3(0.44, 0.36, 0),
+                  new Vector3(0.31, 0.46, 0),
+                  new Vector3(0.22, 0.5, 0),
+                ],
+                tessellation: 32,
+                cap: Mesh.CAP_ALL,
+                updatable: true,
+              },
+              this.scene,
+            )
+          : kind === "box"
+            ? CreateBox(key, { size: 1 }, this.scene)
+            : kind === "capsule"
+              ? CreateCapsule(
                   key,
                   {
                     height: 1,
-                    diameterTop: 0.1,
-                    diameterBottom: 1,
+                    radius: 0.25,
                     tessellation: 12,
+                    capSubdivisions: 4,
                   },
                   this.scene,
                 )
-              : CreateSphere(
-                  key,
-                  {
-                    diameter: 1,
-                    segments: detail,
-                    updatable: name === "padded-jacket",
-                  },
-                  this.scene,
-                );
+              : kind === "cone"
+                ? CreateCylinder(
+                    key,
+                    {
+                      height: 1,
+                      diameterTop: 0.1,
+                      diameterBottom: 1,
+                      tessellation: 12,
+                    },
+                    this.scene,
+                  )
+                : CreateSphere(
+                    key,
+                    {
+                      diameter: 1,
+                      segments: detail,
+                      updatable: sculpted,
+                    },
+                    this.scene,
+                  );
       source.material = this.mat(color);
-      if (name === "padded-jacket") {
+      if (sculpted) {
         const vertices = source.getVerticesData(VertexBuffer.PositionKind)!;
         for (let i = 0; i < vertices.length; i += 3) {
           const y = vertices[i + 1];
-          vertices[i] *= 1 - Math.max(0, -y) * 0.24;
-          vertices[i + 2] *= 1 + Math.sin(y * 17 + vertices[i] * 13) * 0.025;
+          if (name === "padded-jacket") {
+            vertices[i + 2] *= 1 + Math.sin(y * 17 + vertices[i] * 13) * 0.015;
+          } else if (name === "face") {
+            vertices[i] *= 1 - Math.max(0, -y - 0.04) * 0.28;
+            vertices[i + 2] *= 1 - Math.max(0, -y) * 0.1;
+          } else if (name === "hair") {
+            vertices[i] *= 1 + Math.sin(y * 18 + vertices[i + 2] * 11) * 0.035;
+            vertices[i + 2] *= 1 + Math.cos(vertices[i] * 17 + y * 7) * 0.035;
+          } else {
+            // Sculpt the backpack into rounded fabric panels with fuller corners.
+            for (let axis = 0; axis < 3; axis++) {
+              const value = vertices[i + axis];
+              vertices[i + axis] =
+                Math.sign(value) * 0.5 * Math.pow(Math.abs(value) * 2, 0.72);
+            }
+          }
         }
         const normals: number[] = [];
         VertexData.ComputeNormals(vertices, source.getIndices()!, normals);
@@ -277,6 +320,29 @@ export class ForestScene {
     node.position.set(...pos);
     node.parent = parent;
     return node;
+  }
+
+  private seam(
+    name: string,
+    path: Triple[],
+    radius: number,
+    color: string,
+    parent: TransformNode,
+  ) {
+    const mesh = CreateTube(
+      name,
+      {
+        path: path.map(([x, y, z]) => new Vector3(x, y, z)),
+        radius,
+        tessellation: 6,
+        cap: Mesh.CAP_ALL,
+      },
+      this.scene,
+    );
+    mesh.material = this.mat(color);
+    mesh.parent = parent;
+    mesh.receiveShadows = true;
+    return mesh;
   }
 
   private scenery(
@@ -329,7 +395,8 @@ export class ForestScene {
     );
     this.grassTexture.uScale = 300 / GRASS_TILE_SIZE;
     this.grassTexture.vScale = 350 / GRASS_TILE_SIZE;
-    this.grassTexture.wrapU = this.grassTexture.wrapV = Texture.WRAP_ADDRESSMODE;
+    this.grassTexture.wrapU = this.grassTexture.wrapV =
+      Texture.WRAP_ADDRESSMODE;
     this.grassTexture.anisotropicFilteringLevel = 8;
     floor.diffuseTexture = this.grassTexture;
     floor.specularColor = Color3.Black();
@@ -550,12 +617,24 @@ export class ForestScene {
       [0, 0.04, 0],
       this.torso,
     );
+    this.seam(
+      "jacket-zip",
+      [
+        [0, 0.08, 0.24],
+        [0, 0.3, 0.268],
+        [0, 0.5, 0.262],
+        [0, 0.7, 0.205],
+      ],
+      0.012,
+      "#f4c584",
+      this.torso,
+    );
     this.part(
       "capsule",
-      "jacket-zip",
-      [0.026, 0.51, 0.025],
-      "#f4c584",
-      [0, 0.39, 0.272],
+      "zipper-pull",
+      [0.045, 0.07, 0.025],
+      "#e4bf75",
+      [0, 0.66, 0.235],
       this.torso,
     );
     for (const side of [-1, 1]) {
@@ -575,6 +654,25 @@ export class ForestScene {
         [side * 0.25, 0.4, 0.21],
         this.torso,
       ).rotation.z = side * -0.15;
+      this.part(
+        "capsule",
+        "strap-adjuster",
+        [0.09, 0.07, 0.03],
+        "#e4bf75",
+        [side * 0.25, 0.23, 0.258],
+        this.torso,
+      );
+      this.seam(
+        "pocket-flap-stitch",
+        [
+          [side * 0.21 - 0.075, 0.21, 0.274],
+          [side * 0.21, 0.19, 0.278],
+          [side * 0.21 + 0.075, 0.21, 0.274],
+        ],
+        0.006,
+        "#e7b37d",
+        this.torso,
+      );
     }
     this.head = this.joint("head-joint", [0, 0.75, 0], this.torso);
     this.part(
@@ -595,22 +693,39 @@ export class ForestScene {
       this.head,
       16,
     );
-    const hat = CreateCylinder(
+    const hat = CreateLathe(
       "canvas-hat",
       {
-        height: 0.29,
-        diameterTop: 0.61,
-        diameterBottom: 0.73,
-        tessellation: 32,
+        shape: [
+          new Vector3(0.36, -0.145, 0),
+          new Vector3(0.355, -0.11, 0),
+          new Vector3(0.325, 0.065, 0),
+          new Vector3(0.3, 0.13, 0),
+          new Vector3(0.25, 0.15, 0),
+          new Vector3(0.12, 0.13, 0),
+          new Vector3(0, 0.115, 0),
+        ],
+        cap: Mesh.CAP_START,
+        tessellation: 40,
       },
       this.scene,
     );
     hat.position.set(0, 0.58, -0.015);
     hat.material = this.mat("#d0b78d");
     hat.parent = this.head;
-    const brim = CreateCylinder(
+    const brim = CreateLathe(
       "hat-brim",
-      { height: 0.026, diameter: 0.91, tessellation: 40 },
+      {
+        shape: [
+          new Vector3(0.29, 0, 0),
+          new Vector3(0.37, -0.013, 0),
+          new Vector3(0.43, -0.004, 0),
+          new Vector3(0.475, 0.015, 0),
+          new Vector3(0.49, 0.025, 0),
+        ],
+        tessellation: 48,
+        sideOrientation: Mesh.DOUBLESIDE,
+      },
       this.scene,
     );
     brim.scaling.z = 1.1;
@@ -630,6 +745,14 @@ export class ForestScene {
     hatBand.position.set(0, 0.475, -0.015);
     hatBand.material = this.mat("#82664d");
     hatBand.parent = this.head;
+    this.part(
+      "capsule",
+      "hat-band-buckle",
+      [0.11, 0.075, 0.035],
+      "#e4bf75",
+      [-0.13, 0.474, 0.327],
+      this.head,
+    );
     for (const side of [-1, 1]) {
       this.part(
         "sphere",
@@ -641,13 +764,25 @@ export class ForestScene {
         12,
       );
       this.part(
-        "capsule",
-        "eyebrow",
-        [0.11, 0.022, 0.025],
-        "#5b4935",
-        [side * 0.13, 0.37, 0.29],
+        "sphere",
+        "inner-ear",
+        [0.065, 0.12, 0.04],
+        "#c68c6c",
+        [side * 0.35, 0.225, 0.082],
         this.head,
-      ).rotation.z = side * 0.06;
+        12,
+      );
+      this.seam(
+        "eyebrow",
+        [
+          [side * 0.13 - 0.05, 0.366, side > 0 ? 0.312 : 0.27],
+          [side * 0.13, 0.38, 0.295],
+          [side * 0.13 + 0.05, 0.369, side > 0 ? 0.27 : 0.312],
+        ],
+        0.01,
+        "#5b4935",
+        this.head,
+      );
       this.part(
         "capsule",
         "sideburn",
@@ -659,7 +794,7 @@ export class ForestScene {
       this.part(
         "sphere",
         "eye",
-        [0.055, 0.075, 0.035],
+        [0.064, 0.085, 0.035],
         "#37433b",
         [side * 0.13, 0.29, 0.302],
         this.head,
@@ -683,27 +818,40 @@ export class ForestScene {
         this.head,
         12,
       );
+      this.part(
+        "capsule",
+        "hair-lock",
+        [0.105, 0.16, 0.07],
+        "#5b4935",
+        [side * 0.19, 0.43, 0.24],
+        this.head,
+      ).rotation.z = side * 0.24;
     }
     this.part(
       "sphere",
       "nose",
-      [0.105, 0.1, 0.13],
+      [0.085, 0.095, 0.11],
       "#dca078",
       [0, 0.2, 0.32],
       this.head,
       12,
     );
-    this.part(
-      "capsule",
+    this.seam(
       "smile",
-      [0.105, 0.02, 0.025],
+      [
+        [-0.05, 0.117, 0.284],
+        [-0.025, 0.105, 0.284],
+        [0, 0.102, 0.282],
+        [0.025, 0.105, 0.284],
+        [0.05, 0.117, 0.284],
+      ],
+      0.008,
       "#8c634c",
-      [0, 0.1, 0.296],
       this.head,
     );
     this.backpack = this.joint("backpack-joint", [0, 0.42, -0.33], this.torso);
     this.part(
-      "capsule",
+      "sphere",
       "backpack",
       [0.6, 0.7, 0.35],
       "#386e60",
@@ -711,7 +859,7 @@ export class ForestScene {
       this.backpack,
     );
     this.part(
-      "capsule",
+      "sphere",
       "backpack-flap",
       [0.62, 0.25, 0.39],
       "#5f9075",
@@ -719,7 +867,7 @@ export class ForestScene {
       this.backpack,
     );
     this.part(
-      "capsule",
+      "sphere",
       "backpack-pocket",
       [0.41, 0.26, 0.12],
       "#52836d",
@@ -736,12 +884,37 @@ export class ForestScene {
     );
     this.part(
       "sphere",
-      "leaf-badge",
-      [0.12, 0.18, 0.025],
+      "trail-patch",
+      [0.19, 0.14, 0.025],
       "#dec78b",
       [0, -0.13, -0.27],
       this.backpack,
-    ).rotation.z = -0.4;
+    );
+    this.seam(
+      "embroidered-mountains",
+      [
+        [-0.064, -0.16, -0.286],
+        [-0.022, -0.095, -0.29],
+        [0.005, -0.135, -0.291],
+        [0.026, -0.11, -0.29],
+        [0.064, -0.16, -0.286],
+        [-0.064, -0.16, -0.286],
+      ],
+      0.006,
+      "#455d50",
+      this.backpack,
+    );
+    this.seam(
+      "backpack-pocket-zip",
+      [
+        [-0.16, -0.025, -0.253],
+        [0, -0.025, -0.267],
+        [0.16, -0.025, -0.253],
+      ],
+      0.007,
+      "#ddbf84",
+      this.backpack,
+    );
     const roll = CreateCylinder(
       "rolled-groundsheet",
       { height: 0.58, diameter: 0.15, tessellation: 20 },
@@ -760,6 +933,27 @@ export class ForestScene {
         [side * 0.18, -0.37, -0.03],
         this.backpack,
       );
+      this.seam(
+        "backpack-edge-seam",
+        [
+          [side * 0.245, -0.27, -0.13],
+          [side * 0.282, -0.2, -0.15],
+          [side * 0.282, 0.13, -0.15],
+          [side * 0.23, 0.27, -0.14],
+        ],
+        0.008,
+        "#83a18a",
+        this.backpack,
+      );
+      const rollEnd = CreateTorus(
+        "bedroll-fold",
+        { diameter: 0.105, thickness: 0.012, tessellation: 20 },
+        this.scene,
+      );
+      rollEnd.parent = this.backpack;
+      rollEnd.rotation.z = Math.PI / 2;
+      rollEnd.position.set(side * 0.295, -0.39, -0.03);
+      rollEnd.material = this.mat("#c5ab7b");
       this.part(
         "capsule",
         "pocket-seam",
@@ -814,6 +1008,15 @@ export class ForestScene {
       );
       const lower = this.joint("knee", [0, -0.42, 0], upper);
       this.part(
+        "sphere",
+        "fabric-knee",
+        [0.24, 0.22, 0.255],
+        "#345d50",
+        [0, -0.005, 0.005],
+        lower,
+        16,
+      );
+      this.part(
         "capsule",
         "shin",
         [0.22, 0.38, 0.24],
@@ -830,6 +1033,14 @@ export class ForestScene {
         lower,
       );
       const foot = this.joint("ankle", [0, -0.37, 0], lower);
+      this.part(
+        "capsule",
+        "boot-collar",
+        [0.28, 0.13, 0.31],
+        "#c68d56",
+        [0, 0.12, -0.012],
+        foot,
+      );
       this.part(
         "capsule",
         "sole",
@@ -882,6 +1093,15 @@ export class ForestScene {
         );
         stitch.rotation.y = (lace % 2 ? 1 : -1) * 0.2;
       }
+      for (let tread = 0; tread < 3; tread++)
+        this.part(
+          "box",
+          "boot-tread",
+          [0.28, 0.025, 0.09],
+          "#82664d",
+          [0, -0.105, -0.05 + tread * 0.14],
+          foot,
+        );
       this.legs.push({ upper, lower, foot, side });
       const shoulder = this.joint(
         "shoulder",
@@ -897,6 +1117,15 @@ export class ForestScene {
         shoulder,
       );
       const elbow = this.joint("elbow", [0, -0.31, 0], shoulder);
+      this.part(
+        "sphere",
+        "fabric-elbow",
+        [0.225, 0.21, 0.235],
+        "#dd7445",
+        [0, 0, 0],
+        elbow,
+        16,
+      );
       this.part(
         "capsule",
         "forearm",
@@ -1182,6 +1411,7 @@ export class ForestScene {
         (introducing ? Math.sin(Math.PI * stand) * 0.22 : 0)
       : (0.2 + (game.speed - 12) * 0.004) * runWeight -
         pose.slide * 1.12 +
+        pose.dive * 0.35 +
         flightPitch * airWeight +
         0.08 * (1 - game.launchProgress) * (1 - airWeight) * blend;
     this.torso.rotation.z =
@@ -1194,7 +1424,8 @@ export class ForestScene {
     this.head.rotation.y = opening
       ? Math.sin(this.time * 0.7) * 0.12 * (1 - prepare)
       : -pose.turn * 0.17;
-    this.head.rotation.x = pose.slide * 0.33 - runWeight * 0.08;
+    this.head.rotation.x =
+      pose.slide * 0.33 - runWeight * 0.08 - pose.dive * 0.18;
     this.backpack.position.z = -0.33 + pose.slide * 0.13;
     this.backpack.rotation.x =
       Math.sin(pose.phase * 2) * 0.045 * runWeight - pose.slide * 0.1;
@@ -1213,8 +1444,10 @@ export class ForestScene {
           (1 - sitting) * 0.08;
         leg.foot!.rotation.x = 0;
       } else {
-        const slideUpper = leg.side > 0 ? -1.25 : -1.78;
-        const slideKnee = leg.side > 0 ? 0.05 : 1.78;
+        const slideUpper = (leg.side > 0 ? -1.25 : -1.78) + pose.dive * 0.35;
+        const slideKnee =
+          (leg.side > 0 ? 0.05 : 1.78) +
+          pose.dive * (leg.side > 0 ? 0.9 : 0.15);
         const jumpUpper =
           leg.side > 0 ? -0.35 - tuck * 0.55 : -0.15 - tuck * 0.3;
         const jumpKnee = leg.side > 0 ? 0.55 + tuck : 0.8 + tuck * 0.55;
@@ -1247,7 +1480,8 @@ export class ForestScene {
           Math.sin(walkPhase + (arm.side > 0 ? 0 : Math.PI)) * 0.3 * walking
         : stride * 0.78 * runWeight -
           (0.65 + tuck * 0.2) * airWeight +
-          pose.slide * 0.72;
+          pose.slide * 0.72 -
+          pose.dive * 0.85;
       arm.upper.rotation.z =
         arm.side *
         (0.07 +
@@ -1259,6 +1493,7 @@ export class ForestScene {
         : (-0.95 - Math.max(0, -stride) * 0.3) * runWeight -
           0.9 * airWeight -
           0.15 * pose.slide -
+          0.8 * pose.dive -
           0.35 * (1 - pose.run) * (1 - pose.air) * blend;
     }
     this.contact.position.x = this.runner.position.x;

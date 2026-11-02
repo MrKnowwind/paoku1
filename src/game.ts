@@ -6,6 +6,7 @@ const INTRO_DURATION =
   INTRO_TIMING.countdown +
   INTRO_TIMING.go;
 const LAUNCH_DURATION = 0.9;
+const SLIDE_DURATION = 0.75;
 export type ItemType = "coin" | "log" | "arch" | "rock";
 export interface TrackItem {
   id: number;
@@ -22,6 +23,7 @@ export class RunnerGame {
   y = 0;
   velocity = 0;
   slideTime = 0;
+  fastFalling = false;
   distance = 0;
   introTime = 0;
   coins = 0;
@@ -87,6 +89,7 @@ export class RunnerGame {
     this.y = 0;
     this.velocity = 0;
     this.slideTime = 0;
+    this.fastFalling = false;
     this.distance = 0;
     this.launchTime = LAUNCH_DURATION;
     this.introTime = INTRO_DURATION;
@@ -110,15 +113,27 @@ export class RunnerGame {
     this.items.push({ id: this.nextId++, type, lane, z, y });
   }
   jump() {
-    if (this.mode === "running" && this.y === 0 && !this.sliding)
-      this.velocity = 10.6;
+    if (this.mode !== "running" || this.y > 0 || this.velocity > 0)
+      return false;
+    this.slideTime = 0;
+    this.fastFalling = false;
+    this.velocity = 10.6;
+    return true;
   }
   get sliding() {
     return this.slideTime > 0;
   }
   slide() {
-    if (this.mode === "running" && this.y === 0 && !this.sliding)
-      this.slideTime = 0.75;
+    if (this.mode !== "running") return false;
+    if (this.y > 0 || this.velocity > 0) {
+      if (this.fastFalling) return false;
+      this.fastFalling = true;
+      this.velocity = Math.min(this.velocity, -20);
+      return true;
+    }
+    if (this.sliding || this.fastFalling) return false;
+    this.slideTime = SLIDE_DURATION;
+    return true;
   }
   pause() {
     if (this.mode === "running" || this.mode === "intro") {
@@ -170,9 +185,15 @@ export class RunnerGame {
       );
       this.horizontalVelocity =
         (this.horizontalVelocity - 20 * impulse) * decay;
-      this.velocity -= 25 * step;
+      this.velocity -= (this.fastFalling ? 70 : 25) * step;
       this.y = Math.max(0, this.y + this.velocity * step);
-      if (this.y === 0) this.velocity = 0;
+      if (this.y === 0) {
+        this.velocity = 0;
+        if (this.fastFalling) {
+          this.fastFalling = false;
+          this.slideTime = SLIDE_DURATION;
+        }
+      }
       for (const item of this.items) {
         item.z -= travel;
         if (
@@ -181,7 +202,9 @@ export class RunnerGame {
         ) {
           if (
             item.type === "coin" &&
-            Math.abs(this.y + (this.sliding ? 0.4 : 0.95) - item.y) < 0.9
+            Math.abs(
+              this.y + (this.sliding || this.fastFalling ? 0.4 : 0.95) - item.y,
+            ) < 0.9
           ) {
             this.coins++;
             item.z = -1000;

@@ -9,7 +9,9 @@ test("home, countdown and launch keep the same opening track", () => {
   assert.ok(opening.some((item) => item.type === "log"));
   game.begin();
   assert.strictEqual(game.items, opening);
-  game.update(Object.values(INTRO_TIMING).reduce((sum, value) => sum + value, 0));
+  game.update(
+    Object.values(INTRO_TIMING).reduce((sum, value) => sum + value, 0),
+  );
   assert.equal(game.mode, "running");
   assert.strictEqual(game.items, opening);
   assert.equal(game.distance, 0);
@@ -87,6 +89,59 @@ test("sliding clears a low arch and expires; a standing runner hits it", () => {
   game.addItem("arch", 0, 3);
   game.update(0.4);
   assert.equal(game.mode, "over");
+});
+
+test("jump interrupts a slide immediately without granting a midair double jump", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  assert.equal(game.slide(), true);
+  game.update(0.1);
+  assert.equal(game.jump(), true);
+  assert.equal(game.sliding, false);
+  game.update(0.08);
+  assert.ok(game.y > 0.5);
+  assert.equal(game.jump(), false);
+});
+
+test("downward input cancels ascent and starts a full slide on landing", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  game.jump();
+  game.update(0.2);
+  const height = game.y;
+  assert.equal(game.slide(), true);
+  assert.equal(game.y, height);
+  assert.ok(game.velocity <= -20);
+  assert.equal(game.fastFalling, true);
+  assert.equal(game.slideTime, 0);
+  assert.equal(game.slide(), false);
+  game.pause();
+  game.update(0.5);
+  assert.equal(game.y, height);
+  assert.equal(game.fastFalling, true);
+  game.resume();
+  game.update(0.25);
+  assert.equal(game.y, 0);
+  assert.equal(game.fastFalling, false);
+  assert.ok(game.slideTime > 0.5 && game.slideTime <= 0.75);
+  assert.equal(game.jump(), true);
+  assert.equal(game.sliding, false);
+});
+
+test("opposite input before the next frame cancels takeoff and restart clears fast fall", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  game.jump();
+  game.slide();
+  game.update(1 / 120);
+  assert.equal(game.y, 0);
+  assert.equal(game.sliding, true);
+  game.jump();
+  game.update(0.1);
+  game.slide();
+  game.start();
+  assert.equal(game.fastFalling, false);
+  assert.equal(game.slideTime, 0);
 });
 
 test("collects a coin once, avoids another lane, and freezes while paused", () => {

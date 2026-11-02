@@ -3,6 +3,32 @@ import assert from "node:assert/strict";
 import { RunnerGame } from "./game.ts";
 import { RunnerMotion } from "./motion.ts";
 
+test("slide pose releases quickly for a jump and crouches again after a fast fall", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  const motion = new RunnerMotion();
+  game.start();
+  game.slide();
+  motion.update(game, 0.2);
+  assert.ok(motion.pose.slide > 0.9);
+  game.jump();
+  for (let frame = 0; frame < 6; frame++) {
+    game.update(1 / 60);
+    motion.update(game, 1 / 60);
+  }
+  assert.ok(game.y > 0);
+  assert.ok(motion.pose.slide < 0.05);
+  game.slide();
+  motion.update(game, 1 / 60);
+  assert.ok(motion.pose.dive > 0);
+  for (let frame = 0; frame < 15; frame++) {
+    game.update(1 / 60);
+    motion.update(game, 1 / 60);
+  }
+  assert.equal(game.y, 0);
+  assert.equal(game.sliding, true);
+  assert.ok(motion.pose.slide > 0.95);
+});
+
 test("slide eases into a crouched pose and recovers without flattening the character", () => {
   const game = new RunnerGame({ autoSpawn: false });
   const motion = new RunnerMotion();

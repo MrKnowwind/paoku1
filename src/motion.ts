@@ -3,6 +3,7 @@ import type { RunnerGame } from "./game.ts";
 export class RunnerMotion {
   pose = {
     slide: 0,
+    dive: 0,
     hipY: 0.95,
     phase: 0,
     landing: 0,
@@ -30,9 +31,15 @@ export class RunnerMotion {
     this.pose.landing *= Math.exp(-dt * 15);
     if (this.airborne && game.y === 0) this.pose.landing = 1;
     this.airborne = game.y > 0;
+    const slideTarget =
+      (game.sliding || game.fastFalling) && game.mode !== "ready";
+    const slideResponse = game.fastFalling ? 36 : game.velocity > 0 ? 48 : 22;
     this.pose.slide +=
-      ((game.sliding && game.mode !== "ready" ? 1 : 0) - this.pose.slide) *
-      (1 - Math.exp(-dt * 22));
+      ((slideTarget ? 1 : 0) - this.pose.slide) *
+      (1 - Math.exp(-dt * slideResponse));
+    this.pose.dive +=
+      ((game.fastFalling && game.mode === "running" ? 1 : 0) - this.pose.dive) *
+      (1 - Math.exp(-dt * 30));
     this.pose.run +=
       ((game.mode === "running" && game.y === 0 ? game.launchProgress : 0) -
         this.pose.run) *

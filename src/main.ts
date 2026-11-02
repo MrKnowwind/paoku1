@@ -393,14 +393,8 @@ function control(direction: "left" | "right" | "jump" | "slide") {
   if (game.mode !== "running" || activeDialog) return;
   if (direction === "left") game.move(-1);
   if (direction === "right") game.move(1);
-  if (direction === "jump" && game.y === 0 && !game.sliding) {
-    game.jump();
-    beep("jump");
-  }
-  if (direction === "slide" && game.y === 0 && !game.sliding) {
-    game.slide();
-    beep("slide");
-  }
+  if (direction === "jump" && game.jump()) beep("jump");
+  if (direction === "slide" && game.slide()) beep("slide");
 }
 window.addEventListener("keydown", (event) => {
   if (activeDialog) return;
@@ -429,7 +423,12 @@ window.addEventListener("keydown", (event) => {
     if (!event.repeat) control(keys[event.code]);
   }
 });
-let gesture: { x: number; y: number; id: number } | null = null;
+let gesture: {
+  x: number;
+  y: number;
+  id: number;
+  direction: "left" | "right" | "jump" | "slide" | null;
+} | null = null;
 window.addEventListener("pointerdown", (event) => {
   if (
     game.mode !== "running" ||
@@ -437,23 +436,39 @@ window.addEventListener("pointerdown", (event) => {
     (event.target as HTMLElement).closest("button,a,dialog")
   )
     return;
-  gesture = { x: event.clientX, y: event.clientY, id: event.pointerId };
+  gesture = {
+    x: event.clientX,
+    y: event.clientY,
+    id: event.pointerId,
+    direction: null,
+  };
 });
 window.addEventListener("pointermove", (event) => {
   if (!gesture || gesture.id !== event.pointerId) return;
+  // Track the swipe's furthest point so a reversal works without lifting.
+  if (gesture.direction === "left")
+    gesture.x = Math.min(gesture.x, event.clientX);
+  if (gesture.direction === "right")
+    gesture.x = Math.max(gesture.x, event.clientX);
+  if (gesture.direction === "jump")
+    gesture.y = Math.min(gesture.y, event.clientY);
+  if (gesture.direction === "slide")
+    gesture.y = Math.max(gesture.y, event.clientY);
   const dx = event.clientX - gesture.x,
     dy = event.clientY - gesture.y;
   if (Math.max(Math.abs(dx), Math.abs(dy)) < 28) return;
-  control(
+  const direction =
     Math.abs(dx) > Math.abs(dy)
       ? dx > 0
         ? "right"
         : "left"
       : dy < 0
         ? "jump"
-        : "slide",
-  );
-  gesture = null;
+        : "slide";
+  if (direction !== gesture.direction) control(direction);
+  gesture.direction = direction;
+  gesture.x = event.clientX;
+  gesture.y = event.clientY;
 });
 window.addEventListener("pointerup", () => {
   gesture = null;
