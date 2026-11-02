@@ -51,6 +51,7 @@ const smooth = (value: number) => {
 };
 const REST_X = 4.85;
 const REST_Z = 0.65;
+const GRASS_TILE_SIZE = 2.5;
 
 export class ForestScene {
   engine: Engine;
@@ -82,6 +83,7 @@ export class ForestScene {
   private particles: Particle[] = [];
   private pool: Mesh[] = [];
   private softTexture!: DynamicTexture;
+  private grassTexture!: Texture;
   private particleMaterials = new Map<string, StandardMaterial>();
   private time = 0;
   private lastCoins = 0;
@@ -327,16 +329,18 @@ export class ForestScene {
       { width: 300, height: 350 },
       this.scene,
     );
-    meadow.position.set(0, -0.13, 115);
-    const floor = this.mat("#ffffff");
-    const foliageTexture = this.props.foliageTexture();
-    const floorTexture = foliageTexture.clone();
-    // DynamicTexture.clone creates an empty canvas; copy its painted pixels too.
-    floorTexture.getContext().drawImage(foliageTexture.getContext().canvas, 0, 0);
-    floorTexture.update();
-    floorTexture.uScale = 42;
-    floorTexture.vScale = 48;
-    floor.diffuseTexture = floorTexture;
+    meadow.position.set(0, 0, 115);
+    const floor = new StandardMaterial("woodland-grass-floor", this.scene);
+    this.grassTexture = new Texture(
+      import.meta.env.BASE_URL + "art/woodland-grass.jpg",
+      this.scene,
+    );
+    this.grassTexture.uScale = 300 / GRASS_TILE_SIZE;
+    this.grassTexture.vScale = 350 / GRASS_TILE_SIZE;
+    this.grassTexture.wrapU = this.grassTexture.wrapV = Texture.WRAP_ADDRESSMODE;
+    this.grassTexture.anisotropicFilteringLevel = 8;
+    floor.diffuseTexture = this.grassTexture;
+    floor.specularColor = Color3.Black();
     meadow.material = floor;
     meadow.receiveShadows = true;
     for (let i = 0; i < 12; i++)
@@ -528,6 +532,15 @@ export class ForestScene {
     this.runner = new TransformNode("explorer", this.scene);
     this.hips = this.joint("hips", [0, 0.95, 0], this.runner);
     this.torso = this.joint("torso", [0, 0, 0], this.hips);
+    this.part(
+      "sphere",
+      "trouser-seat",
+      [0.6, 0.28, 0.42],
+      "#345d50",
+      [0, -0.035, -0.02],
+      this.hips,
+      16,
+    );
     this.part(
       "sphere",
       "padded-jacket",
@@ -1088,6 +1101,7 @@ export class ForestScene {
     }
     const pose = this.motion.update(game, dt);
     const scroll = ready || introducing ? 0 : game.distance;
+    this.grassTexture.vOffset = (scroll / GRASS_TILE_SIZE) % 1;
     this.chunks.forEach((root, i) => {
       root.position.z = ((((i * 40 - scroll + 40) % 200) + 200) % 200) - 60;
     });
@@ -1118,12 +1132,18 @@ export class ForestScene {
     const airWeight = airborne ? pose.air * blend : 0;
     const runWeight = pose.run * (1 - airWeight) * blend;
     const tuck = airborne ? Math.max(0, 1 - Math.abs(game.velocity) / 10.6) : 0;
-    this.runner.position.set(
-      opening ? REST_X * (1 - walkProgress) : game.x,
-      opening ? 0 : game.y + Math.abs(pose.turn) * 0.045 * runWeight,
-      opening ? REST_Z * (1 - walkProgress) : 0,
-    );
     const openingYaw = (-2.3 + (2.3 - Math.PI / 2) * stand) * (1 - prepare);
+    // Rise in front of the stump before unfolding the legs and walking away.
+    const exitOffset = stand * 0.8;
+    this.runner.position.set(
+      opening
+        ? (REST_X + Math.sin(openingYaw) * exitOffset) * (1 - walkProgress)
+        : game.x,
+      opening ? 0 : game.y + Math.abs(pose.turn) * 0.045 * runWeight,
+      opening
+        ? (REST_Z + Math.cos(openingYaw) * exitOffset) * (1 - walkProgress)
+        : 0,
+    );
     if (opening) this.runner.rotation.y = openingYaw;
     else
       this.runner.rotation.y = damp(
@@ -1138,14 +1158,16 @@ export class ForestScene {
     this.runner.rotation.x = pose.death * 0.7;
     this.hips.position.y =
       (opening
-        ? 0.68 + 0.27 * stand + Math.abs(Math.sin(walkPhase)) * 0.018 * walking
+        ? 0.79 + 0.16 * stand + Math.abs(Math.sin(walkPhase)) * 0.018 * walking
         : pose.hipY) -
-      pose.death * 0.48 +
-      (ready ? Math.sin(this.time * 1.8) * 0.009 : 0);
+      pose.death * 0.48;
+    // Seat top is 0.6325 high: keep the pelvis above it and shins past its rim.
+    this.hips.position.z = sitting * 0.24;
     this.hips.rotation.y = opening
       ? 0
       : Math.sin(pose.phase) * 0.035 * runWeight;
     const flightPitch = -Math.max(-1, Math.min(1, game.velocity / 10.6)) * 0.16;
+    this.torso.position.y = ready ? Math.sin(this.time * 1.8) * 0.008 : 0;
     this.torso.rotation.x = opening
       ? 0.08 +
         sitting * 0.12 +
@@ -1175,9 +1197,9 @@ export class ForestScene {
       const stride = Math.sin(pose.phase + (leg.side > 0 ? Math.PI : 0));
       if (opening) {
         const walkStride = Math.sin(walkPhase + (leg.side > 0 ? Math.PI : 0));
-        leg.upper.rotation.x = -sitting * 1.35 + walkStride * 0.44 * walking;
+        leg.upper.rotation.x = -sitting * 1.42 + walkStride * 0.44 * walking;
         leg.lower.rotation.x =
-          sitting * 1.35 +
+          sitting * 1.42 +
           Math.max(0, -walkStride) * 0.65 * walking +
           (1 - sitting) * 0.08;
         leg.foot!.rotation.x = 0;
@@ -1205,7 +1227,7 @@ export class ForestScene {
           pose.landing * 0.6 * blend;
       }
       leg.upper.rotation.z = opening
-        ? 0
+        ? leg.side * sitting * 0.055
         : -pose.turn * 0.1 * blend + leg.side * pose.slide * 0.065;
     }
     for (const arm of this.arms) {
