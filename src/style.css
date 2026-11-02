@@ -126,6 +126,7 @@ button:active {
 .header-actions {
   display: flex;
   gap: 9px;
+  margin-left: auto;
 }
 .icon-button {
   width: 38px;
@@ -288,75 +289,99 @@ footer {
   height: 18px;
 }
 .hud {
-  position: absolute;
-  top: -57px;
-  left: 50%;
-  transform: translateX(-50%);
-  min-width: 165px;
-  padding: 9px 20px 10px;
-  border-radius: 9px;
-  color: #f2eddb;
-  background: #2c4434ed;
-  border: 1px solid #879780;
-  text-align: center;
-  box-shadow: 0 3px 12px #1c35251a;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex: 1;
+  min-width: 0;
+  max-width: 430px;
+  height: 62px;
+  padding: 10px 20px;
+  border-radius: 12px;
+  color: #2d4434;
+  background: #f7f5ebed;
+  border: 1px solid #ffffffb3;
+  box-shadow: 0 3px 14px #263f2412;
+  animation: hud-in 0.4s ease-out both;
 }
 .hud-main {
   display: flex;
   flex-direction: column;
+  min-width: 100px;
   gap: 2px;
 }
 .hud-main small {
-  font-size: 8px;
-  letter-spacing: 2px;
-  color: #bdc8ab;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: #76816e;
 }
 .hud-main strong {
-  font-size: 29px;
+  font-size: 27px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1;
+  letter-spacing: -0.7px;
   font-variant-numeric: tabular-nums;
 }
 .hud-secondary {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 15px;
-  margin-top: 5px;
+  justify-content: space-between;
+  gap: 20px;
+  flex: 1;
+  min-width: 0;
+  padding-left: 20px;
+  border-left: 1px solid #d8dece;
 }
 .hud-secondary b {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 17px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .hud-secondary small {
-  font-size: 8px;
-  color: #b7c3a5;
+  margin-left: 3px;
+  font-size: 10px;
+  color: #7a866f;
 }
+.distance-counter,
 .coin-counter {
   display: flex;
   align-items: center;
-  gap: 5px;
-  color: #d9bc76;
+  gap: 7px;
+  white-space: nowrap;
 }
+.distance-counter {
+  color: #586e54;
+}
+.coin-counter {
+  color: #956a29;
+}
+.distance-counter .icon,
 .coin-counter .icon {
-  width: 13px;
-  height: 13px;
+  width: 19px;
+  height: 19px;
 }
 .coin-counter.pulse {
   animation: hud-pulse 0.3s;
 }
 .coin-pop {
-  position: absolute;
-  top: 10px;
-  left: calc(50% + 85px);
-  opacity: 0;
-  font-size: 16px;
-  font-weight: 700;
-  color: #be9b4c;
+  position: fixed;
+  z-index: 3;
+  pointer-events: none;
 }
-.coin-pop.pop {
-  animation: coin-pop 0.55s ease-out both;
+.coin-reward {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: max-content;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #fff2bf;
+  text-shadow:
+    0 2px 2px #39412b,
+    0 0 5px #39412b99;
+  animation: coin-pop 0.75s ease-out both;
 }
 .live-hint {
   position: absolute;
@@ -379,7 +404,15 @@ footer {
 .playing .vignette {
   opacity: 0;
 }
-.playing .brand strong,
+.playing .header {
+  height: 66px;
+  gap: 18px;
+}
+.playing .header-actions .icon-button {
+  border-radius: 11px;
+  background: #f7f5ebed;
+}
+.playing .brand,
 .playing .help-button {
   display: none;
 }
@@ -894,20 +927,34 @@ dialog[data-view="pause"] > .primary-button {
 @keyframes hud-pulse {
   40% {
     transform: scale(1.12);
-    color: #f4d794;
+    color: #c18b32;
+  }
+}
+@keyframes hud-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 @keyframes coin-pop {
   0% {
     opacity: 0;
-    transform: translateY(9px);
+    transform: translate(-50%, 6px) scale(0.8);
   }
-  25% {
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -4px) scale(1.08);
+  }
+  45% {
     opacity: 1;
   }
   100% {
     opacity: 0;
-    transform: translateY(-21px);
+    transform: translate(-50%, -44px) scale(1);
   }
 }
 @keyframes impact {
@@ -1046,34 +1093,51 @@ html[lang="ko-KR"] h1 {
     height: 15px;
   }
   .hud {
-    top: -48px;
-    min-width: 142px;
-    padding: 7px 15px 9px;
-    border-radius: 8px;
+    height: 58px;
+    max-width: 350px;
+    gap: 12px;
+    padding: 8px 11px;
+    border-radius: 10px;
+  }
+  .playing .header {
+    height: 62px;
+    gap: 10px;
+  }
+  .playing .header-actions {
+    gap: 6px;
+  }
+  .hud-main {
+    min-width: 62px;
   }
   .hud-main strong {
-    font-size: 27px;
+    font-size: clamp(18px, 4.8vw, 23px);
   }
   .hud-main small {
-    font-size: 7px;
+    font-size: 8px;
   }
   .hud-secondary {
-    gap: 12px;
-    margin-top: 4px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding-left: 10px;
   }
   .hud-secondary b {
-    font-size: 9px;
+    font-size: 12px;
   }
   .hud-secondary small {
-    font-size: 7px;
+    font-size: 9px;
   }
+  .distance-counter,
+  .coin-counter {
+    gap: 5px;
+  }
+  .distance-counter .icon,
   .coin-counter .icon {
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
   }
-  .coin-pop {
-    left: calc(50% + 73px);
-    font-size: 14px;
+  .coin-reward {
+    font-size: 21px;
   }
   .live-hint {
     max-width: 100%;
@@ -1172,20 +1236,14 @@ html[lang="ko-KR"] h1 {
     height: 31px;
   }
   .hud {
-    top: -41px;
-    padding: 5px 17px;
-  }
-  .hud-main {
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    height: 50px;
+    padding: 7px 17px;
   }
   .hud-main strong {
     font-size: 24px;
   }
-  .hud-secondary {
-    margin-top: 1px;
+  .playing .header {
+    height: 52px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

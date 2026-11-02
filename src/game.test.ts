@@ -1,6 +1,31 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RunnerGame } from "./game.ts";
+import { RunnerGame, INTRO_TIMING } from "./game.ts";
+
+test("home, countdown and launch keep the same opening track", () => {
+  const game = new RunnerGame({ random: () => 0.5 });
+  const opening = game.items;
+  assert.equal(game.mode, "ready");
+  assert.ok(opening.some((item) => item.type === "log"));
+  game.begin();
+  assert.strictEqual(game.items, opening);
+  game.update(Object.values(INTRO_TIMING).reduce((sum, value) => sum + value, 0));
+  assert.equal(game.mode, "running");
+  assert.strictEqual(game.items, opening);
+  assert.equal(game.distance, 0);
+  assert.equal(game.speed, 0);
+  game.update(0.2);
+  assert.ok(game.speed > 0 && game.speed < 12);
+  assert.ok(game.distance > 0);
+  const speed = game.speed;
+  game.pause();
+  game.update(1);
+  assert.equal(game.speed, speed);
+  game.resume();
+  game.update(1);
+  assert.equal(game.launchProgress, 1);
+  assert.ok(game.speed >= 12);
+});
 
 test("starts in the middle lane and never leaves the three lanes", () => {
   const game = new RunnerGame({ autoSpawn: false });

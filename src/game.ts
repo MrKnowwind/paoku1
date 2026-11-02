@@ -5,6 +5,7 @@ const INTRO_DURATION =
   INTRO_TIMING.walk +
   INTRO_TIMING.countdown +
   INTRO_TIMING.go;
+const LAUNCH_DURATION = 0.9;
 export type ItemType = "coin" | "log" | "arch" | "rock";
 export interface TrackItem {
   id: number;
@@ -32,12 +33,18 @@ export class RunnerGame {
   private nextRow = 65;
   private autoSpawn: boolean;
   private random: () => number;
+  private launchTime = LAUNCH_DURATION;
   constructor(options: { autoSpawn?: boolean; random?: () => number } = {}) {
     this.autoSpawn = options.autoSpawn ?? true;
     this.random = options.random ?? Math.random;
+    this.returnHome();
+  }
+  get launchProgress() {
+    const t = Math.min(1, this.launchTime / LAUNCH_DURATION);
+    return t * t * (3 - 2 * t);
   }
   get speed() {
-    return Math.min(24, 12 + this.distance * 0.012);
+    return Math.min(24, 12 + this.distance * 0.012) * this.launchProgress;
   }
   get score() {
     return Math.floor(this.distance * 2) + this.coins * 50;
@@ -61,8 +68,15 @@ export class RunnerGame {
         : "GO!";
   }
   begin() {
-    this.start();
+    // Keep the visible opening track intact when leaving the home screen.
+    if (this.mode !== "ready") this.start();
     this.mode = "intro";
+    this.introTime = 0;
+    this.launchTime = 0;
+  }
+  returnHome() {
+    this.start();
+    this.mode = "ready";
     this.introTime = 0;
   }
   start() {
@@ -74,6 +88,7 @@ export class RunnerGame {
     this.velocity = 0;
     this.slideTime = 0;
     this.distance = 0;
+    this.launchTime = LAUNCH_DURATION;
     this.introTime = INTRO_DURATION;
     this.resumeMode = "running";
     this.items = [];
@@ -81,7 +96,9 @@ export class RunnerGame {
     this.lastHit = null;
     this.nextRow = 65;
     if (this.autoSpawn) {
-      for (let z = 16; z <= 40; z += 4) this.addItem("coin", 0, z);
+      for (let z = 7; z <= 39; z += 4) this.addItem("coin", 0, z, 1.1);
+      this.addItem("log", 1, 24, 0);
+      this.addItem("arch", -1, 39, 0);
       this.fillTrack();
     }
   }
@@ -139,6 +156,7 @@ export class RunnerGame {
     }
     while (dt > 0 && this.mode === "running") {
       const step = Math.min(dt, 1 / 120);
+      this.launchTime = Math.min(LAUNCH_DURATION, this.launchTime + step);
       const travel = step * this.speed;
       this.distance += travel;
       this.slideTime = Math.max(0, this.slideTime - step);

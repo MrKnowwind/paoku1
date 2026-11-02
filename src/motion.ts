@@ -23,7 +23,10 @@ export class RunnerMotion {
     this.distance = game.distance;
     if (game.mode !== "over")
       this.pose.phase +=
-        dt * (game.mode === "running" ? 9 + game.speed * 0.35 : 1.8);
+        dt *
+        (game.mode === "running"
+          ? 1.8 + (7.2 + game.speed * 0.35) * game.launchProgress
+          : 1.8);
     this.pose.landing *= Math.exp(-dt * 15);
     if (this.airborne && game.y === 0) this.pose.landing = 1;
     this.airborne = game.y > 0;
@@ -31,7 +34,8 @@ export class RunnerMotion {
       ((game.sliding && game.mode !== "ready" ? 1 : 0) - this.pose.slide) *
       (1 - Math.exp(-dt * 22));
     this.pose.run +=
-      ((game.mode === "running" && game.y === 0 ? 1 : 0) - this.pose.run) *
+      ((game.mode === "running" && game.y === 0 ? game.launchProgress : 0) -
+        this.pose.run) *
       (1 - Math.exp(-dt * 12));
     this.pose.air +=
       ((game.y > 0 && game.mode === "running" ? 1 : 0) - this.pose.air) *

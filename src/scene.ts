@@ -77,7 +77,6 @@ export class ForestScene {
   private swayingTrees: TransformNode[] = [];
   private leaves: InstancedMesh[] = [];
   private itemMeshes = new Map<number, TransformNode>();
-  private previewItems: TransformNode[] = [];
   private materials = new Map<string, StandardMaterial>();
   private templates = new Map<string, Mesh>();
   private particles: Particle[] = [];
@@ -158,13 +157,6 @@ export class ForestScene {
     );
     this.shock.material = this.mat("#ffdb8c", true);
     this.shock.setEnabled(false);
-    this.previewItems = [
-      this.createItem({ id: -1, type: "coin", lane: 0, z: 7, y: 1.1 }),
-      this.createItem({ id: -2, type: "coin", lane: 0, z: 11, y: 1.1 }),
-      this.createItem({ id: -3, type: "coin", lane: 0, z: 15, y: 1.1 }),
-      this.createItem({ id: -4, type: "log", lane: 1, z: 24, y: 0 }),
-      this.createItem({ id: -5, type: "arch", lane: -1, z: 39, y: 0 }),
-    ];
     this.setQuality(highQuality);
     window.addEventListener("resize", () => this.resize());
     this.resize();
@@ -1066,6 +1058,23 @@ export class ForestScene {
     this.engine.resize();
   }
 
+  getRewardAnchor() {
+    const width = this.engine.getRenderWidth();
+    const height = this.engine.getRenderHeight();
+    const point = Vector3.Project(
+      new Vector3(0, 0.95, 0),
+      this.head.getWorldMatrix(),
+      this.scene.getTransformMatrix(),
+      this.camera.viewport.toGlobal(width, height),
+    );
+    const rect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
+    return {
+      x: rect.left + (point.x / width) * rect.width,
+      y: rect.top + (point.y / height) * rect.height,
+      visible: point.z >= 0 && point.z <= 1,
+    };
+  }
+
   update(game: RunnerGame, dt: number) {
     const running = game.mode === "running",
       ready = game.mode === "ready",
@@ -1074,12 +1083,11 @@ export class ForestScene {
     const oldMode = this.mode;
     if (!paused && game.mode !== "over") this.time += dt;
     if (this.mode !== game.mode) {
-      this.previewItems.forEach((item) =>
-        item.setEnabled(ready || introducing),
-      );
-      if (ready || introducing || (running && oldMode !== "paused")) {
-        for (const mesh of this.itemMeshes.values()) mesh.dispose();
-        this.itemMeshes.clear();
+      if (
+        ready ||
+        (introducing && oldMode !== "paused") ||
+        (running && oldMode !== "paused" && oldMode !== "intro")
+      ) {
         this.lastCoins = 0;
         this.lastLanding = 0;
         this.shake = 0;
@@ -1174,7 +1182,8 @@ export class ForestScene {
         (introducing ? Math.sin(Math.PI * stand) * 0.22 : 0)
       : (0.2 + (game.speed - 12) * 0.004) * runWeight -
         pose.slide * 1.12 +
-        flightPitch * airWeight;
+        flightPitch * airWeight +
+        0.08 * (1 - game.launchProgress) * (1 - airWeight) * blend;
     this.torso.rotation.z =
       Math.sin(pose.phase) * 0.055 * runWeight - pose.slide * 0.07;
     this.torso.scaling.set(
@@ -1183,7 +1192,7 @@ export class ForestScene {
       1,
     );
     this.head.rotation.y = opening
-      ? Math.sin(this.time * 0.7) * 0.12
+      ? Math.sin(this.time * 0.7) * 0.12 * (1 - prepare)
       : -pose.turn * 0.17;
     this.head.rotation.x = pose.slide * 0.33 - runWeight * 0.08;
     this.backpack.position.z = -0.33 + pose.slide * 0.13;
@@ -1191,7 +1200,7 @@ export class ForestScene {
       Math.sin(pose.phase * 2) * 0.045 * runWeight - pose.slide * 0.1;
     this.backpack.rotation.z = -Math.sin(pose.phase) * 0.025 * runWeight;
     this.scarf.rotation.x =
-      -0.2 + Math.sin(this.time * 13) * (running ? 0.18 : 0.04);
+      -0.2 + Math.sin(this.time * 13) * (0.04 + runWeight * 0.14);
     this.scarf.rotation.z = Math.sin(this.time * 8) * 0.12;
     for (const leg of this.legs) {
       const stride = Math.sin(pose.phase + (leg.side > 0 ? Math.PI : 0));
@@ -1219,7 +1228,8 @@ export class ForestScene {
             runWeight +
           jumpKnee * airWeight +
           slideKnee * pose.slide +
-          pose.landing * 1.1 * blend;
+          pose.landing * 1.1 * blend +
+          0.08 * (1 - game.launchProgress) * (1 - airWeight) * blend;
         leg.foot!.rotation.x =
           (-Math.max(0, stride) * 0.45 + Math.max(0, -stride) * 0.12) *
             runWeight +
@@ -1307,31 +1317,25 @@ export class ForestScene {
       );
     this.lastPhase = footfall;
     this.lastLanding = pose.landing;
-    if (!ready && !introducing) {
-      const alive = new Set(game.items.map((item) => item.id));
-      for (const [id, mesh] of this.itemMeshes)
-        if (!alive.has(id)) {
-          mesh.dispose();
-          this.itemMeshes.delete(id);
-        }
-      for (const item of game.items) {
-        let mesh = this.itemMeshes.get(item.id);
-        if (!mesh) {
-          mesh = this.createItem(item);
-          this.itemMeshes.set(item.id, mesh);
-        }
-        mesh.position.z = item.z;
-        if (item.type === "coin") {
-          mesh.rotation.y = this.time * 2.3 + item.id * 0.3;
-          mesh.position.y = item.y + Math.sin(this.time * 3 + item.id) * 0.07;
-        }
+    // Home, countdown and running share these meshes and their item IDs.
+    const alive = new Set(game.items.map((item) => item.id));
+    for (const [id, mesh] of this.itemMeshes)
+      if (!alive.has(id)) {
+        mesh.dispose();
+        this.itemMeshes.delete(id);
+      }
+    for (const item of game.items) {
+      let mesh = this.itemMeshes.get(item.id);
+      if (!mesh) {
+        mesh = this.createItem(item);
+        this.itemMeshes.set(item.id, mesh);
+      }
+      mesh.position.z = item.z;
+      if (item.type === "coin") {
+        mesh.rotation.y = this.time * 2.3 + item.id * 0.3;
+        mesh.position.y = item.y + Math.sin(this.time * 3 + item.id) * 0.07;
       }
     }
-    this.previewItems
-      .filter((item) => item.name === "coin")
-      .forEach((item) => {
-        item.rotation.y = this.time * 1.4;
-      });
     if (running && game.coins > this.lastCoins)
       this.burst(
         new Vector3(game.x, game.y + 1, 0),
@@ -1426,7 +1430,7 @@ export class ForestScene {
     this.camera.fov = damp(
       this.camera.fov,
       (mobile ? 1.02 + cameraProgress * 0.06 : 0.74 + cameraProgress * 0.04) +
-        (running ? (game.speed - 12) * 0.005 : 0),
+        (running ? Math.max(0, game.speed - 12) * 0.005 : 0),
       3,
       dt,
     );

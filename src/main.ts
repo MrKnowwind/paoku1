@@ -84,6 +84,13 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <a class="brand" href="#" data-action="home" data-label="brand">
         <span class="brand-mark">${icon("leaf")}</span>${text("brand", "strong")}
       </a>
+      <section class="hud" id="hud" hidden data-label="score">
+        <div class="hud-main">${text("score", "small")}<strong id="score">0</strong></div>
+        <div class="hud-secondary">
+          <span class="distance-counter" data-label="distance">${icon("route")}<span><b id="distance">0</b><small>m</small></span></span>
+          <span class="coin-counter" data-label="coins">${icon("coin")}<b id="coins">0</b></span>
+        </div>
+      </section>
       <div class="header-actions">
         <button class="icon-button pause-button" data-action="pause" data-label="pause" hidden>${icon("pause")}</button>
         <button class="icon-button" id="sound-toggle" data-action="sound" data-label="sound" aria-pressed="${sound}">${icon(sound ? "sound" : "mute")}</button>
@@ -98,15 +105,11 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         <button class="primary-button start-button" data-action="start" disabled>${icon("play")}${text("start")}</button>
         <div class="best-record">${icon("trophy")}${text("best", "small")}<strong id="home-best">${n(best)} <span>${t("bestUnit")}</span></strong></div>
       </section>
-      <section class="hud" id="hud" hidden data-label="score">
-        <div class="hud-main">${text("score", "small")}<strong id="score">000000</strong></div>
-        <div class="hud-secondary"><span class="distance-counter"><b id="distance">0</b><small> m</small></span><span class="coin-counter">${icon("coin")}<b id="coins">0</b></span></div>
-      </section>
-      <div class="coin-pop" id="coin-pop">+50</div>
       <div class="live-hint" id="live-hint" hidden>${text("liveHint", "span", "keyboard-only")}${text("mobileHint", "span", "touch-only")}</div>
     </main>
     <footer><button class="icon-button help-button" data-action="guide" data-label="howTo">${icon("help")}</button></footer>
   </div>
+  <div class="coin-pop" id="coin-pop" aria-hidden="true"></div>
   <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
   <div id="countdown" class="countdown" hidden aria-live="polite" aria-atomic="true"></div>
   <div class="loader" id="loader"><div class="loader-leaf">${icon("leaf")}</div>${text("loading")}</div>
@@ -307,7 +310,7 @@ function act(action: string) {
     resumeOnClose = false;
     resultDelay = 0;
     document.body.classList.remove("crashed");
-    game.mode = "ready";
+    game.returnHome();
     syncView();
     localize();
   }
@@ -475,6 +478,7 @@ try {
   );
   let previous = performance.now();
   let lastCoins = 0;
+  const rewards = document.querySelector<HTMLElement>("#coin-pop")!;
   world.scene.executeWhenReady(() => {
     loaded = true;
     document.querySelector("#loader")!.classList.add("finished");
@@ -504,14 +508,24 @@ try {
     world!.update(game, dt);
     if (game.coins > lastCoins) {
       beep("coin");
-      const pop = document.querySelector<HTMLElement>("#coin-pop")!;
-      pop.classList.remove("pop");
-      void pop.offsetWidth;
-      pop.classList.add("pop");
+      const reward = document.createElement("span");
+      reward.className = "coin-reward";
+      reward.textContent = `+${n((game.coins - lastCoins) * 50)}`;
+      rewards.append(reward);
+      reward.addEventListener("animationend", () => reward.remove(), {
+        once: true,
+      });
       const counter = document.querySelector<HTMLElement>(".coin-counter")!;
       counter.classList.remove("pulse");
       void counter.offsetWidth;
       counter.classList.add("pulse");
+    }
+    if (game.mode !== "running" || activeDialog) rewards.replaceChildren();
+    if (rewards.childElementCount) {
+      const anchor = world!.getRewardAnchor();
+      rewards.style.left = `${anchor.x}px`;
+      rewards.style.top = `${anchor.y}px`;
+      rewards.style.visibility = anchor.visible ? "visible" : "hidden";
     }
     lastCoins = game.coins;
     document.querySelector("#score")!.textContent = n(game.score);
