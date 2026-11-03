@@ -108,8 +108,8 @@ test("route boundaries, dark tunnel interiors and gap approach buffers use one p
   assert.equal(sectionAt(599.9).biome, "forest");
   assert.equal(sectionAt(600).biome, "tunnel");
   assert.equal(sectionAt(660).biome, "canyon");
-  assert.equal(sectionAt(1260).biome, "tunnel");
-  assert.equal(sectionAt(1320).biome, "forest");
+  assert.equal(sectionAt(1260).biome, "beach");
+  assert.equal(sectionAt(1320).biome, "beach");
   assert.equal(tunnelDarkness(630), 1);
   assert.equal(tunnelDarkness(600), 0);
   assert.ok(tunnelDarkness(605) > 0 && tunnelDarkness(605) < 1);
@@ -466,4 +466,59 @@ test("failed consumption leaves the booster and game state intact", () => {
   assert.equal(economy.state.boosters, 1);
   assert.equal(game.boosting, false);
   assert.equal(game.boostCooldown, 0);
+});
+
+test("water grid clamps heights and freezes dynamic hazards while paused", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.start(); game.distance = 1500;
+  assert.equal(game.swimming, true);
+  game.jump(); game.jump(); game.jump();
+  assert.equal(game.waterLevel, 2);
+  assert.equal(game.y, 0);
+  const fish = game.addItem("fish", 1, 20, -2.05);
+  const before = game.waterBounds(fish);
+  game.pause(); game.update(4);
+  assert.deepEqual(game.waterBounds(fish), before);
+  game.resume(); game.update(0.1);
+  assert.notEqual(game.waterBounds(fish).y, before.y);
+  assert.ok(game.waterY > -3 && game.waterY < -1);
+  game.slide(); game.slide(); game.slide();
+  assert.equal(game.waterLevel, 0);
+});
+
+test("parallel water coins collect locally, then individually with magnet", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.start(); game.distance = 1500;
+  const local = game.addItem("coin", 0, 1, -2.05);
+  const side = game.addItem("coin", 1, 1, -2.05);
+  const upper = game.addItem("coin", 0, 1, -0.05);
+  assert.equal(new Set([local.id, side.id, upper.id]).size, 3);
+  game.update(0.07); assert.equal(game.coins, 1);
+  game.magnetTime = 10; game.update(0.6);
+  assert.equal(game.coins, 3);
+});
+
+test("water generation leaves a continuous middle column with unique IDs", () => {
+  const game = new RunnerGame({random: () => 0.4});
+  game.start(); game.distance = 1450; game.update(0.01);
+  const waterItems = game.items.filter(i => sectionAt(i.worldZ).biome === "water");
+  assert.ok(waterItems.some(i => i.type === "coin"));
+  assert.equal(new Set(game.items.map(i => i.id)).size, game.items.length);
+  for (const item of waterItems.filter(i => ["bubble", "coral", "volcano", "fish"].includes(i.type))) {
+    const b = game.waterBounds(item);
+    assert.ok(Math.abs(b.x) - b.rx > 0.95);
+  }
+});
+
+test("water rewind restores dynamic time and clears aquatic hazards", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.start(); game.distance = 1500; game.update(3.2);
+  const clock = game.worldTime;
+  game.addItem("bubble", 0, 1, -2.05); game.update(0.1);
+  assert.equal(game.mode, "over");
+  assert.equal(game.useHourglass(() => true), true);
+  game.update(CONFIG.rewindDuration + 0.01);
+  assert.equal(game.mode, "running");
+  assert.ok(game.worldTime < clock);
+  assert.ok(!game.items.some(i => i.type === "bubble"));
 });

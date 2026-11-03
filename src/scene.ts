@@ -1163,6 +1163,42 @@ export class ForestScene {
   }
 
   private createItem(item: TrackItem) {
+    if (["bubble", "coral", "volcano", "fish"].includes(item.type)) {
+      const root = new TransformNode(item.type, this.scene);
+      if (item.type === "bubble") {
+        const bubble = CreateSphere("hazard-bubble", {diameter: 1.3, segments: 20}, this.scene);
+        const mat = this.mat("#9be9fa", true).clone("hazard-bubble-glass")!;
+        mat.alpha = 0.55; bubble.material = mat; bubble.parent = root;
+        const rim = CreateTorus("bubble-rim", {diameter: 1.28, thickness: 0.05}, this.scene);
+        rim.rotation.x = Math.PI / 2; rim.parent = root; rim.material = this.mat("#d5ffff", true);
+      } else if (item.type === "fish") {
+        for (let i = 0; i < 5; i++) {
+          const fish = CreateSphere("school-fish", {diameter: 0.4, segments: 8}, this.scene);
+          fish.scaling.set(0.7, 0.65, 1.8); fish.parent = root;
+          fish.position.set((i % 3 - 1) * 0.5, (Math.floor(i / 3) - 0.5) * 0.4, 0);
+          fish.material = this.mat("#ffb866");
+          const tail = CreateCylinder("fish-tail", {height: 0.3, diameterTop: 0, diameterBottom: 0.3, tessellation: 3}, this.scene);
+          tail.parent = fish; tail.rotation.x = Math.PI / 2; tail.position.z = -0.55; tail.material = fish.material;
+        }
+      } else if (item.type === "volcano") {
+        const body = CreateCylinder("volcano-body", {height: 1.3, diameterTop: 0.5, diameterBottom: 1.3, tessellation: 10}, this.scene);
+        body.parent = root; body.material = this.mat("#655365");
+        const plume = CreateCylinder("thermal-plume", {height: 5.1, diameter: 1.3, tessellation: 12}, this.scene);
+        plume.parent = root; plume.position.y = 1.85; plume.material = this.mat("#ffbb65", true);
+        plume.setEnabled(false);
+      } else {
+        const height = 1.3 + (item.shape ?? 0) * 0.6;
+        const body = CreateSphere("solid-coral-core", {diameter: 1, segments: 10}, this.scene);
+        body.parent = root; body.scaling.set(1.3, height, 1.3); body.material = this.mat("#e389aa");
+        for (const side of [-1, 1]) {
+          const branch = CreateSphere("coral-branch", {diameter: 0.5, segments: 8}, this.scene);
+          branch.parent = root; branch.position.set(side * 0.45, height * 0.15, 0);
+          branch.scaling.set(0.7, 1.3, 1); branch.material = body.material;
+        }
+      }
+      root.position.set(item.lane * 2.5, item.y, item.z);
+      return root;
+    }
     if (item.type === "magnet" || item.type === "shield") {
       const root = new TransformNode(item.type, this.scene);
       const color = item.type === "magnet" ? "#df9b65" : "#8abbd0";
@@ -1189,7 +1225,7 @@ export class ForestScene {
     }
     if (item.type !== "coin") {
       const root = this.props.create(
-        item.type,
+        item.type as "log" | "arch" | "rock",
         item.id,
         sectionAt(item.worldZ).biome === "canyon",
         item.shelf,
@@ -1689,6 +1725,7 @@ export class ForestScene {
       }
       this.mode = game.mode;
     }
+    const waterBefore = this.runner.position.y;
     const pose = this.motion.update(game, dt);
     const scroll = ready || introducing ? 0 : game.distance;
     this.terrainView.update(scroll);
@@ -1718,10 +1755,12 @@ export class ForestScene {
       Color3.FromHexString("#ddc9ad"),
       canyonBlend,
     );
-    const fog = outside.scale(1 - darkness * 0.96);
+    const immersed = game.waterBlend;
+    const fog = Color3.Lerp(outside.scale(1 - darkness * 0.96), Color3.FromHexString("#247f98"), immersed);
+
     this.scene.fogColor = fog;
     this.scene.clearColor = new Color4(fog.r, fog.g, fog.b, 1);
-    this.scene.fogDensity = 0.009 + darkness * 0.012;
+    this.scene.fogDensity = 0.009 + darkness * 0.012 + immersed * 0.008;
     this.sky.intensity = 0.75 * (1 - darkness);
     this.sun.intensity = 0.85 * (1 - darkness);
     this.sky.groundColor = Color3.Lerp(
@@ -1730,7 +1769,7 @@ export class ForestScene {
       canyonBlend,
     );
     this.forestVisible = canyonBlend < 0.5;
-    this.forestBackdrop.setEnabled(canyonBlend < 0.999);
+    this.forestBackdrop.setEnabled(canyonBlend < 0.999 && immersed < 0.01);
     for (const hill of this.forestBackdrop.getChildMeshes())
       hill.visibility = 1 - canyonBlend;
     this.chunks.forEach((root, i) => {
@@ -1781,11 +1820,13 @@ export class ForestScene {
       opening
         ? (REST_X + Math.sin(openingYaw) * exitOffset) * (1 - walkProgress)
         : game.x,
-      opening ? 0 : game.y + Math.abs(pose.turn) * 0.045 * runWeight,
+      opening ? 0 : game.visualWaterY + (game.terrain.biome === "beach" ? Math.sin(game.waterBlend * Math.PI) * 2 : 0) + game.y + Math.abs(pose.turn) * 0.045 * runWeight,
       opening
         ? (REST_Z + Math.cos(openingYaw) * exitOffset) * (1 - walkProgress)
         : 0,
     );
+    if (game.transitioning && running && (waterBefore >= 0 && this.runner.position.y < 0 || waterBefore < 0 && this.runner.position.y >= 0))
+      this.burst(new Vector3(game.x, 0.65, 0), "#c5f8ff", 28, 4, 0.8, 0.16, 3);
     if (opening) this.runner.rotation.y = openingYaw;
     else
       this.runner.rotation.y = damp(
@@ -1802,7 +1843,7 @@ export class ForestScene {
       this.runner.position.x +=
         (game.wallVisualSide * 5.4 - game.x) * game.wallBlend;
       this.runner.position.y +=
-        game.wallY * game.wallBlend + game.boostBlend * 5.5;
+        game.wallY * game.wallBlend + game.boostBlend * 5.5 * (1 - immersed);
       this.runner.rotation.z += game.wallVisualSide * 0.95 * game.wallBlend;
       this.runner.rotation.x -= game.boostBlend * 0.22;
       if (game.lastHit === "gap") this.runner.position.y -= pose.death * 8;
@@ -1924,8 +1965,13 @@ export class ForestScene {
         arm.side * (game.wallBlend * 0.35 + game.boostBlend * 0.25);
     this.updateRunEffects(game, dt);
     this.contact.setEnabled(
-      game.wallBlend < 0.1 && game.boostBlend < 0.1 && game.lastHit !== "gap",
+      immersed < 0.01 && game.wallBlend < 0.1 && game.boostBlend < 0.1 && game.lastHit !== "gap",
     );
+    if (immersed > 0) {
+      this.runner.rotation.x += immersed * (0.9 + Math.sin(game.worldTime * 2) * 0.05);
+      for (const arm of this.arms) arm.upper.rotation.x = Math.sin(game.worldTime * 3 + arm.side) * 0.7 - 1.2;
+      for (const leg of this.legs) leg.upper.rotation.x = Math.sin(game.worldTime * 4 + leg.side * Math.PI) * 0.3;
+    }
     this.contact.position.x = this.runner.position.x;
     this.contact.position.z = this.runner.position.z;
     this.restStop.position.z = REST_Z - scroll;
@@ -1996,6 +2042,16 @@ export class ForestScene {
         this.itemMeshes.set(item.id, mesh);
       }
       mesh.position.z = item.z;
+      if (["bubble", "coral", "volcano", "fish"].includes(item.type)) {
+        const b = game.waterBounds(item);
+        mesh.position.set(b.x, item.type === "volcano" ? item.y : b.y, item.z);
+        if (item.type === "fish") mesh.rotation.x = Math.cos(game.worldTime * 0.65 + item.worldZ) * -0.45;
+        if (item.type === "volcano") {
+          const plume = mesh.getChildMeshes().find(m => m.name === "thermal-plume");
+          plume?.setEnabled(b.eruption || b.warning);
+          if (plume) { plume.scaling.y = b.eruption ? 1 : 0.08; plume.visibility = b.eruption ? 0.8 : 0.5 + Math.sin(game.worldTime * 12) * 0.3; }
+        }
+      }
       if (item.type === "coin") {
         const sourceX =
           item.route === "wall" ? (item.side ?? 1) * 4.95 : item.lane * 2.5;
@@ -2109,7 +2165,7 @@ export class ForestScene {
       3.1 +
         1.3 * cameraProgress +
         game.wallBlend * (1 + game.wallY * 0.7) +
-        game.boostBlend * 2.5,
+        game.boostBlend * 2.5 * (1 - immersed) - immersed * 5.8,
       5,
       dt,
     );
@@ -2126,7 +2182,7 @@ export class ForestScene {
       1.1 -
         cameraProgress * 0.1 +
         game.wallBlend * game.wallY * 0.75 +
-        game.boostBlend * 3.2,
+        game.boostBlend * 3.2 * (1 - immersed) - immersed * 3.0,
       1.5 + 9.0 * cameraProgress,
     );
     Vector3.LerpToRef(

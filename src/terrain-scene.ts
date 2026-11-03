@@ -2,6 +2,8 @@ import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
@@ -20,6 +22,9 @@ const smooth = (value: number) => {
 
 export class TerrainScene {
   private cells = new Map<number, TransformNode>();
+  private sand: StandardMaterial;
+  private water: StandardMaterial;
+  private coral: StandardMaterial;
   private grass: StandardMaterial;
   private trail: StandardMaterial;
   private stone: StandardMaterial;
@@ -45,6 +50,12 @@ export class TerrainScene {
       }
       return mat;
     };
+    this.sand = material("coastal-sand", "#dccb99", "canyon-trail.webp");
+    this.water = material("ocean-surface", "#56bdcf");
+    this.water.alpha = 0.3;
+    this.water.backFaceCulling = false;
+    this.water.emissiveColor.set(0.08, 0.23, 0.26);
+    this.coral = material("reef-decoration", "#c96c82");
     this.grass = material("grass-floor", "#ffffff", "woodland-grass.webp");
     this.trail = material("forest-trail", "#e3dccc", "woodland-trail.webp");
     this.stone = material("canyon-road", "#ffffff", "canyon-trail.webp");
@@ -149,7 +160,9 @@ export class TerrainScene {
         Math.sin(absolute * 0.037 + side) * 2.4 +
         Math.sin(absolute * 0.11) * 0.6;
       for (let row = 0; row <= rows; row++) {
-        const y = -18 + (row / rows) * (crest + 18);
+        const coast = sectionAt(absolute);
+        const taper = coast.biome === "canyon" ? smooth((coast.end - absolute) / 80) : 1;
+        const y = (-18 + (row / rows) * (crest + 18)) * taper;
         // Keep the three playable wall heights close to the collision surface.
         const relief =
           0.07 + smooth((y - 4.5) / 4) * 0.7 + smooth((-y - 1) / 8) * 0.6;
@@ -285,6 +298,37 @@ export class TerrainScene {
     const world = index * 10,
       section = sectionAt(world + 5);
     const root = new TransformNode(`terrain-${index}`, this.scene);
+    if (["beach", "water", "shore"].includes(section.biome)) {
+      const floorY = (d: number) => {
+        const s = sectionAt(d);
+        if (s.biome === "beach") return -7 * smooth((d - s.start) / (s.end - s.start));
+        if (s.biome === "shore") return -7 * (1 - smooth((d - s.start) / 60));
+        return -7;
+      };
+      this.surface("continuous-sandy-seabed", [-70, floorY(world), 0, 70, floorY(world), 0,
+        -70, floorY(world + 10), 10, 70, floorY(world + 10), 10],
+        [0, 2, 1, 1, 2, 3], [0, world / 6, 20, world / 6, 0, (world + 10) / 6, 20, (world + 10) / 6],
+        new Array(16).fill(1), root, this.sand);
+      this.ground(180, 10, 0, 0.65, 5, root, this.water, world);
+      if (section.biome === "water") {
+        for (const side of [-1, 1]) {
+          for (let i = 0; i < 4; i++) {
+            const coral = CreateCylinder("decorative-reef", {height: 1 + i * 0.3, diameterTop: 0.15, diameterBottom: 0.35, tessellation: 7}, this.scene);
+            coral.parent = root; coral.material = this.coral;
+            coral.position.set(side * (7 + i), -6.5 + i * 0.15, 2 + i * 2);
+            coral.rotation.z = side * i * 0.15;
+          }
+        }
+        for (let i = 0; i < 3; i++) {
+          const bubble = CreateSphere("tiny-decorative-bubble", {diameter: 0.08, segments: 6}, this.scene);
+          bubble.parent = root; bubble.material = this.water;
+          bubble.position.set(-5 + i * 5, -5 + i * 2, 5);
+          for (const side of [-1, 1])
+            this.ground(0.025, 8, side * 3.8, -5 + i * 2, 5, root, this.guide, world);
+        }
+      }
+      return root;
+    }
     const gap = gapsNear(world).find(
       (gap) => gap.start < world + 10 && gap.end > world,
     );
@@ -449,6 +493,13 @@ export class TerrainScene {
             }
           }
         }
+      }
+    }
+    if (section.biome === "canyon") {
+      const taper = smooth((section.end - world) / 80);
+      for (const mesh of root.getChildMeshes()) {
+        if (mesh.name.includes("road") || mesh.name === "terrain-surface") continue;
+        mesh.position.y *= taper; mesh.scaling.y *= Math.max(0.03, taper);
       }
     }
     // Rocky shoulders gradually enclose the approach and open beyond the exit.

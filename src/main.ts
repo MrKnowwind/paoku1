@@ -131,7 +131,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <div class="loader" id="loader"><div class="loader-leaf">${icon("leaf")}</div>${text("loading")}</div>
 `;
 
-function beep(kind: "coin" | "jump" | "slide" | "hit" | "start" | "tick") {
+function beep(kind: "coin" | "jump" | "slide" | "hit" | "start" | "tick" | "splash") {
   if (!sound) return;
   try {
     audio ??= new AudioContext();
@@ -140,6 +140,7 @@ function beep(kind: "coin" | "jump" | "slide" | "hit" | "start" | "tick") {
     const gain = audio.createGain();
     const now = audio.currentTime;
     const frequencies = {
+      splash: 150,
       coin: 1046,
       jump: 330,
       slide: 210,
@@ -363,6 +364,7 @@ function showToast(message: string) {
   }, 3200);
 }
 const lessonTitles: Record<LessonId, MessageKey> = {
+  swim: "lessonSwim",
   move: "lessonMove",
   jump: "lessonJump",
   slide: "lessonSlide",
@@ -761,6 +763,7 @@ let gesture: {
 window.addEventListener("pointerdown", (event) => {
   if (
     game.mode !== "running" ||
+    game.transitioning ||
     activeDialog ||
     (event.target as HTMLElement).closest("button,a,dialog")
   )
@@ -838,7 +841,11 @@ try {
     const previousMode = game.mode;
     tutorial.update(game, dt, economy.state.boosters > 0);
     const simulationDt = dt * tutorial.timeScale(game);
+    const transitionBefore = game.transitioning;
+    const swimBefore = game.swimming;
     game.update(simulationDt);
+    if (transitionBefore || game.transitioning) gesture = null;
+    if (swimBefore !== game.swimming) beep("splash");
     if (game.mode !== previousMode) syncView();
     const countdown = document.querySelector<HTMLElement>("#countdown")!;
     const count = game.mode === "intro" && !activeDialog ? game.countdown : "";

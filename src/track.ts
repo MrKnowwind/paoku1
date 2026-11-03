@@ -1,6 +1,6 @@
 import { CONFIG } from "./config.ts";
 
-export type Biome = "forest" | "canyon" | "tunnel";
+export type Biome = "forest" | "canyon" | "tunnel" | "beach" | "water" | "shore";
 export interface TrackSection {
   biome: Biome;
   start: number;
@@ -14,7 +14,7 @@ export interface TrackGap {
   tutorial: boolean;
 }
 export const CYCLE_LENGTH =
-  CONFIG.forestLength + CONFIG.canyonLength + CONFIG.tunnelLength * 2;
+  CONFIG.forestLength + CONFIG.canyonLength + CONFIG.tunnelLength + CONFIG.beachLength * 2 + CONFIG.waterLength;
 
 export function sectionAt(distance: number): TrackSection {
   const d = Math.max(0, distance);
@@ -43,12 +43,13 @@ export function sectionAt(distance: number): TrackSection {
       end: base + canyon + CONFIG.canyonLength,
       cycle,
     };
-  return {
-    biome: "tunnel",
-    start: base + canyon + CONFIG.canyonLength,
-    end: base + CYCLE_LENGTH,
-    cycle,
-  };
+  const coast = base + canyon + CONFIG.canyonLength;
+  if (d < coast + CONFIG.beachLength)
+    return { biome: "beach", start: coast, end: coast + CONFIG.beachLength, cycle };
+  const water = coast + CONFIG.beachLength;
+  if (d < water + CONFIG.waterLength)
+    return { biome: "water", start: water, end: water + CONFIG.waterLength, cycle };
+  return { biome: "shore", start: water + CONFIG.waterLength, end: base + CYCLE_LENGTH, cycle };
 }
 
 export function gapsNear(distance: number): TrackGap[] {
@@ -100,7 +101,8 @@ export function roadSpans(
 export function obstacleAllowed(distance: number): boolean {
   const section = sectionAt(distance);
   return (
-    section.biome !== "tunnel" &&
+    (section.biome === "forest" || section.biome === "canyon" || section.biome === "water") &&
+    (section.biome !== "water" || distance >= section.start + CONFIG.waterSafety && distance < section.end - CONFIG.waterSafety) &&
     distance >= section.start + CONFIG.exitSafety &&
     distance < section.end - CONFIG.exitSafety &&
     !gapsNear(distance).some(
@@ -116,4 +118,20 @@ export function tunnelDarkness(distance: number): number {
     Math.min(1, (distance - section.start) / 12, (section.end - distance) / 12),
   );
   return t * t * (3 - 2 * t);
+}
+
+// The surface is above the nine swimming cells. Entry and exit share a continuous trajectory.
+export function waterBlend(distance: number): number {
+  const s = sectionAt(distance);
+  if (s.biome === "water") return 1;
+  if (s.biome === "beach") return Math.max(0, (distance - (s.end - 24)) / 24);
+  if (s.biome === "shore") return Math.max(0, 1 - (distance - s.start) / 60);
+  return 0;
+}
+export function waterTransition(distance: number): boolean {
+  const s = sectionAt(distance);
+  return s.biome === "beach" && distance > s.end - 24 ||
+    s.biome === "water" && distance < s.start + 20 ||
+    s.biome === "water" && distance > s.end - 40 ||
+    s.biome === "shore" && distance < s.start + 60;
 }

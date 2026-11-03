@@ -8,6 +8,8 @@ import {
   nextGap,
   obstacleAllowed,
   sectionAt,
+  waterBlend,
+  waterTransition,
 } from "./track.ts";
 import type { TrackGap } from "./track.ts";
 export type GameMode =
@@ -31,7 +33,8 @@ export type ItemType =
   | "rock"
   | "magnet"
   | "shield"
-  | "wall-rock";
+  | "wall-rock"
+  | "bubble" | "coral" | "volcano" | "fish";
 export interface TrackItem {
   id: number;
   type: ItemType;
@@ -45,8 +48,12 @@ export interface TrackItem {
   attraction?: number;
   attractionFromZ?: number;
   shelf?: RockShelf;
+  shape?: number;
 }
 interface Snapshot {
+  waterLevel: number;
+  waterY: number;
+  worldTime: number;
   time: number;
   distance: number;
   lane: number;
@@ -67,6 +74,13 @@ interface Snapshot {
 }
 export class RunnerGame {
   mode: GameMode = "ready";
+  waterLevel = 1;
+  waterY = -3;
+  worldTime = 0;
+  get swimming() { return this.terrain.biome === "water"; }
+  get waterBlend() { return waterBlend(this.distance); }
+  get transitioning() { return waterTransition(this.distance); }
+  get visualWaterY() { return this.waterY * this.waterBlend; }
   lane = 0;
   x = 0;
   y = 0;
@@ -97,7 +111,7 @@ export class RunnerGame {
   shattered: TrackItem[] = [];
   private runSerial = 0;
   private idBase = 0;
-  private nextId = 800000000;
+  private nextId = 800000000000;
   private horizontalVelocity = 0;
   private resumeMode: "running" | "intro" = "running";
   private nextRow = 65;
@@ -209,9 +223,12 @@ export class RunnerGame {
     this.introTime = 0;
   }
   start() {
+    this.waterLevel = 1;
+    this.waterY = -3;
+    this.worldTime = 0;
     this.trainingOpening = false;
-    this.idBase = ++this.runSerial * 1000000000;
-    this.nextId = 800000000;
+    this.idBase = ++this.runSerial * 1000000000000;
+    this.nextId = 800000000000;
     this.mode = "running";
     this.lane = this.x = this.y = this.velocity = this.horizontalVelocity = 0;
     this.slideTime = 0;
@@ -252,7 +269,7 @@ export class RunnerGame {
     this.capture();
   }
   move(direction: number) {
-    if (this.mode !== "running" || this.boosting || this.wallSide) return false;
+    if (this.mode !== "running" || this.boosting || this.wallSide || this.transitioning) return false;
     const side = Math.sign(direction);
     const gap = entryAt(this.distance);
     if (this.lane === side && gap && Math.abs(this.x - side * 2.5) < 0.8) {
@@ -289,6 +306,8 @@ export class RunnerGame {
   }
   jump() {
     if (this.mode !== "running" || this.boosting) return false;
+    if (this.transitioning) return false;
+    if (this.swimming) { this.waterLevel = Math.min(2, this.waterLevel + 1); return true; }
     if (this.wallSide) return this.wallHeight(1);
     if (this.y > 0 || this.velocity > 0) return false;
     this.slideTime = 0;
@@ -298,6 +317,8 @@ export class RunnerGame {
   }
   slide() {
     if (this.mode !== "running" || this.boosting) return false;
+    if (this.transitioning) return false;
+    if (this.swimming) { this.waterLevel = Math.max(0, this.waterLevel - 1); return true; }
     if (this.wallSide) return this.wallHeight(-1);
     if (this.y > 0 || this.velocity > 0) {
       if (this.fastFalling) return false;
@@ -406,13 +427,19 @@ export class RunnerGame {
     while (this.nextRow <= this.distance + CONFIG.trackLookahead) {
       const z = this.nextRow;
       const row = Math.round((z - 65) / CONFIG.rowSpacing);
-      const base = 1000 + row * 32;
+      const base = 1000 + row * 128;
       if (obstacleAllowed(z) && (!this.trainingOpening || z >= 90)) {
+        if (sectionAt(z).biome === "water") {
+          this.waterRow(z, row, base);
+          this.nextRow += CONFIG.rowSpacing;
+          continue;
+        }
         const lane = Math.floor(this.hash(row, 1) * 3) - 1;
         const types: ItemType[] = ["log", "arch", "rock"];
         const type = types[Math.floor(this.hash(row, 2) * 3)];
         const shelf = this.shelfFor(type, lane, z, base);
-        this.emit(type, lane, z, 0, base);
+        const empty = this.hash(row, 7) < 0.22;
+        if (!empty) this.emit(type, lane, z, 0, base);
         // Centre shelves span two lanes from their wall; leave coins on the open lane.
         const safeLane = shelf
           ? shelf.laneCount === 1
@@ -421,9 +448,14 @@ export class RunnerGame {
           : lane === 1
             ? 0
             : lane + 1;
-        for (let i = 0; i < 5; i++)
-          if (obstacleAllowed(z - 8 + i * 3.5))
-            this.emit("coin", safeLane, z - 8 + i * 3.5, 0.95, base + 1 + i);
+        const available = [-1, 0, 1].filter(l => empty || (shelf ? !underRockShelf(shelf, l * 2.5) : l !== lane));
+        const roll = this.hash(row, 8);
+        const count = roll < CONFIG.coinSingleRatio ? 1 : roll < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
+        available.sort((a, b) => (a === safeLane ? -1 : b === safeLane ? 1 : a - b));
+        for (const l of available.slice(0, count))
+          for (let i = 0; i < 5; i++)
+            if (obstacleAllowed(z - 8 + i * 3.5))
+              this.emit("coin", l, z - 8 + i * 3.5, 0.95, base + 16 + (l + 1) * 5 + i);
         if (
           this.hash(row, 3) < CONFIG.pickupChance &&
           Array.from(
@@ -459,7 +491,7 @@ export class RunnerGame {
         this.tutorialGaps.add(gap.id);
       const tutorial = this.tutorialGaps.has(gap.id);
       for (const side of [-1, 1]) {
-        const base = 100000000 + gap.id * 1000 + (side > 0 ? 400 : 0);
+        const base = 100000000000 + gap.id * 1000 + (side > 0 ? 400 : 0);
         for (
           let offset = 8, slot = 0;
           offset < gap.end - gap.start - 5;
@@ -478,6 +510,11 @@ export class RunnerGame {
             level,
           );
         }
+        // A second height is offered only in obstacle-free wall sections.
+        if (tutorial)
+          for (let offset = 8, slot = 0; offset < gap.end - gap.start - 5; offset += 6, slot++)
+            this.emit("coin", side, gap.start + offset, CONFIG.wallHeights[2] + 0.95,
+              base + 250 + slot, "wall", 2);
         if (!tutorial)
           for (
             let offset = 22, column = 0;
@@ -499,6 +536,40 @@ export class RunnerGame {
           }
       }
     }
+  }
+  // Middle column remains connected across every row; side hazards never sweep into it.
+  private waterRow(z: number, row: number, base: number) {
+    const side = this.hash(row, 10) < 0.5 ? -1 : 1;
+    const types: ItemType[] = ["bubble", "coral", "volcano", "fish"];
+    const type = types[Math.floor(this.hash(row, 11) * 4)];
+    const level = type === "volcano" ? 0 : Math.floor(this.hash(row, 12) * 3);
+    this.emit(type, side, z, CONFIG.waterHeights[level] + 0.95, base);
+    const hazard = this.items.find(i => i.id === this.idBase + base);
+    if (hazard) hazard.shape = row % 3;
+    const roll = this.hash(row, 8);
+    const count = roll < CONFIG.coinSingleRatio ? 1 : roll < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
+    const routes = [{ lane: 0, level: 1 }, { lane: -side, level: 1 }, { lane: 0, level: row % 2 ? 0 : 2 }];
+    for (const [route, cell] of routes.slice(0, count).entries())
+      for (let i = 0; i < 5; i++)
+        if (obstacleAllowed(z - 8 + i * 3.5))
+          this.emit("coin", cell.lane, z - 8 + i * 3.5, CONFIG.waterHeights[cell.level] + 0.95, base + 16 + route * 5 + i);
+    if (this.hash(row, 3) < CONFIG.pickupChance &&
+        Array.from({length: Math.ceil(CONFIG.pickupMinSpacing / CONFIG.rowSpacing) - 1}, (_, i) => row - i - 1)
+          .every(r => this.hash(r, 3) >= CONFIG.pickupChance))
+      this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", 0, z, -2.05, base + 8);
+  }
+  waterBounds(item: TrackItem) {
+    const phase = ((this.worldTime + item.worldZ * 0.017) % 10 + 10) % 10;
+    const eruption = item.type === "volcano" && phase >= 4 && phase < 6;
+    const warning = item.type === "volcano" && phase >= 2 && phase < 4;
+    const fish = item.type === "fish";
+    return {
+      x: item.lane * 2.5,
+      y: fish ? -2.05 + Math.sin(this.worldTime * 0.65 + item.worldZ) * 1.8 : eruption ? -2.2 : item.y,
+      rx: fish ? 0.8 : 0.65,
+      ry: eruption ? 2.55 : item.type === "coral" ? 0.65 + (item.shape ?? 0) * 0.3 : 0.65,
+      phase, eruption, warning,
+    };
   }
   private rebuildTrack(snapshot?: Snapshot) {
     if (!this.autoSpawn) {
@@ -544,6 +615,12 @@ export class RunnerGame {
     }
   }
   private safeLanding() {
+    if (this.transitioning) return false;
+    if (this.swimming) return !this.items.some(item => {
+      if (!["bubble", "coral", "volcano", "fish"].includes(item.type) || Math.abs(item.z) > 16) return false;
+      const b = this.waterBounds(item);
+      return Math.abs(b.x) < b.rx + 0.5 && Math.abs(this.visualWaterY + 0.95 - b.y) < b.ry + 0.5;
+    });
     return (
       !gapsNear(this.distance).some(
         (gap) =>
@@ -568,6 +645,7 @@ export class RunnerGame {
   }
   private snapshot(): Snapshot {
     return {
+      waterLevel: this.waterLevel, waterY: this.waterY, worldTime: this.worldTime,
       time: this.runClock,
       distance: this.distance,
       lane: this.lane,
@@ -621,6 +699,7 @@ export class RunnerGame {
     return true;
   }
   private restoreMovement(s: Snapshot) {
+    this.waterLevel = s.waterLevel; this.waterY = s.waterY; this.worldTime = s.worldTime;
     this.distance = s.distance;
     this.lane = s.lane;
     this.x = s.x;
@@ -661,7 +740,7 @@ export class RunnerGame {
     this.rebuildTrack(target);
     this.shattered = this.items.filter(
       (item) =>
-        ["log", "arch", "rock", "wall-rock"].includes(item.type) &&
+        ["log", "arch", "rock", "wall-rock", "bubble", "coral", "volcano", "fish"].includes(item.type) &&
         item.worldZ >= this.distance - 2 &&
         item.worldZ <= this.distance + CONFIG.rewindClearDistance,
     );
@@ -688,6 +767,7 @@ export class RunnerGame {
     while (dt > 0 && this.mode === "running") {
       const step = Math.min(dt, 1 / 120);
       this.runClock += step;
+      this.worldTime += step;
       this.launchTime = Math.min(LAUNCH_DURATION, this.launchTime + step);
       this.magnetTime = Math.max(0, this.magnetTime - step);
       this.shieldTime = Math.max(0, this.shieldTime - step);
@@ -695,7 +775,14 @@ export class RunnerGame {
       this.boostCooldown = Math.max(0, this.boostCooldown - step);
       const flying = this.boosting;
       const travel = step * this.speed;
+      const wasSwimming = this.swimming;
       this.distance += travel;
+      if (!wasSwimming && this.swimming) {
+        this.waterLevel = 1; this.waterY = -3; this.lane = 0;
+        this.y = this.velocity = this.slideTime = 0; this.fastFalling = false;
+      }
+      if (this.transitioning) { this.lane = 0; this.waterLevel = 1; }
+      this.waterY += (CONFIG.waterHeights[this.waterLevel] - this.waterY) * (1 - Math.exp(-step * 12));
       this.slideTime = Math.max(0, this.slideTime - step);
       const targetX = this.lane * 2.5;
       const offset = this.x - targetX;
@@ -726,7 +813,7 @@ export class RunnerGame {
           this.y = 0.08;
           this.protectionTime = Math.max(this.protectionTime, 0.6);
         }
-      } else if (!this.boosting) {
+      } else if (!this.boosting && !this.swimming && !this.transitioning) {
         this.velocity -= (this.fastFalling ? 70 : 25) * step;
         this.y = Math.max(0, this.y + this.velocity * step);
         if (this.y === 0) {
@@ -757,6 +844,13 @@ export class RunnerGame {
           this.cleared.has(item.id)
         )
           continue;
+        const aquatic = ["bubble", "coral", "volcano", "fish"].includes(item.type);
+        if (aquatic) {
+          const bounds = this.waterBounds(item);
+          if (Math.abs(item.z) < 1.15 && Math.abs(this.x - bounds.x) < bounds.rx + 0.35 &&
+              Math.abs(this.visualWaterY + 0.95 - bounds.y) < bounds.ry + 0.45) this.collide(item);
+          continue;
+        }
         const wall = item.route === "wall";
         const closeRoute = wall
           ? this.wallSide === item.side &&
@@ -768,7 +862,7 @@ export class RunnerGame {
         const closeHeight =
           wall ||
           Math.abs(
-            this.y + (this.sliding || this.fastFalling ? 0.4 : 0.95) - item.y,
+            this.visualWaterY + this.y + (this.sliding || this.fastFalling ? 0.4 : 0.95) - item.y,
           ) < 0.9;
         if (item.type === "coin") {
           if (item.attraction !== undefined) {

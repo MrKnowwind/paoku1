@@ -7,6 +7,7 @@ const onPath = (item: TrackItem, x: number) =>
     : Math.abs(item.lane * 2.5 - x) < 1.1;
 
 export type LessonId =
+  | "swim"
   | "move"
   | "jump"
   | "slide"
@@ -80,7 +81,7 @@ export class Tutorial {
   action(direction: Direction, game: RunnerGame, accepted: boolean) {
     if (!this.active) return;
     const id = this.active.id;
-    if (["coin", "magnet", "shield"].includes(id)) {
+    if (["swim", "coin", "magnet", "shield"].includes(id)) {
       this.complete(id);
       return;
     }
@@ -136,6 +137,10 @@ export class Tutorial {
     if (this.cooldown > 0 || game.boosting) return;
     if (this.needsBasics && !this.knows("move") && game.distance < 6) {
       this.show({ id: "move", gesture: "left" });
+      return;
+    }
+    if (game.swimming && !game.transitioning && this.canTeach("swim", `swim/${game.terrain.cycle}`)) {
+      this.show({ id: "swim", gesture: "up", encounter: `swim/${game.terrain.cycle}` });
       return;
     }
     const gapKey = String(game.gapWarning?.id ?? game.distance);
