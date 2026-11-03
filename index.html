@@ -13,9 +13,27 @@
     />
     <link rel="icon" type="image/webp" href="/art/icons-v3/leaf.webp" />
     <title>森野疾行 · Wild Dash</title>
+    <style>
+      html,body{margin:0;background:#e6ecdf}.startup{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;box-sizing:border-box;font:14px/1.6 "Microsoft YaHei",system-ui,sans-serif;color:#304c3c;background:radial-gradient(ellipse at 30% 12%,#fbf7e5 0,transparent 55%),linear-gradient(155deg,#e5eddf,#c5d7c1);transition:opacity .5s,visibility .5s;touch-action:manipulation}.startup[hidden]{display:none}.startup.is-finished{opacity:0;visibility:hidden;pointer-events:none}.startup-card{position:relative;width:min(430px,100%);box-sizing:border-box;padding:38px 30px 30px;border:1px solid #fff9;border-radius:28px;background:#faf8efed;box-shadow:0 28px 80px #284d3c1b;text-align:center;overflow:hidden}.startup-hills{height:80px;position:relative;overflow:hidden;margin:-10px -30px 24px;background:linear-gradient(180deg,#edf3e8,#d6e5cf)}.startup-hills:before,.startup-hills:after{content:"";position:absolute;bottom:-55px;left:-15%;width:85%;height:110px;border-radius:50%;background:#98b69b;transform:rotate(8deg)}.startup-hills:after{left:40%;bottom:-60px;background:#688d73;transform:rotate(-10deg)}.startup-mark{position:absolute;z-index:1;left:calc(50% - 16px);top:10px;width:32px;height:42px;background:#436e51;border-radius:70% 15% 70% 15%;transform:rotate(28deg);box-shadow:8px 5px 0 #d2b675}.startup h1{font-size:27px;letter-spacing:2px;margin:0 0 4px}.startup-subtitle{margin:0;color:#85937d;font-size:12px}.startup-progress-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:28px 0 10px;text-align:left}.startup-status{font-size:12px;font-weight:600;max-width:80%}.startup-percent{font:600 22px/1 system-ui;color:#48634b}.startup-track{height:12px;border:1px solid #c8d4bf;border-radius:20px;background:#e5ebdf;padding:3px;box-sizing:content-box;overflow:hidden}.startup-fill{height:100%;width:var(--progress,0%);border-radius:20px;background:linear-gradient(90deg,#527c59,#9bac71,#d4b367);box-shadow:0 0 12px #b8c48b66;transition:width .25s ease-out}.startup-detail{min-height:20px;margin:11px 0 23px;font-size:11px;color:#86917d;font-variant-numeric:tabular-nums}.startup-steps{display:flex;justify-content:space-between;gap:8px;padding-top:20px;border-top:1px solid #dde3d4;color:#9aa28f;font-size:11px}.startup-step:before{content:"";display:block;width:7px;height:7px;margin:0 auto 7px;border:1px solid #b8c5ac;border-radius:50%;background:#e8eedf}.startup-step.is-done{color:#527957}.startup-step.is-done:before{background:#6a8e65;border-color:#6a8e65}.startup-actions{display:grid;gap:10px;margin-top:22px}.startup-actions[hidden]{display:none}.startup button{font:inherit;padding:12px 18px;border:0;border-radius:12px;background:#486b50;color:#fff;cursor:pointer}.startup button+button{color:#48634b;background:#e9ecdf}.startup.has-error .startup-status{color:#a26443}.startup.has-error .startup-fill{background:#b29167}@media(max-width:420px){.startup-card{padding:30px 22px 24px}.startup h1{font-size:24px}.startup-progress-head{gap:10px}}@media(prefers-reduced-motion:reduce){.startup,.startup-fill{transition:none}}
+    </style>
   </head>
   <body>
+    <section class="startup" id="startup-loader" aria-label="加载游戏">
+      <div class="startup-card">
+        <div class="startup-hills" aria-hidden="true"><span class="startup-mark"></span></div>
+        <h1 data-startup="title">准备出发</h1>
+        <p class="startup-subtitle" data-startup="subtitle">下一段风景，正在靠近</p>
+        <div class="startup-progress-head"><span class="startup-status" id="startup-status" role="status">下载游戏文件</span><b class="startup-percent" id="startup-percent">0%</b></div>
+        <div class="startup-track" role="progressbar" aria-label="加载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="startup-fill"></div></div>
+        <p class="startup-detail" id="startup-detail" data-startup="hint">首次进入需要下载资源，下次会更快</p>
+        <div class="startup-steps"><span class="startup-step" data-startup="step1">游戏文件</span><span class="startup-step" data-startup="step2">森林场景</span><span class="startup-step" data-startup="step3">开始奔跑</span></div>
+        <div class="startup-actions" id="startup-actions" hidden><button id="startup-retry" data-startup="retry">重试加载</button><button id="startup-lite" data-startup="lite">低画质重试</button></div>
+        <div class="startup-actions" id="startup-fallback" hidden><p>游戏文件未能启动，请检查网络，或使用新版 Chrome / Safari 重试。</p><button onclick="location.reload()">重新加载 / Reload</button></div>
+        <noscript>请启用 JavaScript 后重新加载。 / Enable JavaScript to play.</noscript>
+      </div>
+    </section>
     <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <script>setTimeout(function(){if(!window.__wildDashBooted){document.getElementById('startup-fallback').hidden=false;document.getElementById('startup-status').textContent='加载未完成 / Loading interrupted';}},20000);</script>
+    <script type="module" src="/src/boot.ts"></script>
   </body>
 </html>

@@ -32,7 +32,7 @@ export class CoastSurface {
         }`,
     }, {attributes: ["position", "normal", "uv", "color"],
       uniforms: ["world", "viewProjection", "scroll", "eye", "fogColor", "fogDensity"], samplers: ["sand", "trail", "stone", "grass"]});
-    for (const [name, file] of Object.entries({sand: "beach-sand-v2.png", trail: "woodland-trail.webp", stone: "canyon-trail.webp", grass: "woodland-grass.webp"})) {
+    for (const [name, file] of Object.entries({sand: "beach-sand-v2.webp", trail: "woodland-trail.webp", stone: "canyon-trail.webp", grass: "woodland-grass.webp"})) {
       const texture = new Texture(import.meta.env.BASE_URL + "art/" + file, scene);
       texture.anisotropicFilteringLevel = 8;
       if (name === "sand") texture.wrapU = texture.wrapV = Texture.MIRROR_ADDRESSMODE;

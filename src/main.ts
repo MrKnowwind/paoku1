@@ -1,3 +1,4 @@
+import { reportLoading } from "./loading.ts";
 import "./style.css";
 import { RunnerGame } from "./game.ts";
 import { ForestScene } from "./scene.ts";
@@ -30,7 +31,7 @@ const save = (key: string, value: string) => {
 let language = resolveLanguage(read("language"));
 let numberFormatter = new Intl.NumberFormat(languageTags[language]);
 let sound = read("sound") !== "false";
-let quality = read("quality") !== "low";
+let quality = new URLSearchParams(location.search).get("quality") !== "low" && read("quality") !== "low";
 let best = Math.max(0, Number(read("best")) || 0);
 let newBest = false;
 let resultDelay = 0;
@@ -128,7 +129,6 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   </div>
   <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
   <div id="countdown" class="countdown" hidden aria-live="polite" aria-atomic="true"></div>
-  <div class="loader" id="loader"><div class="loader-leaf">${icon("leaf")}</div>${text("loading")}</div>
 `;
 
 function beep(kind: "coin" | "jump" | "slide" | "hit" | "start" | "tick" | "splash") {
@@ -813,94 +813,110 @@ window.addEventListener("blur", () => {
 
 localize();
 syncView();
+reportLoading({phase: "scene", percent: 68});
+await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 try {
   world = new ForestScene(
     document.querySelector<HTMLCanvasElement>("#world")!,
     quality,
+    percent => reportLoading({phase: "scene", percent}),
   );
   let previous = performance.now();
   let lastCoins = 0;
   const rewards = document.querySelector<HTMLElement>("#coin-pop")!;
-  world.scene.executeWhenReady(() => {
-    loaded = true;
-    document.querySelector("#loader")!.classList.add("finished");
-    document.querySelector<HTMLButtonElement>(
-      '[data-action="start"]',
-    )!.disabled = false;
-  });
+  const loadingStarted = performance.now();
+  let textureFallback = false;
+  let maximumPending = Math.max(1, world.scene.getWaitingItemsCount());
+  reportLoading({phase: "textures", percent: 83});
   world.engine.runRenderLoop(() => {
-    const now = performance.now(),
-      dt = Math.min((now - previous) / 1000, 0.06);
-    previous = now;
-    const wasRunning = game.mode === "running";
-    const previousMode = game.mode;
-    tutorial.update(game, dt, economy.state.boosters > 0);
-    const simulationDt = dt * tutorial.timeScale(game);
-    const transitionBefore = game.transitioning;
-    const swimBefore = game.swimming;
-    game.update(simulationDt);
-    if (transitionBefore || game.transitioning) gesture = null;
-    if (swimBefore !== game.swimming) beep("splash");
-    if (game.mode !== previousMode) syncView();
-    const countdown = document.querySelector<HTMLElement>("#countdown")!;
-    const count = game.mode === "intro" && !activeDialog ? game.countdown : "";
-    if (countdown.textContent !== count) {
-      countdown.textContent = count;
-      countdown.hidden = !count;
-      countdown.classList.toggle("go", count === "GO!");
-      countdown.classList.remove("beat");
-      void countdown.offsetWidth;
-      countdown.classList.add("beat");
-      if (count) beep(count === "GO!" ? "start" : "tick");
-    }
-    world!.update(game, simulationDt, tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"));
-    updateTutorialUi();
-    if (game.coins > lastCoins) {
-      beep("coin");
-      const reward = document.createElement("span");
-      reward.className = "coin-reward";
-      reward.textContent = `+${n((game.coins - lastCoins) * 50)}`;
-      rewards.append(reward);
-      reward.addEventListener("animationend", () => reward.remove(), {
-        once: true,
-      });
-      const counter = document.querySelector<HTMLElement>(".coin-counter")!;
-      counter.classList.remove("pulse");
-      void counter.offsetWidth;
-      counter.classList.add("pulse");
-    }
-    if (game.mode !== "running" || activeDialog) rewards.replaceChildren();
-    if (rewards.childElementCount) {
-      const anchor = world!.getRewardAnchor();
-      rewards.style.left = `${anchor.x}px`;
-      rewards.style.top = `${anchor.y}px`;
-      rewards.style.visibility = anchor.visible ? "visible" : "hidden";
-    }
-    updateFeatureUi();
-    lastCoins = game.coins;
-    document.querySelector("#score")!.textContent = n(game.score);
-    document.querySelector("#distance")!.textContent = n(game.distance);
-    document.querySelector("#coins")!.textContent = n(game.coins);
-    document
-      .querySelector<HTMLElement>("#live-hint")!
-      .classList.toggle("faded", game.distance > 48);
-    if (wasRunning && game.mode === "over") {
-      beep("hit");
-      resultDelay = 0.65;
-      document.body.classList.add("crashed");
-    }
-    if (game.mode === "over" && !activeDialog) {
-      resultDelay -= dt;
-      if (resultDelay <= 0) openDialog(runFinalized ? "over" : "revive");
+    try {
+      const now = performance.now(),
+        dt = Math.min((now - previous) / 1000, 0.06);
+      if (!loaded && !textureFallback && now - loadingStarted > 8000) {
+        world!.useTextureFallback(); textureFallback = true;
+      }
+      previous = now;
+      const wasRunning = game.mode === "running";
+      const previousMode = game.mode;
+      tutorial.update(game, dt, economy.state.boosters > 0);
+      const simulationDt = dt * tutorial.timeScale(game);
+      const transitionBefore = game.transitioning;
+      const swimBefore = game.swimming;
+      game.update(simulationDt);
+      if (transitionBefore || game.transitioning) gesture = null;
+      if (swimBefore !== game.swimming) beep("splash");
+      if (game.mode !== previousMode) syncView();
+      const countdown = document.querySelector<HTMLElement>("#countdown")!;
+      const count = game.mode === "intro" && !activeDialog ? game.countdown : "";
+      if (countdown.textContent !== count) {
+        countdown.textContent = count;
+        countdown.hidden = !count;
+        countdown.classList.toggle("go", count === "GO!");
+        countdown.classList.remove("beat");
+        void countdown.offsetWidth;
+        countdown.classList.add("beat");
+        if (count) beep(count === "GO!" ? "start" : "tick");
+      }
+      world!.update(game, simulationDt, tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"));
+      if (!loaded) {
+        const pending = world!.scene.getWaitingItemsCount();
+        maximumPending = Math.max(maximumPending, pending);
+        reportLoading({phase: "textures", percent: 83 + (1 - pending / maximumPending) * 12});
+        // A drawn, ready character is required. Slow decorative textures may finish in the background.
+        if (world!.isPlayable() && (pending === 0 || now - loadingStarted > 8000)) {
+          loaded = true;
+          reportLoading({phase: "ready", percent: 100});
+          document.querySelector<HTMLButtonElement>('[data-action="start"]')!.disabled = false;
+        }
+      }
+      updateTutorialUi();
+      if (game.coins > lastCoins) {
+        beep("coin");
+        const reward = document.createElement("span");
+        reward.className = "coin-reward";
+        reward.textContent = `+${n((game.coins - lastCoins) * 50)}`;
+        rewards.append(reward);
+        reward.addEventListener("animationend", () => reward.remove(), {
+          once: true,
+        });
+        const counter = document.querySelector<HTMLElement>(".coin-counter")!;
+        counter.classList.remove("pulse");
+        void counter.offsetWidth;
+        counter.classList.add("pulse");
+      }
+      if (game.mode !== "running" || activeDialog) rewards.replaceChildren();
+      if (rewards.childElementCount) {
+        const anchor = world!.getRewardAnchor();
+        rewards.style.left = `${anchor.x}px`;
+        rewards.style.top = `${anchor.y}px`;
+        rewards.style.visibility = anchor.visible ? "visible" : "hidden";
+      }
+      updateFeatureUi();
+      lastCoins = game.coins;
+      document.querySelector("#score")!.textContent = n(game.score);
+      document.querySelector("#distance")!.textContent = n(game.distance);
+      document.querySelector("#coins")!.textContent = n(game.coins);
+      document
+        .querySelector<HTMLElement>("#live-hint")!
+        .classList.toggle("faded", game.distance > 48);
+      if (wasRunning && game.mode === "over") {
+        beep("hit");
+        resultDelay = 0.65;
+        document.body.classList.add("crashed");
+      }
+      if (game.mode === "over" && !activeDialog) {
+        resultDelay -= dt;
+        if (resultDelay <= 0) openDialog(runFinalized ? "over" : "revive");
+      }
+    } catch (error) {
+      console.error("3D rendering failed", error);
+      world?.engine.stopRenderLoop();
+      reportLoading({phase: "error", percent: 95, reason: "graphics"});
     }
   });
 } catch (error) {
   console.error("3D scene initialization failed", error);
-  document.querySelector("#loader")!.innerHTML =
-    `${icon("leaf")}<h2>${t("unsupported")}</h2><p>${t("unsupportedHint")}</p><button class="primary-button" id="reload">${t("retry")}</button>`;
-  document
-    .querySelector("#reload")!
-    .addEventListener("click", () => location.reload());
+  reportLoading({phase: "error", percent: 68, reason: "graphics"});
 }
 
 window.addEventListener("pagehide", () => {

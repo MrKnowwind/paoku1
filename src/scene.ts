@@ -122,7 +122,7 @@ export class ForestScene {
   private mode = "";
   private high = true;
 
-  constructor(canvas: HTMLCanvasElement, highQuality: boolean) {
+  constructor(canvas: HTMLCanvasElement, highQuality: boolean, progress: (percent: number) => void = () => {}) {
     this.engine = new Engine(canvas, true, { stencil: false }, false);
     this.scene = new Scene(this.engine);
     this.scene.clearColor = Color4.FromHexString("#d9e9dbff");
@@ -165,7 +165,9 @@ export class ForestScene {
       this.shadows.addShadowCaster(mesh);
     this.createSoftTexture();
     this.createWorld();
+    progress(75);
     this.createRunner();
+    progress(81);
     for (const mesh of this.runner.getChildMeshes())
       this.shadows.addShadowCaster(mesh);
     this.contact = CreateGround(
@@ -192,6 +194,25 @@ export class ForestScene {
     this.setQuality(highQuality);
     window.addEventListener("resize", () => this.resize());
     this.resize();
+  }
+
+  isPlayable() {
+    return this.scene.getActiveMeshes().length > 0 &&
+      this.runner.getChildMeshes().every(mesh => mesh.isReady());
+  }
+
+  useTextureFallback() {
+    for (const material of this.scene.materials) {
+      if (!(material instanceof StandardMaterial)) continue;
+      const texture = material.diffuseTexture;
+      if (!(texture instanceof Texture) || texture.isReady() || !texture.url?.includes("/art/") || texture.url.includes("icons-")) continue;
+      const color = material.diffuseColor.clone();
+      material.diffuseTexture = null;
+      material.diffuseColor = Color3.FromHexString(texture.url.includes("grass") ? "#78946a" : "#c5af8d");
+      texture.onLoadObservable.addOnce(() => {
+        material.diffuseTexture = texture; material.diffuseColor = color;
+      });
+    }
   }
 
   private mat(color: string, glow = false) {

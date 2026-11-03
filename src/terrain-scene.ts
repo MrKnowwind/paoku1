@@ -32,8 +32,11 @@ const smooth = (value: number) => {
 
 export class TerrainScene {
   private cells = new Map<number, TransformNode>();
-  private sand: ShaderMaterial;
-  private coastSurface: CoastSurface;
+  private coastSurface?: CoastSurface;
+  private get sand(): ShaderMaterial {
+    this.coastSurface ??= new CoastSurface(this.scene);
+    return this.coastSurface.material;
+  }
   private water: OceanWater;
   private ocean: OceanProps;
   private grass: StandardMaterial;
@@ -58,12 +61,11 @@ export class TerrainScene {
           scene,
         );
         mat.diffuseTexture.anisotropicFilteringLevel = 8;
+        if (mat.diffuseTexture instanceof Texture) mat.diffuseTexture.isBlocking = false;
       }
       return mat;
     };
     this.ocean = new OceanProps(scene);
-    this.coastSurface = new CoastSurface(scene);
-    this.sand = this.coastSurface.material;
     this.water = new OceanWater(scene);
 
     this.grass = material("grass-floor", "#ffffff", "woodland-grass.webp");
@@ -149,7 +151,7 @@ export class TerrainScene {
       uv[i] = (uv[i] * width + x - width / 2) / tile;
       uv[i + 1] = (uv[i + 1] * length + world) / tile;
     }
-    if (material === this.sand) {
+    if (material === this.coastSurface?.material) {
       const vertices = mesh.getVerticesData(VertexBuffer.PositionKind)!;
       const weights: number[] = [];
       for (let i = 0; i < vertices.length; i += 3) {
@@ -644,7 +646,6 @@ export class TerrainScene {
   }
   update(distance: number, time = 0) {
     this.water.update(distance, time);
-    this.coastSurface.update(distance);
     const first = Math.floor((distance - 50) / 10),
       last = Math.ceil((distance + 180) / 10);
     for (const [index, root] of this.cells)
@@ -666,5 +667,6 @@ export class TerrainScene {
       }
       root.position.z = index * 10 - distance;
     }
+    this.coastSurface?.update(distance);
   }
 }

@@ -851,47 +851,6 @@ dialog[data-view="pause"] > .primary-button {
 .countdown.beat {
   animation: countdown-beat 0.55s both;
 }
-.loader {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  background: #dfe6d7;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 17px;
-  font-size: 11px;
-  letter-spacing: 1px;
-  color: #728467;
-  transition:
-    opacity 0.4s,
-    visibility 0.4s;
-}
-.loader.finished {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-.loader-leaf {
-  width: 46px;
-  height: 46px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #aebd9f;
-  border-radius: 9px;
-  animation: breathe 1.5s ease-in-out infinite;
-}
-.loader-leaf .icon {
-  width: 29px;
-  height: 29px;
-}
-.loader p {
-  font-size: 12px;
-  line-height: 1.8;
-  text-align: center;
-  max-width: 330px;
-}
 @keyframes intro-in {
   from {
     opacity: 0;
