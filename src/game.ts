@@ -9,7 +9,12 @@ import {
 } from "./track.ts";
 import type { TrackGap } from "./track.ts";
 export type GameMode =
-  "ready" | "intro" | "running" | "paused" | "over" | "rewinding";
+  | "ready"
+  | "intro"
+  | "running"
+  | "paused"
+  | "over"
+  | "rewinding";
 export const INTRO_TIMING = { stand: 1.15, walk: 3, countdown: 3, go: 0.5 };
 const INTRO_DURATION = Object.values(INTRO_TIMING).reduce(
   (sum, value) => sum + value,
@@ -18,7 +23,13 @@ const INTRO_DURATION = Object.values(INTRO_TIMING).reduce(
 const LAUNCH_DURATION = 0.9;
 const SLIDE_DURATION = 0.75;
 export type ItemType =
-  "coin" | "log" | "arch" | "rock" | "magnet" | "shield" | "wall-rock";
+  | "coin"
+  | "log"
+  | "arch"
+  | "rock"
+  | "magnet"
+  | "shield"
+  | "wall-rock";
 export interface TrackItem {
   id: number;
   type: ItemType;
@@ -29,6 +40,8 @@ export interface TrackItem {
   route?: "ground" | "wall";
   side?: number;
   level?: number;
+  attraction?: number;
+  attractionFromZ?: number;
 }
 interface Snapshot {
   time: number;
@@ -63,7 +76,7 @@ export class RunnerGame {
   lastHit: ItemType | "gap" | null = null;
   items: TrackItem[] = [];
   magnetTime = 0;
-  shield = false;
+  shieldTime = 0;
   protectionTime = 0;
   boostCooldown = 0;
   boostRemaining = 0;
@@ -87,6 +100,7 @@ export class RunnerGame {
   private nextRow = 65;
   private seed = 1;
   private autoSpawn: boolean;
+  private trainingOpening = false;
   private random: () => number;
   private onCoins: (count: number) => void;
   private launchTime = LAUNCH_DURATION;
@@ -136,6 +150,15 @@ export class RunnerGame {
   get boosting() {
     return this.boostActive;
   }
+  get shield() {
+    return this.shieldTime > 0;
+  }
+  set shield(active: boolean) {
+    this.shieldTime = active ? CONFIG.shieldDuration : 0;
+  }
+  get rewindRemaining() {
+    return Math.max(0, CONFIG.rewindDuration - this.rewindElapsed);
+  }
   get sliding() {
     return this.slideTime > 0;
   }
@@ -183,6 +206,7 @@ export class RunnerGame {
     this.introTime = 0;
   }
   start() {
+    this.trainingOpening = false;
     this.idBase = ++this.runSerial * 1000000000;
     this.nextId = 800000000;
     this.mode = "running";
@@ -343,16 +367,29 @@ export class RunnerGame {
     });
   }
   private openingTrack() {
+    if (this.trainingOpening) {
+      for (let z = 7; z <= 19; z += 4) this.emit("coin", -1, z, 1.1, z);
+      this.emit("log", -1, 24, 0, 100);
+      this.emit("arch", -1, 42, 0, 101);
+      this.emit("rock", -1, 62, 0, 102);
+      for (let z = 67; z <= 83; z += 4) this.emit("coin", 0, z, 1.1, z);
+      return;
+    }
     for (let z = 7; z <= 39; z += 4) this.emit("coin", 0, z, 1.1, z);
     this.emit("log", 1, 24, 0, 100);
     this.emit("arch", -1, 39, 0, 101);
+  }
+  prepareTutorialOpening() {
+    this.trainingOpening = true;
+    this.items = this.items.filter((item) => item.worldZ >= 90);
+    if (this.autoSpawn) this.openingTrack();
   }
   private fillTrack() {
     while (this.nextRow <= this.distance + CONFIG.trackLookahead) {
       const z = this.nextRow;
       const row = Math.round((z - 65) / CONFIG.rowSpacing);
       const base = 1000 + row * 32;
-      if (obstacleAllowed(z)) {
+      if (obstacleAllowed(z) && (!this.trainingOpening || z >= 90)) {
         const lane = Math.floor(this.hash(row, 1) * 3) - 1;
         const types: ItemType[] = ["log", "arch", "rock"];
         this.emit(types[Math.floor(this.hash(row, 2) * 3)], lane, z, 0, base);
@@ -361,7 +398,19 @@ export class RunnerGame {
         for (let i = 0; i < 5; i++)
           if (obstacleAllowed(z - 8 + i * 3.5))
             this.emit("coin", safeLane, z - 8 + i * 3.5, 0.95, base + 1 + i);
-        if (this.hash(row, 3) < CONFIG.pickupChance)
+        if (
+          this.hash(row, 3) < CONFIG.pickupChance &&
+          Array.from(
+            {
+              length:
+                Math.ceil(CONFIG.pickupMinSpacing / CONFIG.rowSpacing) - 1,
+            },
+            (_, i) => row - i - 1,
+          ).every(
+            (previous) =>
+              previous < 0 || this.hash(previous, 3) >= CONFIG.pickupChance,
+          )
+        )
           this.emit(
             this.hash(row, 4) < 0.5 ? "magnet" : "shield",
             safeLane,
@@ -568,6 +617,7 @@ export class RunnerGame {
     this.rewindElapsed += dt;
     this.boostCooldown = Math.max(0, this.boostCooldown - dt);
     this.magnetTime = Math.max(0, this.magnetTime - dt);
+    this.shieldTime = Math.max(0, this.shieldTime - dt);
     const p = Math.min(1, this.rewindElapsed / CONFIG.rewindDuration);
     const time =
       this.rewindFromTime +
@@ -614,6 +664,7 @@ export class RunnerGame {
       this.runClock += step;
       this.launchTime = Math.min(LAUNCH_DURATION, this.launchTime + step);
       this.magnetTime = Math.max(0, this.magnetTime - step);
+      this.shieldTime = Math.max(0, this.shieldTime - step);
       this.protectionTime = Math.max(0, this.protectionTime - step);
       this.boostCooldown = Math.max(0, this.boostCooldown - step);
       const flying = this.boosting;
@@ -691,12 +742,27 @@ export class RunnerGame {
             this.y + (this.sliding || this.fastFalling ? 0.4 : 0.95) - item.y,
           ) < 0.9;
         if (item.type === "coin") {
+          if (item.attraction !== undefined) {
+            item.attraction = Math.min(
+              1,
+              item.attraction + step / CONFIG.magnetTravelTime,
+            );
+            if (item.attraction >= 1) this.collect(item);
+            continue;
+          }
           if (
             (flying && item.z <= 0.65 && item.z >= -travel - 0.65) ||
             (this.magnetTime > 0 &&
               item.z >= -0.65 &&
-              item.z <= CONFIG.magnetRange) ||
-            (!flying && Math.abs(item.z) < 0.65 && closeRoute && closeHeight)
+              item.z <= CONFIG.magnetRange)
+          ) {
+            item.attraction = 0;
+            item.attractionFromZ = item.z;
+          } else if (
+            !flying &&
+            Math.abs(item.z) < 0.65 &&
+            closeRoute &&
+            closeHeight
           )
             this.collect(item);
         } else if (item.type === "magnet" || item.type === "shield") {
@@ -714,7 +780,7 @@ export class RunnerGame {
       }
       this.items = this.items.filter(
         (item) =>
-          item.z > -24 &&
+          (item.z > -24 || item.attraction !== undefined) &&
           !this.collected.has(item.id) &&
           !this.cleared.has(item.id),
       );

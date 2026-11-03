@@ -565,20 +565,31 @@ export class ForestProps {
             root,
           ).position.set(side * 0.8, 0.12, 0.2);
       } else if (type === "arch") {
-        for (const side of [-1, 1])
-          this.sandstone(
-            "rock-beam-support",
-            [0.34, 2.7, 0.55],
+        for (const side of [-1, 1]) {
+          const shoulder = this.sandstone(
+            "eroded-rock-shoulder",
+            [0.62, 2.8, 1.12],
             seed + side,
             root,
-          ).position.set(side * 1.04, 1.3, 0);
-        const beam = this.sandstone(
-          "hanging-rock-beam",
-          [2.38, 1.04, 0.64],
-          seed,
-          root,
-        );
-        beam.position.y = 2.05;
+          );
+          shoulder.position.set(side * 1.13, 1.22, 0.12);
+          shoulder.rotation.z = side * 0.1;
+          const shelf = this.sandstone(
+            "inward-rock-shelf",
+            [1.54, 1.05, 1.15],
+            seed + side * 5,
+            root,
+          );
+          shelf.position.set(side * 0.55, 2.04 + side * 0.04, -0.02);
+          shelf.rotation.z = side * -0.08;
+          const upper = this.sandstone(
+            "weathered-shelf-crown",
+            [0.97, 0.33, 0.9],
+            seed + side * 9,
+            root,
+          );
+          upper.position.set(side * 0.8, 2.66, 0.12);
+        }
       } else {
         this.sandstone(
           "canyon-rock-pile",

@@ -15,7 +15,21 @@ export const artIcons = new Set([
   "restart",
   "compass",
   "leaf",
+  "language",
+  "quality",
+  "close",
+  "check",
+  "chevron",
+  "arrow",
+  "jump",
+  "slide",
+  "help",
+  "sun",
+  "lock",
+  "bolt",
+  "clock",
+  "protection",
 ]);
 
 export const iconAsset = (name: string) =>
-  `${import.meta.env.BASE_URL}art/icons/${name}.png`;
+  `${import.meta.env.BASE_URL}art/icons-v2/${name}.png`;

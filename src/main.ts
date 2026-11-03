@@ -3,55 +3,15 @@ import { RunnerGame } from "./game.ts";
 import { ForestScene } from "./scene.ts";
 import { Economy } from "./economy.ts";
 import { CONFIG } from "./config.ts";
+import { Tutorial } from "./tutorial.ts";
+import type { LessonId } from "./tutorial.ts";
 import { artIcons, iconAsset } from "./art.ts";
 import { messages, resolveLanguage, languageTags } from "./i18n.ts";
 import type { MessageKey } from "./i18n.ts";
 
-const icons: Record<string, string> = {
-  shop: '<path d="M4 9h16l-2-5H6L4 9Zm1 0v11h14V9M9 20v-7h6v7"/>',
-  rocket:
-    '<path d="M9 15c-1-5 3-11 10-12 1 7-2 12-7 13l-3-1Zm0-3-5 1-1 5 6-3m5 1-1 5 5-1 1-6"/><circle cx="15" cy="8" r="2"/><path d="m7 18-3 3"/>',
-  hourglass: '<path d="M6 3h12M6 21h12M7 3v5l10 8v5M17 3v5L7 16v5M9 18h6"/>',
-  magnet:
-    '<path d="M5 4v9a7 7 0 0 0 14 0V4h-5v9a2 2 0 0 1-4 0V4H5Zm0 4h5m4 0h5"/>',
-  shield:
-    '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>',
-  lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/>',
-  bolt: '<path d="m13 2-9 12h7l-1 8 10-12h-7l2-8Z"/>',
-  arrow: '<path d="M5 12h14m-6-6 6 6-6 6"/>',
-  leaf: '<path d="m3 19 6-12 4 7 2-4 6 9H3Z" fill="currentColor" fill-opacity=".12"/><path d="m3 19 6-12 4 7 2-4 6 9H3Z"/><path d="m8 19 3-5"/>',
-  settings:
-    '<path d="M4 6h5m4 0h7M4 12h10m4 0h2M4 18h2m4 0h10"/><rect x="9" y="3.5" width="4" height="5" rx="1.2"/><rect x="14" y="9.5" width="4" height="5" rx="1.2"/><rect x="6" y="15.5" width="4" height="5" rx="1.2"/>',
-  sound:
-    '<path d="m11 4-6 5H2v6h3l6 5V4Z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
-  mute: '<path d="m11 4-6 5H2v6h3l6 5V4Z"/><path d="m16 9 6 6m0-6-6 6"/>',
-  pause:
-    '<rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/>',
-  close: '<path d="m6 6 12 12M18 6 6 18"/>',
-  trophy:
-    '<path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" fill="currentColor" fill-opacity=".12"/><path d="M7 6H4v2a4 4 0 0 0 4 4m9-6h3v2a4 4 0 0 1-4 4M12 14v5m-4 2h8m-6-2h4"/>',
-  coin: '<circle cx="12" cy="12" r="9" fill="currentColor" fill-opacity=".12"/><circle cx="12" cy="12" r="6.5" stroke-opacity=".5"/><path d="M15 7c-6 0-8 5-5 9 4-1 6-4 5-9Z"/><path d="m9 17 4-7"/>',
-  route:
-    '<circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 16v-3a4 4 0 0 1 4-4h4a4 4 0 0 0 4-3M10 18h10M4 6h6"/>',
-  jump: '<path d="M5 19h14M12 15V3m-5 5 5-5 5 5"/>',
-  slide:
-    '<path d="m4 6 6 5-3 5h12m-4-4 4 4-4 4"/><circle cx="16" cy="6" r="2"/>',
-  help: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/>',
-  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 1v2m0 18v2M1 12h2m18 0h2M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/>',
-  check: '<path d="m5 12 4 4L19 6"/>',
-  play: '<path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="none"/>',
-  restart: '<path d="M4 10a8 8 0 1 1 .8 7M4 4v6h6"/>',
-  home: '<path d="m3 11 9-8 9 8M6 10v10h12V10M10 20v-6h4v6"/>',
-  language:
-    '<path d="M3 5h12M9 3v2m-4 3c1 4 4 7 8 9m0-12c0 5-4 10-9 12m10 3 4-10 4 10m-6-3h4"/>',
-  chevron: '<path d="m7 10 5 5 5-5"/>',
-  quality: '<path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
-};
 const icon = (name: string, cls = "") => {
   const artName = name === "route" ? "compass" : name;
-  return artIcons.has(artName)
-    ? `<img class="icon art-icon ${cls}" src="${iconAsset(artName)}" alt="" aria-hidden="true" draggable="false" width="32" height="32" decoding="async">`
-    : `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] ?? icons.leaf}</svg>`;
+  return `<img class="icon art-icon ${cls}" src="${iconAsset(artIcons.has(artName) ? artName : "leaf")}" alt="" aria-hidden="true" draggable="false" width="32" height="32" decoding="async">`;
 };
 const read = (key: string) => {
   try {
@@ -88,14 +48,6 @@ let lastPickupSerial = 0;
 let lastClearSerial = 0;
 let toastTimer = 0;
 let statusMarkup = "";
-const seenHints = new Set<string>();
-try {
-  const hints = JSON.parse(read("tutorials") ?? "[]");
-  if (Array.isArray(hints))
-    hints
-      .filter((v) => v === "magnet" || v === "shield")
-      .forEach((v) => seenHints.add(v));
-} catch {}
 let resumeOnClose = false;
 let focusBeforeDialog: HTMLElement | null = null;
 let world: ForestScene | null = null;
@@ -112,6 +64,19 @@ const economy = new Economy({
   setItem: (key, value) => localStorage.setItem(key, value),
 });
 const game = new RunnerGame({ onCoins: (count) => economy.credit(count) });
+let testTutorials = read("test-tutorials") === "true";
+let learnedLessons: string[] = [];
+try {
+  const saved = JSON.parse(read("lessons:v1") ?? "[]");
+  if (Array.isArray(saved))
+    learnedLessons = saved.filter((value) => typeof value === "string");
+} catch {}
+const tutorial = new Tutorial(
+  learnedLessons,
+  (lessons) => save("lessons:v1", JSON.stringify(lessons)),
+  testTutorials,
+);
+if (tutorial.needsBasics) game.prepareTutorialOpening();
 const t = (key: MessageKey) => messages[language][key];
 const n = (value: number) => numberFormatter.format(Math.floor(value));
 const text = (key: MessageKey, tag = "span", cls = "") =>
@@ -152,10 +117,19 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <footer><button class="icon-button help-button" data-action="guide" data-label="howTo">${icon("help")}</button></footer>
   </div>
   <div class="coin-pop" id="coin-pop" aria-hidden="true"></div>
-  <div class="run-status" id="run-status" hidden></div>
+  <section class="run-status" id="run-status" hidden aria-label="${t("powerStatus")}"></section>
   <div class="route-notice" id="route-notice" hidden role="status"></div>
   <button class="active-tool" id="booster-button" data-action="boost" data-label="activateBoost" hidden>${icon("rocket")}<span id="booster-status"></span></button>
   <div class="notice-toast" id="notice-toast" hidden role="status"></div>
+  <div class="tutorial-overlay" id="tutorial-overlay" hidden>
+    <div class="tutorial-spotlight" id="tutorial-spotlight" hidden></div>
+    <div class="tutorial-prompt" id="tutorial-prompt" data-gesture="left">
+      <div class="tutorial-caption"><span id="tutorial-icon"></span><span>${text("tutorialSlow")}</span></div>
+      <div class="gesture-stage" aria-hidden="true"><span class="gesture-track"></span><span class="swipe-hand"></span><span class="gesture-spark"></span></div>
+      <strong id="tutorial-title" role="status"></strong>
+      <small class="touch-only">${t("tutorialSwipeAnywhere")}</small><small class="keyboard-only" id="tutorial-keys"></small>
+    </div>
+  </div>
   <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
   <div id="countdown" class="countdown" hidden aria-live="polite" aria-atomic="true"></div>
   <div class="loader" id="loader"><div class="loader-leaf">${icon("leaf")}</div>${text("loading")}</div>
@@ -236,7 +210,7 @@ function renderDialog() {
       : economy.state.hourglasses === 0
         ? "noHourglass"
         : "reviveHint";
-    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div><p class="revive-copy">${t(hint)}</p><div class="revive-stock">${icon("hourglass")}${t("stock")} · ${n(economy.state.hourglasses)}</div><button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div><p class="revive-copy">${t(hint)}</p><div class="revive-stock">${icon("hourglass")}${t("stock")} · ${n(economy.state.hourglasses)}</div>${usable && !tutorial.knows("hourglass") ? `<div class="revive-tutorial"><span class="tap-finger" aria-hidden="true"></span><span>${t("lessonHourglass")}</span></div>` : ""}<button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
   } else if (activeDialog === "settings") {
     const selected = languages.find((item) => item.code === language)!;
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("settings")}</span><h2 id="dialog-title">${t("settings")}</h2></div>
@@ -244,7 +218,8 @@ function renderDialog() {
       <div class="language-picker"><button id="language-trigger" class="language-trigger" data-action="language-menu" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="language-label language-current"><span class="language-mark">${selected.mark}</span><span id="language-current">${selected.name}</span>${icon("chevron")}</button>
       <div class="language-menu" id="language-menu" role="listbox" aria-labelledby="language-label" hidden>${languages.map((item) => `<button class="language-choice ${item.code === language ? "selected" : ""}" role="option" aria-selected="${item.code === language}" tabindex="-1" data-language="${item.code}"><span class="language-mark">${item.mark}</span><span>${item.name}</span>${item.code === language ? icon("check") : ""}</button>`).join("")}</div></div></div>
       <div class="setting-row"><span class="setting-label">${icon("sound")}${t("sound")}</span><button class="toggle ${sound ? "is-on" : ""}" data-action="sound" role="switch" aria-checked="${sound}" aria-label="${t("sound")}"><span></span></button></div>
-      <div class="setting-row"><span class="setting-label">${icon("quality")}${t("quality")}</span><div class="segmented"><button class="${quality ? "selected" : ""}" data-quality="high" aria-pressed="${quality}">${t("high")}</button><button class="${!quality ? "selected" : ""}" data-quality="low" aria-pressed="${!quality}">${t("low")}</button></div></div>`;
+      <div class="setting-row"><span class="setting-label">${icon("quality")}${t("quality")}</span><div class="segmented"><button class="${quality ? "selected" : ""}" data-quality="high" aria-pressed="${quality}">${t("high")}</button><button class="${!quality ? "selected" : ""}" data-quality="low" aria-pressed="${!quality}">${t("low")}</button></div></div>
+      <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span><small>${t("tutorialTestHint")}</small></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>`;
   } else if (activeDialog === "guide") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("help")}</span><h2 id="dialog-title">${t("howTo")}</h2></div><div class="guide-list">
       ${(
@@ -340,8 +315,7 @@ function syncView() {
   document.querySelector<HTMLElement>("#intro")!.hidden = !ready;
   document.querySelector<HTMLElement>("#hud")!.hidden =
     ready || game.introducing;
-  document.querySelector<HTMLElement>("#live-hint")!.hidden =
-    ready || game.introducing;
+  document.querySelector<HTMLElement>("#live-hint")!.hidden = true;
   document.querySelector<HTMLElement>(".pause-button")!.hidden =
     ready || game.mode === "rewinding";
 }
@@ -358,6 +332,8 @@ function start() {
   resultDelay = 0;
   document.body.classList.remove("crashed");
   game.begin();
+  tutorial.resetRun(game);
+  if (tutorial.needsBasics) game.prepareTutorialOpening();
   syncView();
   (document.activeElement as HTMLElement)?.blur();
 }
@@ -391,6 +367,67 @@ function showToast(message: string) {
     toast.hidden = true;
   }, 3200);
 }
+const lessonTitles: Record<LessonId, MessageKey> = {
+  move: "lessonMove",
+  jump: "lessonJump",
+  slide: "lessonSlide",
+  dodge: "lessonDodge",
+  coin: "lessonCoin",
+  magnet: "lessonMagnet",
+  shield: "lessonShield",
+  wallEntry: "lessonWallEntry",
+  wallHeight: "lessonWallHeight",
+  booster: "lessonBooster",
+  hourglass: "lessonHourglass",
+};
+let tutorialUiKey = "";
+function updateTutorialUi() {
+  const overlay = document.querySelector<HTMLElement>("#tutorial-overlay")!;
+  const lesson = tutorial.active;
+  const visible = !!lesson && game.mode === "running" && !activeDialog;
+  overlay.hidden = !visible;
+  document.body.classList.toggle("tutorial-active", visible);
+  document
+    .querySelector("#booster-button")!
+    .classList.toggle("tutorial-target", visible && lesson?.id === "booster");
+  if (!visible || !lesson) return;
+  const key = `${lesson.id}/${lesson.gesture}/${language}`;
+  if (key !== tutorialUiKey) {
+    tutorialUiKey = key;
+    const glyph =
+      lesson.id === "booster"
+        ? "rocket"
+        : lesson.id === "move" ||
+            lesson.id === "dodge" ||
+            lesson.id.startsWith("wall")
+          ? "compass"
+          : lesson.id;
+    document.querySelector("#tutorial-icon")!.innerHTML = icon(glyph);
+    document.querySelector("#tutorial-title")!.textContent = t(
+      lessonTitles[lesson.id],
+    );
+    document.querySelector<HTMLElement>("#tutorial-prompt")!.dataset.gesture =
+      lesson.gesture;
+    document.querySelector("#tutorial-keys")!.textContent =
+      lesson.gesture === "tap"
+        ? t("tutorialTap")
+        : lesson.gesture === "up"
+          ? "↑ / W / Space"
+          : lesson.gesture === "down"
+            ? "↓ / S"
+            : "← / → / A / D";
+    overlay.querySelector(".touch-only")!.textContent = t(
+      lesson.gesture === "tap" ? "tutorialTap" : "tutorialSwipeAnywhere",
+    );
+  }
+  const ring = document.querySelector<HTMLElement>("#tutorial-spotlight")!;
+  const anchor = lesson.target ? world?.getTutorialAnchor(lesson.target) : null;
+  ring.hidden = !anchor?.visible;
+  if (anchor?.visible) {
+    ring.style.left = `${anchor.x}px`;
+    ring.style.top = `${anchor.y}px`;
+  }
+}
 function updateFeatureUi() {
   const state = economy.state;
   document
@@ -399,11 +436,94 @@ function updateFeatureUi() {
   const runningView = game.mode !== "ready" && !game.introducing;
   const status = document.querySelector<HTMLElement>("#run-status")!;
   status.hidden = !runningView;
-  const markup = `<span>${t(game.terrain.biome === "forest" ? "forest" : game.terrain.biome)}</span>${game.magnetTime > 0 ? `<span class="magnet-status">${icon("magnet")}${Math.ceil(game.magnetTime)}s</span>` : ""}${game.shield ? `<span data-label="shieldReady">${icon("shield")}${t("shield")}</span>` : ""}`;
+  const markup = ["magnet", "shield", "rocket"]
+    .map(
+      (name) =>
+        `<article class="power-slot" data-power="${name}"><span class="power-art">${icon(name)}</span><div class="power-readout"><span class="power-name"></span><strong class="power-time"></strong><small class="power-state"></small></div><div class="power-meter"><i></i></div></article>`,
+    )
+    .join("");
   if (markup !== statusMarkup) {
     statusMarkup = markup;
     status.innerHTML = markup;
   }
+  status.setAttribute("aria-label", t("powerStatus"));
+  const seconds = (time: number) =>
+    `${time < 10 ? time.toFixed(1) : Math.ceil(time)}s`;
+  const power = (
+    name: string,
+    label: string,
+    time: number,
+    duration: number,
+    stateLabel: string,
+    live: boolean,
+    glyph = name,
+  ) => {
+    const slot = status.querySelector<HTMLElement>(`[data-power="${name}"]`)!;
+    slot.dataset.state = live ? "active" : time > 0 ? "cooling" : "idle";
+    slot.classList.toggle("is-ending", live && time > 0 && time <= 3);
+    slot.querySelector(".power-name")!.textContent = label;
+    slot.querySelector(".power-time")!.textContent =
+      time > 0 ? seconds(time) : live ? "…" : "—";
+    slot.querySelector(".power-state")!.textContent = stateLabel;
+    (slot.querySelector(".power-meter i") as HTMLElement).style.transform =
+      `scaleX(${Math.max(0, Math.min(1, time / duration))})`;
+    const img = slot.querySelector<HTMLImageElement>("img")!;
+    const url = iconAsset(glyph);
+    if (img.getAttribute("src") !== url) img.src = url;
+    slot.setAttribute(
+      "aria-label",
+      `${label} · ${stateLabel}${time > 0 ? ` · ${seconds(time)}` : ""}`,
+    );
+  };
+  power(
+    "magnet",
+    t("magnet"),
+    game.magnetTime,
+    CONFIG.magnetDuration,
+    t(game.magnetTime > 0 ? "powerActive" : "powerIdle"),
+    game.magnetTime > 0,
+  );
+  const protectedTime = game.shield ? game.shieldTime : game.protectionTime;
+  power(
+    "shield",
+    t(game.shield || !protectedTime ? "shield" : "briefProtection"),
+    protectedTime,
+    game.shield ? CONFIG.shieldDuration : CONFIG.rewindProtection,
+    t(protectedTime > 0 ? "powerActive" : "powerIdle"),
+    protectedTime > 0,
+    game.shield || !protectedTime ? "shield" : "protection",
+  );
+  const rewind = game.mode === "rewinding";
+  const flightTime = game.boostRemaining / (game.baseSpeed * CONFIG.boostSpeed);
+  power(
+    "rocket",
+    t(rewind ? "hourglass" : "booster"),
+    rewind
+      ? game.rewindRemaining
+      : game.boosting
+        ? flightTime
+        : state.boosterUnlocked
+          ? game.boostCooldown
+          : 0,
+    rewind
+      ? CONFIG.rewindDuration
+      : game.boosting
+        ? CONFIG.boostDistance / (game.baseSpeed * CONFIG.boostSpeed)
+        : CONFIG.boostCooldown,
+    t(
+      rewind || game.boosting
+        ? game.boosting && !game.boostRemaining
+          ? "flightExtending"
+          : "powerActive"
+        : !state.boosterUnlocked
+          ? "toolLocked"
+          : game.boostCooldown > 0
+            ? "cooldown"
+            : "toolReady",
+    ),
+    rewind || game.boosting,
+    rewind ? "hourglass" : "rocket",
+  );
   const button = document.querySelector<HTMLButtonElement>("#booster-button")!;
   button.hidden = !runningView;
   button.disabled =
@@ -425,19 +545,14 @@ function updateFeatureUi() {
     game.mode === "rewinding"
       ? t("rewinding")
       : game.mode === "running" && game.wallSide
-        ? `${t("wallHint")} · ${t((["wallLow", "wallMid", "wallHigh"] as const)[game.wallLevel])}`
+        ? t((["wallLow", "wallMid", "wallHigh"] as const)[game.wallLevel])
         : game.mode === "running" && game.gapWarning && !game.boosting
-          ? t("gapHint")
+          ? t("chasmAhead")
           : "";
-  notice.hidden = !message;
+  notice.hidden = !message || !!tutorial.active;
   if (notice.textContent !== message) notice.textContent = message;
   if (lastPickupSerial !== game.pickupSerial) {
     lastPickupSerial = game.pickupSerial;
-    if (!seenHints.has(game.lastPickup)) {
-      seenHints.add(game.lastPickup);
-      save("tutorials", JSON.stringify([...seenHints]));
-      showToast(t(game.lastPickup === "magnet" ? "magnetHint" : "shieldHint"));
-    }
     beep("start");
   }
   if (lastClearSerial !== game.clearSerial) {
@@ -473,6 +588,7 @@ function act(action: string) {
   }
   if (action === "boost") {
     if (game.activateBooster(economy.state.boosterUnlocked)) {
+      tutorial.complete("booster");
       beep("start");
       showToast(t("boostHint"));
     }
@@ -480,6 +596,7 @@ function act(action: string) {
   }
   if (action === "rewind") {
     if (game.useHourglass(() => economy.consumeHourglass())) {
+      tutorial.complete("hourglass");
       dialog.close();
       activeDialog = null;
       resumeOnClose = false;
@@ -528,6 +645,12 @@ function act(action: string) {
       dialog.querySelector<HTMLButtonElement>('[data-action="sound"]')?.focus();
     }
     if (sound) beep("coin");
+  } else if (action === "tutorial-test") {
+    testTutorials = !testTutorials;
+    save("test-tutorials", String(testTutorials));
+    tutorial.testMode = testTutorials;
+    tutorial.resetRun(game);
+    renderDialog();
   } else if (action === "home") {
     if (game.mode !== "ready") finishRun();
     if (dialog.open) dialog.close();
@@ -536,6 +659,8 @@ function act(action: string) {
     resultDelay = 0;
     document.body.classList.remove("crashed");
     game.returnHome();
+    tutorial.resetRun(game);
+    if (tutorial.needsBasics) game.prepareTutorialOpening();
     syncView();
     localize();
   }
@@ -616,10 +741,18 @@ dialog.addEventListener("click", (event) => {
 
 function control(direction: "left" | "right" | "jump" | "slide") {
   if (game.mode !== "running" || activeDialog) return;
-  if (direction === "left") game.move(-1);
-  if (direction === "right") game.move(1);
-  if (direction === "jump" && game.jump()) beep("jump");
-  if (direction === "slide" && game.slide()) beep("slide");
+  let accepted = false;
+  if (direction === "left") accepted = game.move(-1);
+  if (direction === "right") accepted = game.move(1);
+  if (direction === "jump") {
+    accepted = game.jump();
+    if (accepted) beep("jump");
+  }
+  if (direction === "slide") {
+    accepted = game.slide();
+    if (accepted) beep("slide");
+  }
+  tutorial.action(direction, game, accepted);
 }
 window.addEventListener("keydown", (event) => {
   if (activeDialog) return;
@@ -737,7 +870,9 @@ try {
     previous = now;
     const wasRunning = game.mode === "running";
     const previousMode = game.mode;
-    game.update(dt);
+    tutorial.update(game, dt, economy.state.boosterUnlocked);
+    const simulationDt = dt * tutorial.timeScale(game);
+    game.update(simulationDt);
     if (game.mode !== previousMode) syncView();
     const countdown = document.querySelector<HTMLElement>("#countdown")!;
     const count = game.mode === "intro" && !activeDialog ? game.countdown : "";
@@ -750,7 +885,8 @@ try {
       countdown.classList.add("beat");
       if (count) beep(count === "GO!" ? "start" : "tick");
     }
-    world!.update(game, dt);
+    world!.update(game, simulationDt);
+    updateTutorialUi();
     if (game.coins > lastCoins) {
       beep("coin");
       const reward = document.createElement("span");

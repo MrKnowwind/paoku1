@@ -92,9 +92,22 @@ test("magnet collects all routes and refreshes duration; pause freezes effects",
   wallCoin.route = "wall";
   wallCoin.side = 1;
   game.update(0.1);
+  assert.equal(credited, 0, "coins must travel to the runner before crediting");
+  assert.ok(game.items.some((item) => item.attraction !== undefined));
+  game.pause();
+  const attraction = game.items.find(
+    (item) => item.attraction !== undefined,
+  )!.attraction;
+  game.update(5);
+  assert.equal(
+    game.items.find((item) => item.attraction !== undefined)!.attraction,
+    attraction,
+  );
+  game.resume();
+  game.update(0.5);
   assert.equal(game.coins, 4);
   assert.equal(credited, 4);
-  assert.ok(game.magnetTime > 9.8 && game.magnetTime <= 10);
+  assert.ok(game.magnetTime > 9.3 && game.magnetTime <= 10);
   game.addItem("magnet", 0, 1);
   game.update(0.1);
   assert.ok(game.magnetTime > 9.8 && game.magnetTime <= 10);
@@ -105,6 +118,29 @@ test("magnet collects all routes and refreshes duration; pause freezes effects",
   game.resume();
   game.update(11);
   assert.equal(game.magnetTime, 0);
+});
+
+test("shield expires after its duration, refreshes on pickup, and freezes while paused", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  game.addItem("shield", 0, 1);
+  game.update(0.1);
+  assert.ok(game.shieldTime > CONFIG.shieldDuration - 0.1);
+  game.update(6);
+  const remaining = game.shieldTime;
+  game.pause();
+  game.update(30);
+  assert.equal(game.shieldTime, remaining);
+  game.resume();
+  game.addItem("shield", 0, 1);
+  game.update(0.1);
+  assert.ok(game.shieldTime > CONFIG.shieldDuration - 0.1);
+  game.update(CONFIG.shieldDuration + 0.1);
+  assert.equal(game.shield, false);
+  assert.equal(game.shieldTime, 0);
+  game.addItem("rock", 0, 1);
+  game.update(0.1);
+  assert.equal(game.mode, "over");
 });
 
 test("shield absorbs one ordinary hit and protects briefly, but cannot prevent a fall", () => {

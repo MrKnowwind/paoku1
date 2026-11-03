@@ -483,8 +483,9 @@ dialog[data-view="settings"] {
   border-bottom: 1px solid #d9dece;
 }
 .modal-symbol {
-  width: 24px;
-  height: 27px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   display: grid;
   place-items: center;
   color: #74856c;
@@ -1381,31 +1382,113 @@ html[lang="ko-KR"] h1 {
 }
 .run-status {
   position: fixed;
-  left: 4.5%;
-  top: calc(max(18px, env(safe-area-inset-top)) + 77px);
+  left: 50%;
+  top: max(18px, env(safe-area-inset-top));
+  transform: translateX(-50%);
+  width: min(365px, calc(100vw - 28px));
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   z-index: 2;
   pointer-events: none;
 }
-.run-status > span {
-  display: flex;
+.power-slot {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  flex: 1;
+  min-width: 0;
   align-items: center;
-  gap: 5px;
-  padding: 6px 9px;
-  border: 1px solid #ffffff40;
-  border-radius: 6px;
-  background: #f5f2e8e8;
-  color: #5d7256;
-  font-size: 10px;
+  gap: 7px;
+  padding: 8px 7px 11px;
+  border: 1px solid #d4c9ad;
+  border-radius: 11px;
+  background: #f9f5e9ed;
+  box-shadow: 0 3px 12px #25332414;
+  color: #4a5e43;
+  transition:
+    border-color 0.25s,
+    background 0.25s,
+    box-shadow 0.25s;
 }
-.run-status .icon {
-  width: 14px;
-  height: 14px;
+.power-art {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 38px;
 }
-.run-status .magnet-status {
-  color: #9d7145;
+.power-art .art-icon {
+  width: 38px;
+  height: 38px;
+}
+.power-readout {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.power-name,
+.power-state {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  line-height: 1.25;
+}
+.power-time {
+  font-size: 17px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.power-state {
+  font-size: 8px;
+  opacity: 0.74;
+}
+.power-meter {
+  position: absolute;
+  height: 3px;
+  left: 9px;
+  right: 9px;
+  bottom: 5px;
+  border-radius: 3px;
+  background: #d9d8c7;
+  overflow: hidden;
+}
+.power-meter i {
+  display: block;
+  height: 100%;
+  background: #628d67;
+  transform-origin: left center;
+}
+.power-slot[data-state="active"] {
+  background: #fcf9eefa;
+  border-color: #8ea982;
+  box-shadow:
+    0 0 0 2px #d4e4bc66,
+    0 4px 12px #25332419;
+}
+.power-slot[data-state="idle"] .power-art {
+  filter: saturate(0.25) opacity(0.5);
+}
+.power-slot[data-state="idle"] .power-time {
+  color: #8a927d;
+}
+.power-slot[data-state="cooling"] .power-meter i {
+  background: #b99d69;
+}
+.power-slot.is-ending {
+  border-color: #d4a15a;
+}
+.power-slot.is-ending .power-time {
+  color: #ab6d2c;
+}
+.power-slot.is-ending .power-meter i {
+  background: #d09c52;
+}
+@media (max-width: 1100px) {
+  .run-status {
+    top: calc(max(16px, env(safe-area-inset-top)) + 74px);
+  }
 }
 .route-notice {
   position: fixed;
@@ -1489,7 +1572,10 @@ html[lang="ko-KR"] h1 {
   width: 82px;
   height: 82px;
 }
-.modal-symbol .art-icon,
+.modal-symbol .art-icon {
+  width: 40px;
+  height: 40px;
+}
 .result-seal .art-icon {
   width: 50px;
   height: 50px;
@@ -1506,12 +1592,13 @@ html[lang="ko-KR"] h1 {
   width: 23px;
   height: 23px;
 }
-.run-status > span:has(.art-icon) {
-  padding: 4px 9px 4px 5px;
+.setting-label .art-icon {
+  width: 26px;
+  height: 26px;
 }
-.run-status .art-icon {
-  width: 24px;
-  height: 24px;
+.dialog-close .art-icon {
+  width: 22px;
+  height: 22px;
 }
 .active-tool .art-icon {
   width: 49px;
@@ -1556,15 +1643,292 @@ html[lang="ko-KR"] h1 {
 .rewinding #world {
   filter: saturate(0.55) hue-rotate(18deg);
 }
+.setting-copy {
+  min-width: 0;
+  padding: 12px 0;
+}
+.setting-copy > small {
+  display: block;
+  color: #8a937b;
+  font-size: 10px;
+  line-height: 1.5;
+  margin-top: 4px;
+  max-width: 230px;
+}
+.tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.tutorial-prompt {
+  --swipe-x: -82px;
+  --swipe-y: 0px;
+  position: absolute;
+  left: 50%;
+  bottom: 8%;
+  transform: translateX(-50%);
+  width: min(370px, calc(100vw - 50px));
+  padding: 13px 20px 18px;
+  text-align: center;
+  border-radius: 20px;
+  background: #faf7eaf2;
+  border: 1px solid #dfc99b;
+  box-shadow:
+    0 10px 40px #233b2929,
+    inset 0 1px #fff;
+}
+.tutorial-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 10px;
+  color: #958156;
+}
+.tutorial-caption .art-icon {
+  width: 25px;
+  height: 25px;
+}
+.tutorial-prompt > strong {
+  display: block;
+  font-size: 16px;
+  color: #385238;
+  line-height: 1.6;
+}
+.tutorial-prompt > small {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #8d947c;
+}
+.tutorial-prompt .keyboard-only {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tutorial-prompt .keyboard-only {
+    display: block;
+  }
+  .tutorial-prompt .touch-only {
+    display: none;
+  }
+}
+.gesture-stage {
+  position: relative;
+  height: 104px;
+  width: 180px;
+  margin: 0 auto;
+}
+.gesture-track {
+  position: absolute;
+  width: 95px;
+  height: 5px;
+  left: 42px;
+  top: 48px;
+  border-top: 2px dashed #c7ad74;
+}
+.swipe-hand,
+.tap-finger {
+  position: absolute;
+  width: 20px;
+  height: 34px;
+  border-radius: 12px 12px 9px 9px;
+  background: #fffdf3;
+  border: 2px solid #a7864e;
+  box-shadow: 0 3px 8px #3b402322;
+}
+.swipe-hand {
+  left: 115px;
+  top: 30px;
+  animation: guide-swipe 1.65s ease-in-out infinite;
+}
+.swipe-hand::after,
+.tap-finger::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 17px;
+  width: 20px;
+  height: 23px;
+  border-radius: 7px 9px 10px 8px;
+  background: #fffdf3;
+  border: 2px solid #a7864e;
+  border-left: none;
+  transform: rotate(-13deg);
+}
+.gesture-spark {
+  position: absolute;
+  left: 115px;
+  top: 25px;
+  width: 26px;
+  height: 26px;
+  border: 2px solid #dbbc72;
+  border-radius: 50%;
+  animation: guide-ring 1.65s ease-out infinite;
+}
+.tutorial-prompt[data-gesture="right"],
+.tutorial-prompt[data-gesture="collect"] {
+  --swipe-x: 82px;
+}
+.tutorial-prompt[data-gesture="right"] .swipe-hand,
+.tutorial-prompt[data-gesture="right"] .gesture-spark,
+.tutorial-prompt[data-gesture="collect"] .swipe-hand,
+.tutorial-prompt[data-gesture="collect"] .gesture-spark {
+  left: 35px;
+}
+.tutorial-prompt[data-gesture="up"] {
+  --swipe-x: 0px;
+  --swipe-y: -60px;
+}
+.tutorial-prompt[data-gesture="down"] {
+  --swipe-x: 0px;
+  --swipe-y: 60px;
+}
+.tutorial-prompt[data-gesture="up"] .swipe-hand,
+.tutorial-prompt[data-gesture="up"] .gesture-spark {
+  left: 76px;
+  top: 65px;
+}
+.tutorial-prompt[data-gesture="down"] .swipe-hand,
+.tutorial-prompt[data-gesture="down"] .gesture-spark {
+  left: 76px;
+  top: 5px;
+}
+.tutorial-prompt[data-gesture="up"] .gesture-track,
+.tutorial-prompt[data-gesture="down"] .gesture-track {
+  width: 5px;
+  height: 70px;
+  top: 13px;
+  left: 85px;
+  border-top: 0;
+  border-left: 2px dashed #c7ad74;
+}
+.tutorial-prompt[data-gesture="tap"] {
+  --swipe-x: 0px;
+  --swipe-y: 8px;
+}
+.tutorial-prompt[data-gesture="tap"] .swipe-hand,
+.tutorial-prompt[data-gesture="tap"] .gesture-spark {
+  left: 76px;
+}
+.tutorial-prompt[data-gesture="tap"] .gesture-track {
+  display: none;
+}
+.tutorial-spotlight {
+  position: fixed;
+  width: 100px;
+  height: 90px;
+  margin: -45px 0 0 -50px;
+  border: 3px solid #ffe1a3;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 7px #f7da8e22,
+    0 0 25px #ffe1a355;
+  animation: guide-focus 1.65s ease-in-out infinite;
+}
+.active-tool.tutorial-target {
+  outline: 3px solid #e9ba64;
+  outline-offset: 7px;
+  animation: guide-focus 1.65s ease-in-out infinite;
+}
+.revive-tutorial {
+  display: flex;
+  position: relative;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  padding: 8px 12px 20px 40px;
+  color: #9d7e4c;
+  font-size: 12px;
+}
+.tap-finger {
+  position: relative;
+  flex: none;
+  transform: scale(0.65);
+  animation: guide-tap 1.4s ease-in-out infinite;
+}
+@keyframes guide-swipe {
+  0%,
+  10% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  75%,
+  85% {
+    transform: translate(var(--swipe-x), var(--swipe-y));
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--swipe-x), var(--swipe-y));
+    opacity: 0;
+  }
+}
+@keyframes guide-ring {
+  0%,
+  10% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  25% {
+    opacity: 0.9;
+  }
+  65%,
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+@keyframes guide-focus {
+  50% {
+    filter: drop-shadow(0 0 8px #f0c57488);
+  }
+}
+@keyframes guide-tap {
+  50% {
+    transform: translateY(6px) scale(0.6);
+  }
+}
+@media (max-width: 700px) {
+  .tutorial-prompt {
+    bottom: max(70px, calc(env(safe-area-inset-bottom) + 50px));
+    padding: 10px 14px 14px;
+    width: min(330px, calc(100vw - 46px));
+  }
+  .tutorial-prompt > strong {
+    font-size: 14px;
+  }
+  .gesture-stage {
+    height: 100px;
+  }
+}
 @media (max-width: 700px) {
   .run-status {
-    left: 21px;
     top: calc(max(15px, env(safe-area-inset-top)) + 72px);
     gap: 5px;
   }
-  .run-status > span {
-    font-size: 9px;
-    padding: 5px 7px;
+  .power-slot {
+    grid-template-columns: 27px minmax(0, 1fr);
+    gap: 5px;
+    padding: 7px 6px 10px;
+  }
+  .power-art {
+    width: 27px;
+  }
+  .power-art .art-icon {
+    width: 33px;
+    height: 33px;
+  }
+  .power-time {
+    font-size: 16px;
+  }
+  .power-name {
+    font-size: 8px;
+  }
+  .power-state {
+    font-size: 7px;
   }
   .route-notice {
     top: 26%;

@@ -8,6 +8,7 @@ import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { FresnelParameters } from "@babylonjs/core/Materials/fresnelParameters";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -92,6 +93,13 @@ export class ForestScene {
   private sun: DirectionalLight;
   private shieldAura!: Mesh;
   private magnetAura!: Mesh;
+  private shieldRims: Mesh[] = [];
+  private magnetSparks: Mesh[] = [];
+  private shieldVisual = 0;
+  private magnetVisual = 0;
+  private powerPulse!: Mesh;
+  private powerPulseLife = 0;
+  private lastPowerPickup = 0;
   private boostJets: Mesh[] = [];
   private boosterPods: Mesh[] = [];
   private entries: Mesh[] = [];
@@ -1187,6 +1195,16 @@ export class ForestScene {
         sectionAt(item.worldZ).biome === "canyon",
       );
       root.position.set(item.lane * 2.5, 0, item.z);
+      if (item.type === "arch" && sectionAt(item.worldZ).biome === "canyon") {
+        const cue = CreatePlane(
+          "rock-slide-mark",
+          { width: 0.4, height: 0.32 },
+          this.scene,
+        );
+        cue.parent = root;
+        cue.position.set(0, 2.1, -0.64);
+        cue.material = this.pickupArt("chevron");
+      }
       return root;
     }
     const root = new TransformNode("coin", this.scene);
@@ -1322,17 +1340,35 @@ export class ForestScene {
   private createRunEffects() {
     this.shieldAura = CreateSphere(
       "shield-aura",
-      { diameter: 2.4, segments: 20 },
+      { diameter: 2.5, segments: 32 },
       this.scene,
     );
     const shieldMat = new StandardMaterial("shield-aura-material", this.scene);
     shieldMat.diffuseColor = Color3.FromHexString("#9bc9dd");
-    shieldMat.emissiveColor = shieldMat.diffuseColor.scale(0.18);
-    shieldMat.alpha = 0.16;
-    shieldMat.backFaceCulling = false;
+    shieldMat.emissiveColor = shieldMat.diffuseColor.scale(0.35);
+    shieldMat.alpha = 0.38;
+    shieldMat.opacityFresnelParameters = new FresnelParameters({
+      bias: 0.08,
+      power: 2.5,
+      leftColor: Color3.White(),
+      rightColor: Color3.Black(),
+    });
+    shieldMat.backFaceCulling = true;
     this.shieldAura.material = shieldMat;
     this.shieldAura.parent = this.runner;
     this.shieldAura.position.y = 1.15;
+    for (let i = 0; i < 2; i++) {
+      const rim = CreateTorus(
+        "shield-light-meridian",
+        { diameter: 2.45, thickness: 0.018, tessellation: 48 },
+        this.scene,
+      );
+      rim.parent = this.shieldAura;
+      rim.rotation.x = Math.PI / 2;
+      rim.rotation.z = (i * Math.PI) / 2;
+      rim.material = this.mat("#a9dce6", true);
+      this.shieldRims.push(rim);
+    }
     this.magnetAura = CreateTorus(
       "magnet-field",
       { diameter: 1.8, thickness: 0.028, tessellation: 32 },
@@ -1341,6 +1377,25 @@ export class ForestScene {
     this.magnetAura.parent = this.runner;
     this.magnetAura.position.y = 1.1;
     this.magnetAura.material = this.mat("#d9ae72", true);
+    for (let i = 0; i < 4; i++) {
+      const spark = CreateSphere(
+        "magnetic-orbit-spark",
+        { diameter: 0.09, segments: 8 },
+        this.scene,
+      );
+      spark.parent = this.runner;
+      spark.material = this.mat("#ffe6a0", true);
+      this.magnetSparks.push(spark);
+    }
+    this.powerPulse = CreateTorus(
+      "power-activation-wave",
+      { diameter: 1, thickness: 0.04, tessellation: 48 },
+      this.scene,
+    );
+    this.powerPulse.parent = this.runner;
+    this.powerPulse.position.y = 0.12;
+    this.powerPulse.material = this.mat("#e2d6a5", true);
+    this.powerPulse.setEnabled(false);
     for (const side of [-1, 1]) {
       const jet = CreateCylinder(
         "booster-jet",
@@ -1355,6 +1410,19 @@ export class ForestScene {
       jet.parent = this.backpack;
       jet.position.set(side * 0.22, -0.42, -0.23);
       jet.material = this.mat("#ffd38c", true);
+      const core = CreateCylinder(
+        "jet-flame-core",
+        {
+          height: 0.42,
+          diameterTop: 0.09,
+          diameterBottom: 0,
+          tessellation: 12,
+        },
+        this.scene,
+      );
+      core.parent = jet;
+      core.position.y = 0.04;
+      core.material = this.mat("#e4f6ed", true);
       this.boostJets.push(jet);
       const pod = CreateCylinder(
         "booster-pod",
@@ -1418,14 +1486,75 @@ export class ForestScene {
       this.entries.push(entry);
     }
   }
-  private updateRunEffects(game: RunnerGame) {
-    this.shieldAura.setEnabled(game.shield || game.protectionTime > 0);
-    this.shieldAura.visibility = game.shield
-      ? 0.8
-      : 0.25 + Math.sin(this.time * 25) * 0.15;
-    this.magnetAura.setEnabled(game.magnetTime > 0);
+  private updateRunEffects(game: RunnerGame, dt: number) {
+    const animated = game.mode === "running" || game.mode === "rewinding";
+    const effectDt = animated ? dt : 0;
+    if (game.mode === "ready" || game.introducing) {
+      this.shieldVisual = this.magnetVisual = this.powerPulseLife = 0;
+    }
+    this.shieldVisual = damp(
+      this.shieldVisual,
+      game.shield || game.protectionTime > 0 ? 1 : 0,
+      12,
+      effectDt,
+    );
+    this.magnetVisual = damp(
+      this.magnetVisual,
+      game.magnetTime > 0 ? 1 : 0,
+      12,
+      effectDt,
+    );
+    const warning = game.shield && game.shieldTime < 3;
+    const shieldPulse = warning
+      ? 0.58 + Math.sin(this.time * 14) * 0.3
+      : 0.85 + Math.sin(this.time * 2.8) * 0.08;
+    this.shieldAura.setEnabled(this.shieldVisual > 0.01);
+    this.shieldAura.visibility = this.shieldVisual * shieldPulse;
+    this.shieldAura.scaling.setAll(
+      0.82 + this.shieldVisual * 0.2 + Math.sin(this.time * 2.8) * 0.012,
+    );
+    const shieldMaterial = this.shieldAura.material as StandardMaterial;
+    shieldMaterial.diffuseColor = Color3.FromHexString(
+      warning ? "#e9c57e" : "#9bc9dd",
+    );
+    this.shieldRims.forEach((rim, i) => {
+      rim.rotation.y = this.time * (i ? -0.4 : 0.4);
+      rim.visibility = this.shieldVisual * shieldPulse * 0.38;
+    });
+    this.magnetAura.setEnabled(this.magnetVisual > 0.01);
+    this.magnetAura.visibility = this.magnetVisual * 0.5;
+    this.magnetAura.scaling.setAll(
+      0.85 + this.magnetVisual * 0.25 + Math.sin(this.time * 4) * 0.04,
+    );
     this.magnetAura.rotation.y = this.time * 2;
     this.magnetAura.rotation.x = Math.sin(this.time * 2) * 0.3;
+    this.magnetSparks.forEach((spark, i) => {
+      const a = this.time * 3.8 + (i * Math.PI) / 2;
+      spark.setEnabled(this.magnetVisual > 0.01);
+      spark.position.set(
+        Math.cos(a) * 0.9,
+        1.05 + Math.sin(a * 1.5) * 0.38,
+        Math.sin(a) * 0.65,
+      );
+      spark.scaling.setAll(this.magnetVisual * (0.7 + Math.sin(a * 2) * 0.25));
+    });
+    if (this.lastPowerPickup !== game.pickupSerial) {
+      this.lastPowerPickup = game.pickupSerial;
+      this.powerPulseLife = 0.65;
+      this.burst(
+        this.runner.position.add(new Vector3(0, 1.1, 0)),
+        game.lastPickup === "shield" ? "#bce4eb" : "#ffdc8c",
+        14,
+        2.4,
+        0.6,
+        0.13,
+        0.4,
+      );
+    }
+    this.powerPulseLife = Math.max(0, this.powerPulseLife - effectDt);
+    this.powerPulse.setEnabled(this.powerPulseLife > 0);
+    this.powerPulse.scaling.setAll(1 + (1 - this.powerPulseLife / 0.65) * 2.2);
+    this.powerPulse.visibility = this.powerPulseLife / 0.65;
     this.boostJets.forEach((jet, i) => {
       jet.setEnabled(game.boostBlend > 0.05);
       jet.scaling.set(
@@ -1500,6 +1629,25 @@ export class ForestScene {
     const point = Vector3.Project(
       new Vector3(0, 0.95, 0),
       this.head.getWorldMatrix(),
+      this.scene.getTransformMatrix(),
+      this.camera.viewport.toGlobal(width, height),
+    );
+    const rect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
+    return {
+      x: rect.left + (point.x / width) * rect.width,
+      y: rect.top + (point.y / height) * rect.height,
+      visible: point.z >= 0 && point.z <= 1,
+    };
+  }
+
+  getTutorialAnchor(itemId: number) {
+    const node = this.itemMeshes.get(itemId);
+    if (!node) return null;
+    const width = this.engine.getRenderWidth(),
+      height = this.engine.getRenderHeight();
+    const point = Vector3.Project(
+      new Vector3(0, 1.2, 0),
+      node.getWorldMatrix(),
       this.scene.getTransformMatrix(),
       this.camera.viewport.toGlobal(width, height),
     );
@@ -1779,7 +1927,7 @@ export class ForestScene {
     for (const arm of this.arms)
       arm.upper.rotation.z +=
         arm.side * (game.wallBlend * 0.35 + game.boostBlend * 0.25);
-    this.updateRunEffects(game);
+    this.updateRunEffects(game, dt);
     this.contact.setEnabled(
       game.wallBlend < 0.1 && game.boostBlend < 0.1 && game.lastHit !== "gap",
     );
@@ -1854,8 +2002,42 @@ export class ForestScene {
       }
       mesh.position.z = item.z;
       if (item.type === "coin") {
-        mesh.rotation.y = this.time * 2.3 + item.id * 0.3;
-        mesh.position.y = item.y + Math.sin(this.time * 3 + item.id) * 0.07;
+        const sourceX =
+          item.route === "wall" ? (item.side ?? 1) * 4.95 : item.lane * 2.5;
+        mesh.position.set(
+          sourceX,
+          item.y + Math.sin(this.time * 3 + item.id) * 0.07,
+          item.z,
+        );
+        mesh.rotation.y =
+          this.time * (item.attraction !== undefined ? 9 : 2.3) + item.id * 0.3;
+        mesh.scaling.setAll(1);
+        if (item.attraction !== undefined) {
+          const p = smooth(item.attraction);
+          const from = new Vector3(
+            sourceX,
+            item.y,
+            item.attractionFromZ ?? item.z,
+          );
+          const to = this.runner.position.add(new Vector3(0, 1.15, 0));
+          Vector3.LerpToRef(from, to, p, mesh.position);
+          mesh.position.y +=
+            Math.sin(p * Math.PI) * (0.55 + Math.abs(from.x - to.x) * 0.1);
+          mesh.scaling.setAll(1 - p * 0.5);
+          if (
+            running &&
+            Math.floor(this.time * 24) !== Math.floor((this.time - dt) * 24)
+          )
+            this.burst(
+              mesh.position.clone(),
+              "#ffe5a5",
+              1,
+              0.12,
+              0.22,
+              0.09,
+              0,
+            );
+        }
       } else if (item.type === "magnet" || item.type === "shield") {
         mesh.position.y = item.y + Math.sin(this.time * 2.6 + item.id) * 0.1;
         mesh.rotation.y = Math.sin(this.time * 1.5 + item.id) * 0.15;
@@ -1863,7 +2045,7 @@ export class ForestScene {
     }
     if (running && game.coins > this.lastCoins)
       this.burst(
-        new Vector3(game.x, game.y + 1, 0),
+        this.runner.position.add(new Vector3(0, 1.15, 0)),
         "#ffdf83",
         10,
         3,
