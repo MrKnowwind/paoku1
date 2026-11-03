@@ -10,3 +10,8 @@ export function fishPosition(crossing: FishCrossing, time: number) {
     direction: crossing.direction,
   };
 }
+
+// Rotate the escape height gradually; no swimming layer stays permanently safe.
+export function fishSafeLevel(row: number): number {
+  return [2, 1, 0, 1][Math.floor(row / 4) % 4];
+}

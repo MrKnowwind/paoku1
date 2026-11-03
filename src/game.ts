@@ -1,4 +1,4 @@
-import { fishPosition } from "./fish.ts";
+import { fishPosition, fishSafeLevel } from "./fish.ts";
 import type { FishCrossing } from "./fish.ts";
 import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
 import type { CoralPlan } from "./coral.ts";
@@ -556,7 +556,11 @@ export class RunnerGame {
     const rollType = this.hash(row, 11);
     const type: ItemType = rollType < CONFIG.waterFishChance ? "fish"
       : types[Math.floor((rollType - CONFIG.waterFishChance) / (1 - CONFIG.waterFishChance) * types.length)];
-    const level = type === "volcano" ? 0 : Math.floor(this.hash(row, 12) * (type === "fish" ? 2 : 3));
+    const escapeLevel = fishSafeLevel(row);
+    const fishLevels = [0, 1, 2].filter(level => level !== escapeLevel);
+    const level = type === "volcano" ? 0 : type === "fish"
+      ? fishLevels[Math.floor(this.hash(row, 12) * fishLevels.length)]
+      : Math.floor(this.hash(row, 12) * 3);
     let coral: CoralPlan | undefined;
     if (type === "coral") {
       const neighbour = Math.abs(blocked[0] - blocked[1]) === 1 && this.hash(row, 13) < 0.5
@@ -575,13 +579,13 @@ export class RunnerGame {
     const extraZ = z + CONFIG.rowSpacing / 2;
     if (this.hash(row, 16) < CONFIG.waterExtraFishChance &&
         sectionAt(extraZ).biome === "water" && obstacleAllowed(extraZ)) {
-      this.emit("fish", lane, extraZ, CONFIG.waterHeights[Math.floor(this.hash(row, 17) * 2)] + 0.95, base + 64);
+      this.emit("fish", lane, extraZ, CONFIG.waterHeights[fishLevels[Math.floor(this.hash(row, 17) * fishLevels.length)]] + 0.95, base + 64);
       const school = this.items.find(item => item.id === this.idBase + base + 64);
       if (school) school.fish = this.fishCrossing(extraZ, row, base + 64, 18);
     }
     const roll = this.hash(row, 8);
     const count = roll < CONFIG.coinSingleRatio ? 1 : roll < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
-    const routes = (type === "fish" ? [2] : [1, 0, 2]).flatMap(level => [safeLane, ...blocked].map(l => ({lane: l, level})))
+    const routes = (type === "fish" ? [escapeLevel] : [1, 0, 2]).flatMap(level => [safeLane, ...blocked].map(l => ({lane: l, level})))
       .filter(cell => type === "fish" || (coral ? !touchesCoral(coral, cell.lane * 2.5, CONFIG.waterHeights[cell.level] + 0.95, 0, 0.7) : cell.lane !== lane));
     for (const [route, cell] of routes.slice(0, count).entries())
       for (let i = 0; i < 5; i++)
@@ -590,7 +594,7 @@ export class RunnerGame {
     if (this.hash(row, 3) < CONFIG.pickupChance &&
         Array.from({length: Math.ceil(CONFIG.pickupMinSpacing / CONFIG.rowSpacing) - 1}, (_, i) => row - i - 1)
           .every(r => this.hash(r, 3) >= CONFIG.pickupChance))
-      this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", safeLane, z, CONFIG.waterHeights[type === "fish" ? 2 : 1] + 0.95, base + 8);
+      this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", safeLane, z, CONFIG.waterHeights[type === "fish" ? escapeLevel : 1] + 0.95, base + 8);
   }
   private fishCrossing(z: number, row: number, id: number, salt: number): FishCrossing {
     let crossing = this.fishCrossings.get(id);

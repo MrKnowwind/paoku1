@@ -1,4 +1,4 @@
-import { fishPosition } from "./fish.ts";
+import { fishPosition, fishSafeLevel } from "./fish.ts";
 import { coastFloor, coastWeights, coastSandUV } from "./coast-layout.ts";
 import { CYCLE_LENGTH } from "./track.ts";
 import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
@@ -510,14 +510,14 @@ test("water generation leaves connected safe columns with unique IDs", () => {
   assert.ok(waterItems.some(i => i.type === "coin"));
   assert.equal(new Set(game.items.map(i => i.id)).size, game.items.length);
   for (const item of waterItems.filter(i => ["bubble", "coral", "volcano", "fish"].includes(i.type))) {
-    const row = Math.round((item.worldZ - 65) / CONFIG.rowSpacing);
+    const row = Math.floor((item.worldZ - 65) / CONFIG.rowSpacing);
     const safeX = waterSafeLane(row) * 2.5;
     assert.ok(Math.abs(waterSafeLane(row) - waterSafeLane(Math.max(0, row - 1))) <= 1);
     if (item.coral) {
       for (const y of CONFIG.waterHeights)
         assert.equal(touchesCoral(item.coral, safeX, y + 0.95, 0, 0.7), false);
     } else if (item.type === "fish") {
-      assert.ok(Math.abs(item.y - CONFIG.waterHeights[2] - 0.95) > 2);
+      assert.ok(Math.abs(item.y - CONFIG.waterHeights[fishSafeLevel(row)] - 0.95) > 2);
     } else {
       const b = game.waterBounds(item);
       assert.ok(Math.abs(b.x - safeX) - b.rx > 0.95);
@@ -652,8 +652,9 @@ test("all swimming levels stay below the surface while the lowest level still me
 });
 
 
-test("ocean rows add extra crossing schools with distinct IDs and an open upper layer", () => {
+test("ocean rows add extra schools across all heights with distinct IDs and a rotating escape layer", () => {
   let rows = 0, extras = 0, schools = 0;
+  const fishHeights = new Set<number>();
   for (let seed = 1; seed <= 12; seed++) {
     const game = new RunnerGame({random: () => seed / 13});
     game.start(); game.distance = 1500; game.update(0.001);
@@ -671,13 +672,18 @@ test("ocean rows add extra crossing schools with distinct IDs and an open upper 
       if (item.type !== "fish") continue;
       schools++;
       assert.ok(item.fish);
-      assert.ok(item.y + 0.65 + 0.45 < CONFIG.waterHeights[2] + 0.95);
+      const row = Math.floor((item.worldZ - 65) / CONFIG.rowSpacing);
+      const escape = fishSafeLevel(row);
+      assert.ok(Math.abs(item.y - CONFIG.waterHeights[escape] - 0.95) > 1.1);
+      assert.ok(Math.abs(escape - fishSafeLevel(Math.max(0, row - 1))) <= 1);
+      fishHeights.add(item.y);
       const before = game.waterBounds(item);
       game.pause(); game.update(5);
       assert.deepEqual(game.waterBounds(item), before);
       game.resume();
     }
   }
+  assert.equal(fishHeights.size, 3, "fish use all three heights");
   assert.ok(extras > rows * 0.3, "extra schools increase obstacle density");
   assert.ok(schools > (rows + extras) * 0.5, "fish account for most ocean encounters");
 });
