@@ -5,6 +5,7 @@ import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { gapsNear, roadSpans, sectionAt } from "./track.ts";
@@ -477,7 +478,13 @@ export class TerrainScene {
       last = Math.ceil((distance + 180) / 10);
     for (const [index, root] of this.cells)
       if (index < first || index > last) {
+        const batches = new Set(
+          root.getChildMeshes().map((mesh) => mesh.material),
+        );
         root.dispose();
+        for (const material of batches)
+          if (material instanceof MultiMaterial)
+            material.dispose(false, false, false);
         this.cells.delete(index);
       }
     for (let index = first; index <= last; index++) {
