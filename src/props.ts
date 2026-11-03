@@ -12,6 +12,8 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { mergeSceneryMeshes } from "./scenery-mesh";
+import { rockShelfSpan } from "./rock-shelf.ts";
+import type { RockShelf } from "./rock-shelf.ts";
 
 type Surface =
   | "bark"
@@ -546,7 +548,110 @@ export class ForestProps {
     return mesh;
   }
 
-  create(type: "log" | "arch" | "rock", seed: number, canyon = false) {
+  private createRockShelf(seed: number, shelf: RockShelf) {
+    const root = new TransformNode("wall-grown-stone-shelf", this.scene);
+    const span = rockShelfSpan(shelf);
+    const positions: number[] = [],
+      indices: number[] = [],
+      colors: number[] = [];
+    const rings = 16,
+      segments = 16;
+    const thickness = (t: number) => 0.65 - t * 0.23;
+    for (let ring = 0; ring <= rings; ring++) {
+      const t = ring / rings;
+      const x = span.wallX + (span.tipX - span.wallX) * t;
+      const halfHeight = thickness(t);
+      const halfDepth = 1.05 - t * 0.13 + Math.sin(x * 2.7 + seed) * 0.035;
+      for (let j = 0; j < segments; j++) {
+        const a = (j * Math.PI * 2) / segments;
+        const yProfile =
+          Math.sign(Math.sin(a)) * Math.pow(Math.abs(Math.sin(a)), 0.5);
+        const zProfile =
+          Math.sign(Math.cos(a)) * Math.pow(Math.abs(Math.cos(a)), 0.65);
+        const wear = Math.sin(x * 4.2 + j * 0.7 + seed) * 0.025;
+        const y = 1.4 + halfHeight + yProfile * halfHeight + wear;
+        positions.push(x, y, zProfile * halfDepth * (1 + wear));
+        const shade = 0.78 + (y - 1.35) * 0.16;
+        colors.push(shade, shade * 0.95, shade * 0.85, 1);
+        if (ring < rings) {
+          const next = (j + 1) % segments;
+          const a0 = ring * segments + j,
+            a1 = ring * segments + next;
+          const b0 = a0 + segments,
+            b1 = a1 + segments;
+          if (shelf.side === 1) indices.push(a0, a1, b0, a1, b1, b0);
+          else indices.push(a0, b0, a1, a1, b0, b1);
+        }
+      }
+    }
+    for (const end of [0, 1]) {
+      const cap = positions.length / 3;
+      positions.push(end ? span.tipX : span.wallX, 1.4 + thickness(end), 0);
+      colors.push(0.91, 0.86, 0.76, 1);
+      for (let j = 0; j < segments; j++) {
+        const a = end * rings * segments + j;
+        const b = end * rings * segments + ((j + 1) % segments);
+        if ((end === 1) === (shelf.side === 1)) indices.push(cap, a, b);
+        else indices.push(cap, b, a);
+      }
+    }
+    const normals: number[] = [],
+      uvs: number[] = [];
+    // Match Babylon's clockwise winding in the left-handed scene.
+    for (let i = 0; i < indices.length; i += 3)
+      [indices[i + 1], indices[i + 2]] = [indices[i + 2], indices[i + 1]];
+    VertexData.ComputeNormals(positions, indices, normals);
+    for (let i = 0; i < positions.length; i += 3)
+      uvs.push(
+        positions[i] / 3,
+        (Math.abs(normals[i + 1]) > 0.6 ? positions[i + 2] : positions[i + 1]) /
+          3,
+      );
+    const mesh = new Mesh("eroded-overhanging-rock", this.scene);
+    const data = new VertexData();
+    data.positions = positions;
+    data.indices = indices;
+    data.normals = normals;
+    data.colors = colors;
+    data.uvs = uvs;
+    data.applyToMesh(mesh);
+    mesh.parent = root;
+    mesh.material = this.material("sandstone");
+    mesh.receiveShadows = true;
+    // The root embeds in the cliff; every stone stays above the slide opening.
+    const anchor = this.sandstone(
+      "embedded-rock-root",
+      [1.4, 1.7, 2.5],
+      seed,
+      root,
+    );
+    anchor.position.set(span.wallX, 2.25, 0.05);
+    for (let i = 0; i < 3; i++) {
+      const t = (i + 0.5) / 3;
+      const plate = this.sandstone(
+        "shelf-weathered-stratum",
+        [span.length * 0.32, 0.22, 1.55],
+        seed + i * 3,
+        root,
+      );
+      plate.position.set(
+        span.wallX + (span.tipX - span.wallX) * t,
+        1.4 + thickness(t) * 2 - 0.02,
+        0.08,
+      );
+      plate.rotation.x = 0.025 * Math.sin(seed + i);
+    }
+    return root;
+  }
+
+  create(
+    type: "log" | "arch" | "rock",
+    seed: number,
+    canyon = false,
+    shelf?: RockShelf,
+  ) {
+    if (canyon && type === "arch")
+      return this.createRockShelf(seed, shelf ?? { side: 1, laneCount: 2 });
     const root = new TransformNode(`natural-${type}`, this.scene);
     if (canyon) {
       if (type === "log") {
@@ -564,32 +669,6 @@ export class ForestProps {
             seed + side,
             root,
           ).position.set(side * 0.8, 0.12, 0.2);
-      } else if (type === "arch") {
-        for (const side of [-1, 1]) {
-          const shoulder = this.sandstone(
-            "eroded-rock-shoulder",
-            [0.62, 2.8, 1.12],
-            seed + side,
-            root,
-          );
-          shoulder.position.set(side * 1.13, 1.22, 0.12);
-          shoulder.rotation.z = side * 0.1;
-          const shelf = this.sandstone(
-            "inward-rock-shelf",
-            [1.54, 1.05, 1.15],
-            seed + side * 5,
-            root,
-          );
-          shelf.position.set(side * 0.55, 2.04 + side * 0.04, -0.02);
-          shelf.rotation.z = side * -0.08;
-          const upper = this.sandstone(
-            "weathered-shelf-crown",
-            [0.97, 0.33, 0.9],
-            seed + side * 9,
-            root,
-          );
-          upper.position.set(side * 0.8, 2.66, 0.12);
-        }
       } else {
         this.sandstone(
           "canyon-rock-pile",

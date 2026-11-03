@@ -5,6 +5,21 @@ import { Tutorial } from "./tutorial.ts";
 
 const activeLesson = (tutorial: Tutorial) => tutorial.active?.id;
 
+test("slide guidance covers the second lane beneath a wall-grown shelf", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  game.distance = 700;
+  game.lane = 1;
+  game.x = 2.5;
+  const item = game.addItem("arch", 0, 5);
+  item.shelf = { side: 1, laneCount: 2 };
+  const tutorial = new Tutorial([], () => {});
+  tutorial.resetRun(game);
+  tutorial.update(game, 0.1, false);
+  assert.equal(activeLesson(tutorial), "slide");
+  assert.equal(tutorial.active?.target, item.id);
+});
+
 test("opening lesson keeps slow motion until the matching accepted gesture", () => {
   const game = new RunnerGame({ autoSpawn: false });
   game.start();

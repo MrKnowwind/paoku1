@@ -33,6 +33,7 @@ import { ForestProps } from "./props.ts";
 import { TerrainScene } from "./terrain-scene.ts";
 import { sectionAt, tunnelDarkness } from "./track.ts";
 import { iconAsset } from "./art.ts";
+import { rockShelfSpan } from "./rock-shelf.ts";
 
 type Triple = [number, number, number];
 type Particle = {
@@ -1193,17 +1194,22 @@ export class ForestScene {
         item.type,
         item.id,
         sectionAt(item.worldZ).biome === "canyon",
+        item.shelf,
       );
-      root.position.set(item.lane * 2.5, 0, item.z);
+      root.position.set(item.shelf ? 0 : item.lane * 2.5, 0, item.z);
       if (item.type === "arch" && sectionAt(item.worldZ).biome === "canyon") {
-        const cue = CreatePlane(
-          "rock-slide-mark",
-          { width: 0.4, height: 0.32 },
-          this.scene,
-        );
-        cue.parent = root;
-        cue.position.set(0, 2.1, -0.64);
-        cue.material = this.pickupArt("chevron");
+        for (const lane of item.shelf
+          ? rockShelfSpan(item.shelf).lanes
+          : [item.lane]) {
+          const cue = CreatePlane(
+            "rock-slide-mark",
+            { width: 0.38, height: 0.3 },
+            this.scene,
+          );
+          cue.parent = root;
+          cue.position.set(lane * 2.5, 2.0, -1.08);
+          cue.material = this.pickupArt("chevron");
+        }
       }
       return root;
     }
@@ -1646,7 +1652,13 @@ export class ForestScene {
     const width = this.engine.getRenderWidth(),
       height = this.engine.getRenderHeight();
     const point = Vector3.Project(
-      new Vector3(0, 1.2, 0),
+      new Vector3(
+        node.position.x === 0 && node.name === "wall-grown-stone-shelf"
+          ? this.runner.position.x
+          : 0,
+        1.9,
+        0,
+      ),
       node.getWorldMatrix(),
       this.scene.getTransformMatrix(),
       this.camera.viewport.toGlobal(width, height),

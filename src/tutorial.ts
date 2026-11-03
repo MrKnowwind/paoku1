@@ -1,4 +1,10 @@
-import type { RunnerGame } from "./game.ts";
+import type { RunnerGame, TrackItem } from "./game.ts";
+import { underRockShelf } from "./rock-shelf.ts";
+
+const onPath = (item: TrackItem, x: number) =>
+  item.shelf
+    ? underRockShelf(item.shelf, x)
+    : Math.abs(item.lane * 2.5 - x) < 1.1;
 
 export type LessonId =
   | "move"
@@ -120,7 +126,7 @@ export class Tutorial {
         ["log", "arch", "rock"].includes(item.type) &&
         item.z > 0 &&
         item.z < game.baseSpeed * 0.3 &&
-        Math.abs(item.lane * 2.5 - game.x) < 1.1,
+        onPath(item, game.x),
     );
     return (target && target.z < game.baseSpeed * 0.3) || near ? 0 : 0.08;
   }
@@ -178,7 +184,7 @@ export class Tutorial {
           ["log", "arch", "rock"].includes(item.type) &&
           item.z > 0 &&
           item.z <= game.baseSpeed * 0.58 &&
-          Math.abs(item.lane * 2.5 - game.x) < 1.1,
+          onPath(item, game.x),
       )
       .sort((a, b) => a.z - b.z)[0];
     if (obstacle) {
@@ -212,7 +218,7 @@ export class Tutorial {
         item.z < game.baseSpeed * 1.5 &&
         (item.route === "wall"
           ? game.wallSide === item.side
-          : Math.abs(item.lane * 2.5 - game.x) < 1.1),
+          : onPath(item, game.x)),
     );
     if (!imminent && this.pending.length) {
       const id = this.pending.shift()!;

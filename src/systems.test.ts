@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { CONFIG } from "./config.ts";
 import { Economy, PROGRESS_KEY } from "./economy.ts";
 import { RunnerGame } from "./game.ts";
+import { rockShelfSpan } from "./rock-shelf.ts";
 import {
   sectionAt,
   gapAt,
@@ -10,6 +11,45 @@ import {
   obstacleAllowed,
   tunnelDarkness,
 } from "./track.ts";
+
+test("wall-attached shelves block every covered lane and keep the opposite lane clear", () => {
+  for (const laneCount of [1, 2, 3] as const) {
+    const span = rockShelfSpan({ side: 1, laneCount });
+    assert.ok(Math.abs(span.length - (4.37 + (laneCount - 1) * 2.5)) < 0.001);
+    for (const lane of [-1, 0, 1]) {
+      for (const sliding of [false, true]) {
+        const game = new RunnerGame({ autoSpawn: false });
+        game.start();
+        game.distance = 700;
+        game.lane = lane;
+        game.x = lane * 2.5;
+        const item = game.addItem("arch", 1, 4);
+        item.shelf = { side: 1, laneCount };
+        if (sliding) game.slide();
+        game.update(0.3);
+        assert.equal(
+          game.mode,
+          !sliding && span.lanes.includes(lane) ? "over" : "running",
+        );
+      }
+    }
+  }
+});
+
+test("booster landing respects a stone shelf extending across the centre lane", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  game.distance = 700;
+  const item = game.addItem("arch", 1, 4);
+  item.shelf = { side: 1, laneCount: 2 };
+  game.activateBooster(true);
+  game.boostRemaining = 1;
+  game.update(0.04);
+  assert.equal(game.boosting, true);
+  game.update(0.6);
+  assert.equal(game.boosting, false);
+  assert.equal(game.mode, "running");
+});
 
 test("progress migrates independently and purchases atomically persist currency and goods", () => {
   const memory = new Map<string, string>([["wild-dash:best", "5000"]]);

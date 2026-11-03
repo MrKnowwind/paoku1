@@ -1,4 +1,6 @@
 import { CONFIG } from "./config.ts";
+import { underRockShelf } from "./rock-shelf.ts";
+import type { RockShelf } from "./rock-shelf.ts";
 import {
   entryAt,
   gapAt,
@@ -42,6 +44,7 @@ export interface TrackItem {
   level?: number;
   attraction?: number;
   attractionFromZ?: number;
+  shelf?: RockShelf;
 }
 interface Snapshot {
   time: number;
@@ -265,13 +268,15 @@ export class RunnerGame {
     return true;
   }
   addItem(type: ItemType, lane: number, z: number, y = 0.95): TrackItem {
-    const item = {
-      id: this.idBase + this.nextId++,
+    const localId = this.nextId++;
+    const item: TrackItem = {
+      id: this.idBase + localId,
       type,
       lane,
       z,
       y,
       worldZ: this.distance + z,
+      shelf: this.shelfFor(type, lane, this.distance + z, localId),
     };
     this.items.push(item);
     return item;
@@ -338,6 +343,17 @@ export class RunnerGame {
     n = Math.imul(n ^ (n >>> 13), 1274126177) >>> 0;
     return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
   }
+  private shelfFor(
+    type: ItemType,
+    lane: number,
+    worldZ: number,
+    localId: number,
+  ): RockShelf | undefined {
+    if (type !== "arch" || sectionAt(worldZ).biome !== "canyon") return;
+    const side =
+      lane < 0 ? -1 : lane > 0 ? 1 : this.hash(localId, 5) < 0.5 ? -1 : 1;
+    return { side, laneCount: lane === 0 ? 2 : 1 };
+  }
   private emit(
     type: ItemType,
     lane: number,
@@ -364,6 +380,7 @@ export class RunnerGame {
       route,
       side: route === "wall" ? lane : 0,
       level,
+      shelf: this.shelfFor(type, lane, worldZ, localId),
     });
   }
   private openingTrack() {
@@ -392,9 +409,17 @@ export class RunnerGame {
       if (obstacleAllowed(z) && (!this.trainingOpening || z >= 90)) {
         const lane = Math.floor(this.hash(row, 1) * 3) - 1;
         const types: ItemType[] = ["log", "arch", "rock"];
-        this.emit(types[Math.floor(this.hash(row, 2) * 3)], lane, z, 0, base);
-        // One blocked lane per row; 32 m between rows leaves time to change lanes.
-        const safeLane = lane === 1 ? 0 : lane + 1;
+        const type = types[Math.floor(this.hash(row, 2) * 3)];
+        const shelf = this.shelfFor(type, lane, z, base);
+        this.emit(type, lane, z, 0, base);
+        // Centre shelves span two lanes from their wall; leave coins on the open lane.
+        const safeLane = shelf
+          ? shelf.laneCount === 1
+            ? 0
+            : -shelf.side
+          : lane === 1
+            ? 0
+            : lane + 1;
         for (let i = 0; i < 5; i++)
           if (obstacleAllowed(z - 8 + i * 3.5))
             this.emit("coin", safeLane, z - 8 + i * 3.5, 0.95, base + 1 + i);
@@ -535,7 +560,7 @@ export class RunnerGame {
         (item) =>
           item.route !== "wall" &&
           ["log", "arch", "rock"].includes(item.type) &&
-          item.lane === 0 &&
+          (item.shelf ? underRockShelf(item.shelf, 0) : item.lane === 0) &&
           Math.abs(item.worldZ - this.distance) < 12,
       )
     );
@@ -735,7 +760,10 @@ export class RunnerGame {
         const closeRoute = wall
           ? this.wallSide === item.side &&
             Math.abs(this.wallY + 0.95 - item.y) < 0.75
-          : !this.wallSide && Math.abs(item.lane * 2.5 - this.x) < 0.95;
+          : !this.wallSide &&
+            (item.shelf
+              ? underRockShelf(item.shelf, this.x)
+              : Math.abs(item.lane * 2.5 - this.x) < 0.95);
         const closeHeight =
           wall ||
           Math.abs(
@@ -769,7 +797,7 @@ export class RunnerGame {
           if (!flying && Math.abs(item.z) < 0.65 && closeRoute && closeHeight)
             this.collect(item);
         } else if (
-          Math.abs(item.z) < 0.65 &&
+          Math.abs(item.z) < (item.shelf ? 1.15 : 0.65) &&
           closeRoute &&
           (item.type === "wall-rock" ||
             item.type === "rock" ||
