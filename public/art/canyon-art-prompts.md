@@ -1,0 +1,18 @@
+# Canyon and supply art
+
+Generated with the built-in ImageGen tool on 2026-11-03. The generated originals stay in the Codex generated_images directory; production copies are stored here. No remote asset hosts are used.
+
+- `icons/*.png`: sixteen 256 × 256 sprites, mechanically sliced from a 4 × 4 atlas and resized with Lanczos; original transparency preserved.
+- `canyon-sandstone.jpg`, `canyon-trail.jpg`: 1024 × 1024, JPEG quality 87, mipmapped in Babylon.js.
+
+## Icon atlas prompt
+
+Use case: stylized-concept. Asset type: production game UI icon sprite atlas, transparent background. Create ONE square 4 by 4 atlas, exactly sixteen different icons, each centered in an equally sized square grid cell with generous 18% empty padding so no icon crosses its cell. No visible grid lines. Polished hand-painted cartoon adventure game inventory art, cozy woodland explorer, soft dimensional painted forms, warm ivory highlights, muted forest green, terracotta, antique brass, restrained outline and highly readable at 32px. All subjects fully isolated, real transparent background, no text, no letters, no numbers, no circular tile backplates. Exact order, left to right top to bottom: row 1 golden leaf-stamped coin, red horseshoe magnet with brass tips, teal enamel shield with gold rim and leaf crest, compact twin-nozzle brass and green explorer jetpack; row 2 wooden hourglass with turquoise glass and golden sand, tan leather explorer supply satchel with leaf clasp, golden cup trophy with wood base, brass gear with green center; row 3 wooden speaker with sound wave arcs, same wooden speaker with a small muted slash, pair of ivory pause bars with brass edges, ivory play triangle with brass rim; row 4 wooden home with sage roof, wooden circular restart arrow, brass compass with green face, woodland leaf badge. Orthographic three-quarter front object illustrations with matching scale, clean silhouettes, no neon or excessive glow. Crisp transparent alpha. 1536x1536 atlas.
+
+## Sandstone prompt
+
+Use case: stylized-concept. Asset type: seamless tileable albedo texture for sandstone canyon cliffs and tunnel rock in a cozy woodland 3D runner. Single full-bleed square texture, 1024x1024. Hand-painted storybook game material, warm muted sandstone with softly eroded horizontal sediment layers, irregular broad stone plates, fine hairline cracks and chalky grain, subtle terracotta and ivory ochre veins, occasional tiny sage lichen freckles. Natural organic forms, medium low contrast, richly painted detail matching an illustrated woodland trail. Texture surface only, flat orthographic material scan, uniform diffuse illumination, no cast shadows, no perspective, no objects, no border, no text, no UI. All four edges must tile seamlessly. No large black cracks, no brick grid, no noisy photorealism.
+
+## Canyon trail prompt
+
+Use case: stylized-concept. Asset type: seamless tileable albedo texture for a canyon running path in a cozy woodland 3D adventure runner. Single full-bleed square 1024x1024. Soft hand-painted storybook style, warm dusty muted ochre terracotta earth, tiny smooth sandstone chips and wind-swept mineral striations, broad quiet areas with fine brushed sand texture and a few dried straw fragments, low contrast and readable to run across. Match a warm woodland sandy trail but with weathered canyon soil. Flat orthographic top down, uniform diffuse illumination, no direction shadows or baked lighting, no horizon, no grass border, no cracks forming a grid, no large objects, no symbols, no text or watermark. Seamlessly repeating on all four sides.

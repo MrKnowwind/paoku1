@@ -9,6 +9,7 @@ import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator"
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
@@ -30,6 +31,7 @@ import { RunnerMotion } from "./motion.ts";
 import { ForestProps } from "./props.ts";
 import { TerrainScene } from "./terrain-scene.ts";
 import { sectionAt, tunnelDarkness } from "./track.ts";
+import { iconAsset } from "./art.ts";
 
 type Triple = [number, number, number];
 type Particle = {
@@ -98,6 +100,7 @@ export class ForestScene {
   private lastEffectTick = -1;
   private forestVisible = true;
   private particleMaterials = new Map<string, StandardMaterial>();
+  private pickupMaterials = new Map<string, StandardMaterial>();
   private time = 0;
   private lastCoins = 0;
   private lastPhase = 0;
@@ -1156,37 +1159,16 @@ export class ForestScene {
     if (item.type === "magnet" || item.type === "shield") {
       const root = new TransformNode(item.type, this.scene);
       const color = item.type === "magnet" ? "#df9b65" : "#8abbd0";
-      if (item.type === "magnet") {
-        this.seam(
-          "magnet-pickup",
-          [
-            [-0.22, 0.2, 0],
-            [-0.22, -0.1, 0],
-            [-0.12, -0.22, 0],
-            [0.12, -0.22, 0],
-            [0.22, -0.1, 0],
-            [0.22, 0.2, 0],
-          ],
-          0.075,
-          color,
-          root,
-        );
-      } else
-        this.part(
-          "sphere",
-          "shield-pickup",
-          [0.5, 0.6, 0.14],
-          color,
-          [0, 0, 0],
-          root,
-          16,
-        );
+      const painted = CreatePlane("painted-supply", { size: 1.28 }, this.scene);
+      painted.material = this.pickupArt(item.type);
+      painted.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      painted.parent = root;
       const ring = CreateTorus(
         "pickup-halo",
-        { diameter: 0.85, thickness: 0.025, tessellation: 24 },
+        { diameter: 1.1, thickness: 0.035, tessellation: 36 },
         this.scene,
       );
-      ring.rotation.x = Math.PI / 2;
+      ring.position.y = -0.49;
       ring.material = this.mat(color, true);
       ring.parent = root;
       root.position.set(item.lane * 2.5, item.y, item.z);
@@ -1243,6 +1225,24 @@ export class ForestScene {
       mark.rotation.z = -0.38;
     }
     return root;
+  }
+
+  private pickupArt(name: string) {
+    let material = this.pickupMaterials.get(name);
+    if (!material) {
+      material = new StandardMaterial(`painted-${name}`, this.scene);
+      const texture = new Texture(iconAsset(name), this.scene);
+      texture.hasAlpha = true;
+      texture.anisotropicFilteringLevel = 4;
+      material.diffuseTexture = texture;
+      material.useAlphaFromDiffuseTexture = true;
+      material.emissiveColor.setAll(0.2);
+      material.emissiveTexture = texture;
+      material.specularColor = Color3.Black();
+      material.backFaceCulling = false;
+      this.pickupMaterials.set(name, material);
+    }
+    return material;
   }
 
   private createSoftTexture() {
@@ -1358,12 +1358,55 @@ export class ForestScene {
       this.boostJets.push(jet);
       const pod = CreateCylinder(
         "booster-pod",
-        { height: 0.4, diameter: 0.21, tessellation: 20 },
+        {
+          height: 0.46,
+          diameterTop: 0.18,
+          diameterBottom: 0.23,
+          tessellation: 24,
+        },
         this.scene,
       );
       pod.parent = this.backpack;
       pod.position.set(side * 0.22, -0.05, -0.23);
-      pod.material = this.mat("#8b9992");
+      pod.material = this.mat("#345d50");
+      for (const y of [-0.16, 0.15]) {
+        const band = CreateTorus(
+          "jetpack-brass-collar",
+          { diameter: 0.225, thickness: 0.035, tessellation: 24 },
+          this.scene,
+        );
+        band.parent = pod;
+        band.position.y = y;
+        band.material = this.mat("#cfaa66");
+      }
+      const nozzle = CreateLathe(
+        "flared-jet-nozzle",
+        {
+          shape: [
+            new Vector3(0.085, 0, 0),
+            new Vector3(0.09, -0.09, 0),
+            new Vector3(0.145, -0.16, 0),
+            new Vector3(0.145, -0.18, 0),
+            new Vector3(0.11, -0.18, 0),
+            new Vector3(0.07, -0.07, 0),
+          ],
+          tessellation: 24,
+          sideOrientation: Mesh.DOUBLESIDE,
+        },
+        this.scene,
+      );
+      nozzle.parent = pod;
+      nozzle.position.y = -0.2;
+      nozzle.material = this.mat("#cfaa66");
+      const cap = CreateSphere(
+        "jetpack-rounded-cap",
+        { diameter: 0.19, segments: 16 },
+        this.scene,
+      );
+      cap.parent = pod;
+      cap.position.y = 0.23;
+      cap.scaling.y = 0.55;
+      cap.material = this.mat("#cfaa66");
       this.boosterPods.push(pod);
       const entry = CreateTorus(
         "wall-entry-ring",
@@ -1506,30 +1549,60 @@ export class ForestScene {
     const pose = this.motion.update(game, dt);
     const scroll = ready || introducing ? 0 : game.distance;
     this.terrainView.update(scroll);
-    const darkness = tunnelDarkness(scroll);
-    const section = sectionAt(scroll);
-    const environment =
+    // Exposure follows the lens crossing the mouth, not the runner seven metres ahead.
+    const cameraDistance = Math.max(0, scroll + this.camera.position.z);
+    const darkness = tunnelDarkness(cameraDistance);
+    const section = sectionAt(cameraDistance);
+    const from =
       section.biome === "tunnel"
-        ? sectionAt(
-            scroll < (section.start + section.end) / 2
-              ? section.start - 1
-              : section.end + 1,
-          ).biome
+        ? sectionAt(section.start - 1).biome
         : section.biome;
-    const fog = Color3.FromHexString(
-      environment === "canyon" ? "#ddc9ad" : "#d9e9db",
-    ).scale(1 - darkness);
+    const to =
+      section.biome === "tunnel"
+        ? sectionAt(section.end + 1).biome
+        : section.biome;
+    const progress =
+      section.biome === "tunnel"
+        ? smooth(
+            (cameraDistance - section.start) / (section.end - section.start),
+          )
+        : 0;
+    const canyonBlend =
+      (from === "canyon" ? 1 : 0) * (1 - progress) +
+      (to === "canyon" ? 1 : 0) * progress;
+    const outside = Color3.Lerp(
+      Color3.FromHexString("#d9e9db"),
+      Color3.FromHexString("#ddc9ad"),
+      canyonBlend,
+    );
+    const fog = outside.scale(1 - darkness * 0.96);
     this.scene.fogColor = fog;
     this.scene.clearColor = new Color4(fog.r, fog.g, fog.b, 1);
+    this.scene.fogDensity = 0.009 + darkness * 0.012;
     this.sky.intensity = 0.75 * (1 - darkness);
     this.sun.intensity = 0.85 * (1 - darkness);
-    this.forestVisible = environment === "forest";
-    this.forestBackdrop.setEnabled(this.forestVisible);
+    this.sky.groundColor = Color3.Lerp(
+      Color3.FromHexString("#698463"),
+      Color3.FromHexString("#a88a67"),
+      canyonBlend,
+    );
+    this.forestVisible = canyonBlend < 0.5;
+    this.forestBackdrop.setEnabled(canyonBlend < 0.999);
+    for (const hill of this.forestBackdrop.getChildMeshes())
+      hill.visibility = 1 - canyonBlend;
     this.chunks.forEach((root, i) => {
       root.position.z = ((((i * 40 - scroll + 40) % 200) + 200) % 200) - 60;
-      root.setEnabled(
-        sectionAt(root.position.z + scroll + 20).biome === "forest",
-      );
+      // Clip individual roadside objects to their section; a 40m group must not pop at the portal.
+      for (const child of root.getChildren()) {
+        const node = child as TransformNode;
+        const worldZ = root.position.z + scroll + node.position.z;
+        const road = sectionAt(worldZ);
+        const clearMouth =
+          road.biome === "forest" &&
+          road.end - worldZ > 7 &&
+          (road.start === 0 || worldZ - road.start > 5);
+        node.setEnabled(clearMouth);
+      }
     });
     const blend = 1 - pose.slide,
       airborne = !ready && !introducing && game.y > 0;
@@ -1783,6 +1856,9 @@ export class ForestScene {
       if (item.type === "coin") {
         mesh.rotation.y = this.time * 2.3 + item.id * 0.3;
         mesh.position.y = item.y + Math.sin(this.time * 3 + item.id) * 0.07;
+      } else if (item.type === "magnet" || item.type === "shield") {
+        mesh.position.y = item.y + Math.sin(this.time * 2.6 + item.id) * 0.1;
+        mesh.rotation.y = Math.sin(this.time * 1.5 + item.id) * 0.15;
       }
     }
     if (running && game.coins > this.lastCoins)

@@ -3,6 +3,7 @@ import { RunnerGame } from "./game.ts";
 import { ForestScene } from "./scene.ts";
 import { Economy } from "./economy.ts";
 import { CONFIG } from "./config.ts";
+import { artIcons, iconAsset } from "./art.ts";
 import { messages, resolveLanguage, languageTags } from "./i18n.ts";
 import type { MessageKey } from "./i18n.ts";
 
@@ -46,8 +47,12 @@ const icons: Record<string, string> = {
   chevron: '<path d="m7 10 5 5 5-5"/>',
   quality: '<path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
 };
-const icon = (name: string, cls = "") =>
-  `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] ?? icons.leaf}</svg>`;
+const icon = (name: string, cls = "") => {
+  const artName = name === "route" ? "compass" : name;
+  return artIcons.has(artName)
+    ? `<img class="icon art-icon ${cls}" src="${iconAsset(artName)}" alt="" aria-hidden="true" draggable="false" width="32" height="32" decoding="async">`
+    : `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] ?? icons.leaf}</svg>`;
+};
 const read = (key: string) => {
   try {
     return localStorage.getItem(`wild-dash:${key}`);
@@ -70,7 +75,13 @@ let best = Math.max(0, Number(read("best")) || 0);
 let newBest = false;
 let resultDelay = 0;
 let activeDialog:
-  "settings" | "pause" | "over" | "guide" | "shop" | "revive" | null = null;
+  | "settings"
+  | "pause"
+  | "over"
+  | "guide"
+  | "shop"
+  | "revive"
+  | null = null;
 let runFinalized = false;
 let buyBusyUntil = 0;
 let lastPickupSerial = 0;

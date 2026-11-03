@@ -9,6 +9,7 @@ import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { mergeSceneryMeshes } from "./scenery-mesh";
 
@@ -16,6 +17,7 @@ type Surface =
   | "bark"
   | "cut"
   | "stone"
+  | "sandstone"
   | "plank"
   | "rope"
   | "foliage"
@@ -35,7 +37,14 @@ export class ForestProps {
     if (cached) return cached;
     const material = new StandardMaterial(`natural-${surface}`, this.scene);
     material.specularColor.setAll(0.025);
-    if (surface === "rope") {
+    if (surface === "sandstone") {
+      material.diffuseTexture = new Texture(
+        import.meta.env.BASE_URL + "art/canyon-sandstone.jpg",
+        this.scene,
+      );
+      material.diffuseTexture.anisotropicFilteringLevel = 8;
+      material.specularColor.setAll(0.012);
+    } else if (surface === "rope") {
       material.diffuseColor = Color3.FromHexString("#c1ac82").toLinearSpace();
     } else {
       const texture = new DynamicTexture(
@@ -193,7 +202,7 @@ export class ForestProps {
     return material;
   }
 
-  texture(surface: "fabric" | "leather" | "stone") {
+  texture(surface: "fabric" | "leather" | "stone" | "sandstone") {
     return this.material(surface).diffuseTexture;
   }
   foliageTexture() {
@@ -489,11 +498,59 @@ export class ForestProps {
     return mesh;
   }
 
+  sandstone(
+    name: string,
+    size: [number, number, number],
+    seed: number,
+    parent: TransformNode,
+  ) {
+    const mesh = CreateSphere(
+      name,
+      { diameter: 1, segments: 20, updatable: true },
+      this.scene,
+    );
+    this.reshape(mesh, (x, y, z) => {
+      // Broad, softly bevelled faces and eroded strata, rather than round pebbles.
+      const face = (v: number) =>
+        Math.sign(v) * 0.5 * Math.pow(Math.abs(v) * 2, 0.7);
+      const layer = Math.sin(y * 31 + seed) * 0.035;
+      const wear = Math.sin(x * 13 + z * 9 + seed) * 0.035;
+      return [
+        face(x) * size[0] * (1 + layer + wear),
+        face(y) * size[1] * (1 + Math.sin(z * 8 + seed) * 0.035),
+        face(z) * size[2] * (1 + layer - wear),
+      ];
+    });
+    const positions = mesh.getVerticesData(VertexBuffer.PositionKind)!;
+    const normals = mesh.getVerticesData(VertexBuffer.NormalKind)!;
+    const colors: number[] = [];
+    const uvs: number[] = [];
+    for (let i = 0; i < positions.length; i += 3) {
+      const y = positions[i + 1] / size[1];
+      const shade = 0.85 + (y + 0.5) * 0.15;
+      colors.push(shade, shade * 0.96, shade * 0.89, 1);
+      if (Math.abs(normals[i + 1]) > 0.65)
+        uvs.push(positions[i] / 2.8, positions[i + 2] / 2.8);
+      else
+        uvs.push(
+          (Math.abs(normals[i]) > Math.abs(normals[i + 2])
+            ? positions[i + 2]
+            : positions[i]) / 2.8,
+          positions[i + 1] / 2.8,
+        );
+    }
+    mesh.setVerticesData(VertexBuffer.ColorKind, colors);
+    mesh.setVerticesData(VertexBuffer.UVKind, uvs);
+    mesh.material = this.material("sandstone");
+    mesh.parent = parent;
+    return mesh;
+  }
+
   create(type: "log" | "arch" | "rock", seed: number, canyon = false) {
     const root = new TransformNode(`natural-${type}`, this.scene);
     if (canyon) {
       if (type === "log") {
-        const pillar = this.stone(
+        const pillar = this.sandstone(
           "fallen-stone-column",
           [1.95, 0.92, 0.98],
           seed,
@@ -501,7 +558,7 @@ export class ForestProps {
         );
         pillar.position.y = 0.46;
         for (const side of [-1, 1])
-          this.stone(
+          this.sandstone(
             "column-rubble",
             [0.38, 0.28, 0.4],
             seed + side,
@@ -509,13 +566,13 @@ export class ForestProps {
           ).position.set(side * 0.8, 0.12, 0.2);
       } else if (type === "arch") {
         for (const side of [-1, 1])
-          this.stone(
+          this.sandstone(
             "rock-beam-support",
             [0.34, 2.7, 0.55],
             seed + side,
             root,
           ).position.set(side * 1.04, 1.3, 0);
-        const beam = this.stone(
+        const beam = this.sandstone(
           "hanging-rock-beam",
           [2.38, 1.04, 0.64],
           seed,
@@ -523,18 +580,29 @@ export class ForestProps {
         );
         beam.position.y = 2.05;
       } else {
-        this.stone(
+        this.sandstone(
           "canyon-rock-pile",
           [1.82, 2.58, 1.6],
           seed,
           root,
         ).position.y = 1.27;
-        this.stone(
+        this.sandstone(
           "canyon-rock-chip",
           [0.7, 0.6, 0.85],
           seed + 4,
           root,
         ).position.set(-0.5, 0.25, -0.3);
+      }
+      // Small fractured plates ground the silhouette without extending its hit area.
+      for (let i = 0; i < 3; i++) {
+        const chip = this.sandstone(
+          "sandstone-scree",
+          [0.24, 0.12, 0.3],
+          seed + i * 3,
+          root,
+        );
+        chip.position.set((i - 1) * 0.58, 0.075, 0.32 + (i % 2) * 0.1);
+        chip.rotation.y = seed + i;
       }
       return root;
     }

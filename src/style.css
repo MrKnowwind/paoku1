@@ -1460,6 +1460,81 @@ html[lang="ko-KR"] h1 {
   color: #aa763b;
   border-color: #d5b77c;
 }
+.art-icon {
+  object-fit: contain;
+  flex: 0 0 auto;
+  vertical-align: middle;
+  user-select: none;
+  filter: drop-shadow(0 1px 1px #4a34241c);
+}
+.icon-button .art-icon {
+  width: 34px;
+  height: 34px;
+}
+.brand-mark .art-icon {
+  width: 38px;
+  height: 38px;
+}
+.supply-card {
+  grid-template-columns: 76px minmax(0, 1fr);
+  column-gap: 15px;
+  padding: 22px 0;
+}
+.supply-icon {
+  width: 76px;
+  height: 80px;
+  background: radial-gradient(ellipse, #e6deca88, transparent 72%);
+}
+.supply-icon .art-icon {
+  width: 82px;
+  height: 82px;
+}
+.modal-symbol .art-icon,
+.result-seal .art-icon {
+  width: 50px;
+  height: 50px;
+}
+.coin-counter .art-icon,
+.shop-wallet .art-icon {
+  width: 29px;
+  height: 29px;
+}
+.purchase-row .art-icon,
+.supply-button .art-icon,
+.stat-label .art-icon {
+  width: 23px;
+  height: 23px;
+}
+.run-status > span:has(.art-icon) {
+  padding: 4px 9px 4px 5px;
+}
+.run-status .art-icon {
+  width: 24px;
+  height: 24px;
+}
+.active-tool .art-icon {
+  width: 49px;
+  height: 49px;
+}
+.active-tool {
+  width: 76px;
+  height: 86px;
+  border-color: #c9b78c;
+  border-radius: 18px;
+  background: linear-gradient(150deg, #fffaf0fa, #e6dcc3f5);
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 3px 0 #9b815b,
+    0 7px 19px #27372826;
+}
+.active-tool:disabled .art-icon {
+  filter: saturate(0.4) opacity(0.7);
+}
+.primary-button .art-icon,
+.secondary-button .art-icon {
+  width: 27px;
+  height: 27px;
+}
 .notice-toast {
   position: fixed;
   z-index: 6;
@@ -1496,10 +1571,26 @@ html[lang="ko-KR"] h1 {
     padding: 10px 13px;
   }
   .active-tool {
-    width: 58px;
-    height: 65px;
+    width: 66px;
+    height: 76px;
     right: 19px;
     bottom: max(30px, env(safe-area-inset-bottom));
+  }
+  .active-tool .art-icon {
+    width: 42px;
+    height: 42px;
+  }
+  .supply-card {
+    grid-template-columns: 62px minmax(0, 1fr);
+    column-gap: 12px;
+  }
+  .supply-icon {
+    width: 62px;
+    height: 70px;
+  }
+  .supply-icon .art-icon {
+    width: 68px;
+    height: 68px;
   }
   .supply-button {
     padding: 9px 11px;
