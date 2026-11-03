@@ -73,7 +73,14 @@ test("automatic powers still wait for player input before restoring speed", () =
   assert.equal(tutorial.active?.id, "shield");
   tutorial.update(game, 120, false);
   assert.ok(tutorial.timeScale(game) < 1);
-  tutorial.action("slide", game, game.slide());
+  game.distance = 802;
+  assert.equal(
+    tutorial.timeScale(game),
+    0,
+    "waiting near the first chasm must stay safe",
+  );
+  game.wallSide = -1;
+  tutorial.action("left", game, game.move(-1));
   assert.equal(tutorial.active, null);
   assert.equal(tutorial.timeScale(game), 1);
 });

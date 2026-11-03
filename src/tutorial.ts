@@ -70,10 +70,14 @@ export class Tutorial {
     this.active = lesson;
   }
   action(direction: Direction, game: RunnerGame, accepted: boolean) {
-    if (!accepted || !this.active) return;
+    if (!this.active) return;
     const id = this.active.id;
-    if (["coin", "magnet", "shield"].includes(id)) this.complete(id);
-    else if (
+    if (["coin", "magnet", "shield"].includes(id)) {
+      this.complete(id);
+      return;
+    }
+    if (!accepted) return;
+    if (
       (id === "move" || id === "dodge") &&
       direction === this.active.gesture &&
       (id !== "move" || game.lane === -1)
@@ -93,11 +97,12 @@ export class Tutorial {
     if (this.active.id === "wallHeight") return 0;
     if (this.active.id === "move" && game.distance >= 4) return 0;
     if (
-      this.active.id === "wallEntry" &&
+      !game.wallSide &&
       game.gapWarning &&
       game.distance >= game.gapWarning.start - 10
     )
-      return Math.abs(game.lane) === 1 &&
+      return this.active.id === "wallEntry" &&
+        Math.abs(game.lane) === 1 &&
         Math.abs(game.x - game.lane * 2.5) > 0.7
         ? 0.35
         : 0;
