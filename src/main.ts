@@ -84,7 +84,6 @@ const tutorial = new Tutorial(
   (lessons) => save("lessons:v1", JSON.stringify(lessons)),
   testTutorials,
 );
-if (tutorial.needsBasics) game.prepareTutorialOpening();
 const t = (key: MessageKey) => messages[language][key];
 const n = (value: number) => numberFormatter.format(Math.floor(value));
 const text = (key: MessageKey, tag = "span", cls = "") =>
@@ -113,9 +112,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     </header>
     <main>
       <section class="intro" id="intro">
-        <div class="trail-badge">${icon("leaf")}${text("forest")}</div>
         <h1>${text("titleA", "span")}${text("titleB", "span", "title-accent")}</h1>
-        <p class="wordmark" aria-hidden="true">WILD DASH</p>
         <button class="primary-button start-button" data-action="start" disabled>${icon("play")}${text("start")}</button>
         <button class="supply-button" data-action="shop">${icon("shop")}${text("shop")}<span>${icon("coin")}<b class="wallet-count">${n(economy.state.wallet)}</b></span></button>
         <div class="best-record">${icon("trophy")}${text("best", "small")}<strong id="home-best">${n(best)} <span>${t("bestUnit")}</span></strong></div>
@@ -309,7 +306,6 @@ function start() {
   document.body.classList.remove("crashed");
   game.begin();
   tutorial.resetRun(game);
-  if (tutorial.needsBasics) game.prepareTutorialOpening();
   syncView();
   (document.activeElement as HTMLElement)?.blur();
 }
@@ -610,7 +606,6 @@ function act(action: string) {
     document.body.classList.remove("crashed");
     game.returnHome();
     tutorial.resetRun(game);
-    if (tutorial.needsBasics) game.prepareTutorialOpening();
     syncView();
     localize();
   }

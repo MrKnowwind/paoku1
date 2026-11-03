@@ -52,41 +52,54 @@ export function sectionAt(distance: number): TrackSection {
   return { biome: "shore", start: water + CONFIG.waterLength, end: base + CYCLE_LENGTH, cycle };
 }
 
-export function gapsNear(distance: number): TrackGap[] {
+export function gapsNear(distance: number, seed = 0): TrackGap[] {
   const cycle = Math.max(0, Math.floor(distance / CYCLE_LENGTH));
   const gaps: TrackGap[] = [];
   for (let c = Math.max(0, cycle - 1); c <= cycle + 1; c++) {
     const canyon = c * CYCLE_LENGTH + CONFIG.forestLength + CONFIG.tunnelLength;
-    CONFIG.gapOffsets.forEach((offset, i) =>
+    const random = (salt: number) => {
+      let n = Math.imul(seed ^ Math.imul(c + 1, 374761393) ^ salt, 668265263);
+      n = Math.imul(n ^ (n >>> 13), 1274126177);
+      return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+    };
+    CONFIG.gapOffsets.forEach((fixedOffset, i) => {
+      // Keep enough solid ground between gaps to finish the first wall tutorial
+      // before the next section enters the generation horizon.
+      const previousEnd = i === 0 ? 0 : gaps[gaps.length - 1].end - canyon;
+      const offset = seed === 0 ? fixedOffset : i === 0
+        ? 110 + Math.floor(random(1) * 130)
+        : Math.max(previousEnd + 190, 430 + Math.floor(random(3) * 120));
+      const length = seed === 0 ? CONFIG.gapLengths[i] : (i === 0 ? 50 : 60) + Math.floor(random(i * 2 + 2) * (i === 0 ? 50 : 60));
       gaps.push({
         id: c * 2 + i,
         start: canyon + offset,
-        end: canyon + offset + CONFIG.gapLengths[i],
+        end: canyon + offset + length,
         tutorial: c === 0 && i === 0,
-      }),
-    );
+      });
+    });
   }
   return gaps;
 }
-export function gapAt(distance: number): TrackGap | undefined {
-  return gapsNear(distance).find(
+export function gapAt(distance: number, seed = 0): TrackGap | undefined {
+  return gapsNear(distance, seed).find(
     (gap) => distance >= gap.start && distance < gap.end,
   );
 }
-export function entryAt(distance: number): TrackGap | undefined {
-  return gapsNear(distance).find(
+export function entryAt(distance: number, seed = 0): TrackGap | undefined {
+  return gapsNear(distance, seed).find(
     (gap) => distance >= gap.start - CONFIG.wallEntry && distance < gap.end,
   );
 }
-export function nextGap(distance: number): TrackGap | undefined {
-  return gapsNear(distance).find((gap) => gap.end > distance);
+export function nextGap(distance: number, seed = 0): TrackGap | undefined {
+  return gapsNear(distance, seed).find((gap) => gap.end > distance);
 }
 export function roadSpans(
   start: number,
   end: number,
+  seed = 0,
 ): { start: number; end: number }[] {
   let spans = [{ start, end }];
-  for (const gap of gapsNear(start))
+  for (const gap of gapsNear(start, seed))
     spans = spans.flatMap((span) => {
       if (gap.start >= span.end || gap.end <= span.start) return [span];
       return [
@@ -98,14 +111,14 @@ export function roadSpans(
     });
   return spans;
 }
-export function obstacleAllowed(distance: number): boolean {
+export function obstacleAllowed(distance: number, seed = 0): boolean {
   const section = sectionAt(distance);
   return (
     (section.biome === "forest" || section.biome === "canyon" || section.biome === "water") &&
     (section.biome !== "water" || distance >= section.start + CONFIG.waterSafety && distance < section.end - CONFIG.waterSafety) &&
     distance >= section.start + CONFIG.exitSafety &&
     distance < section.end - CONFIG.exitSafety &&
-    !gapsNear(distance).some(
+    !gapsNear(distance, seed).some(
       (gap) => distance >= gap.start - 24 && distance <= gap.end + 20,
     )
   );

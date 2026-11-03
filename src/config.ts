@@ -12,7 +12,7 @@ export const CONFIG = {
   coinSingleRatio: 0.5,
   coinDoubleRatio: 0.35,
   forestLength: 600,
-  canyonLength: 600,
+  canyonLength: 800,
   tunnelLength: 60,
   trackLookahead: 165,
   rowSpacing: 32,

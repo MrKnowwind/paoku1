@@ -2,18 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RunnerGame, INTRO_TIMING } from "./game.ts";
 
-test("home, countdown and launch keep the same opening track", () => {
+test("home and countdown stay empty; generation starts after the launch run", () => {
   const game = new RunnerGame({ random: () => 0.5 });
-  const opening = game.items;
   assert.equal(game.mode, "ready");
-  assert.ok(opening.some((item) => item.type === "log"));
+  assert.equal(game.items.length, 0);
   game.begin();
-  assert.strictEqual(game.items, opening);
+  assert.equal(game.items.length, 0);
   game.update(
     Object.values(INTRO_TIMING).reduce((sum, value) => sum + value, 0),
   );
   assert.equal(game.mode, "running");
-  assert.strictEqual(game.items, opening);
+  assert.equal(game.items.length, 0);
   assert.equal(game.distance, 0);
   assert.equal(game.speed, 0);
   game.update(0.2);
@@ -27,6 +26,10 @@ test("home, countdown and launch keep the same opening track", () => {
   game.update(1);
   assert.equal(game.launchProgress, 1);
   assert.ok(game.speed >= 12);
+  assert.ok(game.items.length > 0);
+  assert.ok(game.items.every(item => item.worldZ > game.distance + 30));
+  game.returnHome();
+  assert.equal(game.items.length, 0);
 });
 
 test("starts in the middle lane and never leaves the three lanes", () => {
@@ -184,6 +187,7 @@ test("a boulder ends the run and speed increases within its limit", () => {
 test("generated obstacle rows always leave an open lane", () => {
   const game = new RunnerGame({ random: () => 0.5 });
   game.start();
+  game.update(0.8);
   assert.ok(game.items.some((item) => item.type === "coin"));
   const rows = new Map<number, Set<number>>();
   for (const item of game.items.filter((item) => item.type !== "coin")) {
@@ -192,4 +196,17 @@ test("generated obstacle rows always leave an open lane", () => {
   }
   assert.ok(rows.size > 0);
   assert.ok([...rows.values()].every((lanes) => lanes.size <= 2));
+});
+
+
+test("separate runs generate different obstacle and coin layouts", () => {
+  let seed = 0;
+  const game = new RunnerGame({random: () => ++seed / 10});
+  const layout = () => {
+    game.start(); game.update(0.8);
+    return game.items.map(item => [item.type, item.lane, item.worldZ]);
+  };
+  const first = layout();
+  assert.ok(first.length > 0);
+  assert.notDeepEqual(layout(), first);
 });

@@ -31,6 +31,7 @@ const smooth = (value: number) => {
 };
 
 export class TerrainScene {
+  private seed = 0;
   private cells = new Map<number, TransformNode>();
   private coastSurface?: CoastSurface;
   private get sand(): ShaderMaterial {
@@ -428,10 +429,10 @@ export class TerrainScene {
     }
     const blendingCoast = section.biome === "canyon" && world >= section.end - 60 ||
       section.biome === "forest" && section.start > 0 && world < section.start + 20;
-    const gap = gapsNear(world).find(
+    const gap = gapsNear(world, this.seed).find(
       (gap) => gap.start < world + 10 && gap.end > world,
     );
-    const spans = roadSpans(world, world + 10);
+    const spans = roadSpans(world, world + 10, this.seed);
     const adjacent = sectionAt(
       world < (section.start + section.end) / 2
         ? section.start - 1
@@ -566,7 +567,7 @@ export class TerrainScene {
           }
         }
       }
-      for (const nearbyGap of gapsNear(world)) {
+      for (const nearbyGap of gapsNear(world, this.seed)) {
         for (const edge of [nearbyGap.start, nearbyGap.end]) {
           if (edge >= world && edge < world + 10) {
             const face = CreateBox("chasm-rock-cross-section", {
@@ -644,12 +645,14 @@ export class TerrainScene {
     }
     return root;
   }
-  update(distance: number, time = 0) {
+  update(distance: number, time = 0, seed = 0) {
+    const changed = this.seed !== seed;
+    this.seed = seed;
     this.water.update(distance, time);
     const first = Math.floor((distance - 50) / 10),
       last = Math.ceil((distance + 180) / 10);
     for (const [index, root] of this.cells)
-      if (index < first || index > last) {
+      if (changed && sectionAt(index * 10).biome === "canyon" || index < first || index > last) {
         const batches = new Set(
           root.getChildMeshes().map((mesh) => mesh.material),
         );

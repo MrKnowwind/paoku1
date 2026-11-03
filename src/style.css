@@ -4,7 +4,9 @@
   background: #dbe3d6;
   font-synthesis: none;
   --ink: #293c31;
-  --muted: #818778;
+  --muted: #52604e;
+  font-size: 14px;
+  line-height: 1.5;
   --paper: #f5f2e8;
   --line: #d9ddcf;
   --accent: #ba713e;
@@ -78,8 +80,8 @@ button:active {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: 100svh;
-  min-height: 420px;
+  height: 100dvh;
+  min-height: 0;
   max-width: 1920px;
   margin: auto;
   padding: max(18px, env(safe-area-inset-top)) 4.5%
@@ -105,7 +107,7 @@ button:active {
   color: #304836;
 }
 .brand strong {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: 2px;
 }
@@ -131,8 +133,8 @@ button:active {
 .icon-button {
   position: relative;
   padding: 0;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   display: inline-grid;
   place-items: center;
   border: 1px solid #c8d1bd;
@@ -158,42 +160,33 @@ main {
   left: 1%;
   top: 50%;
   transform: translateY(-48%);
-  max-width: 480px;
+  width: min(390px, 100%);
+  max-width: 100%;
+  max-height: calc(100dvh - 120px);
+  overflow-y: auto;
+  pointer-events: auto;
+  touch-action: pan-y;
+  padding: 24px;
+  border: 1px solid #fff9;
+  border-radius: 20px;
+  background: #f5f2e8f2;
+  box-shadow: 0 10px 36px #2335251f;
   animation: intro-in 0.5s both;
 }
-.trail-badge {
-  font-size: 10px;
-  letter-spacing: 2px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #71806a;
-}
-.trail-badge .icon {
-  width: 15px;
-  height: 15px;
-}
 h1 {
-  font-size: clamp(54px, 6vw, 86px);
+  font-size: clamp(36px, 4.5vw, 54px);
   line-height: 1.2;
   letter-spacing: 1px;
-  margin: 17px 0 8px;
-  font-weight: 900;
+  margin: 0 0 22px;
+  font-weight: 700;
   color: #2b4834;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 h1 span {
   display: inline;
 }
 .title-accent {
   color: inherit;
-}
-.wordmark {
-  font-size: 9px;
-  letter-spacing: 5px;
-  font-weight: 500;
-  color: #89917d;
-  margin: 0 0 32px 3px;
 }
 .primary-button,
 .secondary-button {
@@ -210,17 +203,17 @@ h1 span {
 }
 .primary-button {
   color: #fff9eb;
-  background: #b97743;
+  background: #955126;
   border: 1px solid #a86a3c;
   box-shadow:
     inset 0 1px 0 #e1ae7680,
     0 2px 3px #53372112;
 }
 .primary-button:hover {
-  background: #aa693b;
+  background: #7e421e;
 }
 .secondary-button {
-  color: #65715f;
+  color: #465740;
   background: transparent;
   border: 1px solid #d3d8c8;
 }
@@ -234,24 +227,24 @@ h1 span {
   height: 17px;
 }
 .start-button {
-  width: 210px;
-  min-height: 55px;
-  font-size: 14px;
-  letter-spacing: 1px;
+  width: 100%;
+  min-height: 52px;
+  font-size: 16px;
+  letter-spacing: 0;
 }
 .start-button .icon {
   width: 15px;
   height: 15px;
 }
 .best-record {
-  margin-top: 22px;
+  margin-top: 14px;
   display: flex;
   align-items: center;
   gap: 8px;
   width: fit-content;
-  color: #879078;
-  padding: 0 0 11px;
-  border-bottom: 1px solid #899b6f36;
+  color: #465740;
+  padding: 10px 0 0;
+  border-top: 1px solid #c8d1bd;
 }
 .best-record > .icon {
   width: 16px;
@@ -259,20 +252,20 @@ h1 span {
   color: #9d956e;
 }
 .best-record small {
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 0.5px;
 }
 .best-record strong {
-  font-size: 15px;
-  color: #566a4c;
+  font-size: 14px;
+  color: #465740;
   margin-left: 10px;
   font-variant-numeric: tabular-nums;
 }
 .best-record strong span {
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 400;
   margin-left: 4px;
-  color: #8b937f;
+  color: #465740;
 }
 footer {
   height: 40px;
@@ -282,9 +275,9 @@ footer {
   align-items: flex-end;
 }
 .help-button {
-  width: 32px;
-  height: 32px;
-  background: #f5f4e7ad;
+  width: 44px;
+  height: 44px;
+  background: #f5f4e7f2;
 }
 .help-button .icon {
   width: 18px;
@@ -313,12 +306,12 @@ footer {
   gap: 2px;
 }
 .hud-main small {
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 1px;
-  color: #76816e;
+  color: #465740;
 }
 .hud-main strong {
-  font-size: 27px;
+  font-size: 28px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.7px;
@@ -335,14 +328,14 @@ footer {
   border-left: 1px solid #d8dece;
 }
 .hud-secondary b {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .hud-secondary small {
   margin-left: 3px;
-  font-size: 10px;
-  color: #7a866f;
+  font-size: 12px;
+  color: #465740;
 }
 .distance-counter,
 .coin-counter {
@@ -355,7 +348,7 @@ footer {
   color: #586e54;
 }
 .coin-counter {
-  color: #956a29;
+  color: #76501d;
 }
 .distance-counter .icon,
 .coin-counter .icon {
@@ -391,7 +384,7 @@ footer {
   left: 50%;
   transform: translateX(-50%);
   padding: 9px 15px;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.5px;
   white-space: nowrap;
   color: #596c4d;
@@ -456,15 +449,15 @@ dialog[data-view="over"] {
   width: min(412px, calc(100vw - 32px));
 }
 dialog[data-view="settings"] {
-  overflow: visible;
+  overflow-y: auto;
 }
 .dialog-close {
   position: absolute;
-  top: 20px;
-  right: 19px;
-  width: 27px;
-  height: 27px;
-  color: #7f8c74;
+  top: 10px;
+  right: 10px;
+  width: 44px;
+  height: 44px;
+  color: #465740;
   background: transparent;
   border: 0;
   border-radius: 5px;
@@ -497,7 +490,7 @@ dialog[data-view="settings"] {
   height: 22px;
 }
 h2 {
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.5;
   margin: 0;
@@ -521,7 +514,7 @@ h2:focus {
   align-items: center;
   gap: 9px;
   font-size: 12px;
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
 .setting-label .icon {
   width: 16px;
@@ -534,6 +527,7 @@ h2:focus {
   flex: none;
 }
 .language-trigger {
+  min-height: 44px;
   width: 100%;
   display: flex;
   align-items: center;
@@ -542,7 +536,7 @@ h2:focus {
   border: 1px solid #d5dccb;
   padding: 7px 9px;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .language-trigger > .icon {
   margin-left: auto;
@@ -564,8 +558,8 @@ h2:focus {
   height: 23px;
   border: 1px solid #d6decb;
   border-radius: 3px;
-  color: #748367;
-  font-size: 9px;
+  color: #465740;
+  font-size: 12px;
   font-weight: 600;
   flex: none;
 }
@@ -590,7 +584,7 @@ h2:focus {
   padding: 7px 8px;
   border-radius: 3px;
   background: transparent;
-  font-size: 11px;
+  font-size: 12px;
   color: #69765e;
   text-align: left;
 }
@@ -609,12 +603,18 @@ h2:focus {
   color: #7b8d68;
 }
 .toggle {
+  position: relative;
   width: 36px;
   height: 22px;
   padding: 3px;
   background: #d1d9c6;
   border-radius: 12px;
   flex: none;
+}
+.toggle::before {
+  content: "";
+  position: absolute;
+  inset: -11px 0;
 }
 .toggle span {
   display: block;
@@ -639,11 +639,12 @@ h2:focus {
   overflow: hidden;
 }
 .segmented button {
+  min-height: 44px;
   width: 50%;
-  font-size: 11px;
+  font-size: 12px;
   padding: 8px 6px;
   background: transparent;
-  color: #8d9881;
+  color: #465740;
 }
 .segmented button.selected {
   color: #38523c;
@@ -683,9 +684,9 @@ h3 {
   margin: 0 0 4px;
 }
 .guide-row p {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.8;
-  color: #8b957e;
+  color: #465740;
   margin: 0;
 }
 .full-width {
@@ -694,8 +695,8 @@ h3 {
 .text-button {
   background: transparent;
   padding: 13px 8px;
-  font-size: 11px;
-  color: #859377;
+  font-size: 12px;
+  color: #465740;
   border-radius: 5px;
 }
 .text-button:hover {
@@ -709,7 +710,7 @@ h3 {
 }
 .secondary-actions button {
   width: 50%;
-  font-size: 11px;
+  font-size: 12px;
 }
 dialog[data-view="pause"] > .primary-button {
   margin-top: 24px;
@@ -739,7 +740,7 @@ dialog[data-view="pause"] > .primary-button {
   background: #ece4cc;
   border-radius: 3px;
   padding: 3px 7px;
-  font-size: 9px;
+  font-size: 14px;
   white-space: nowrap;
 }
 .final-score {
@@ -749,8 +750,8 @@ dialog[data-view="pause"] > .primary-button {
   padding: 24px 1px 19px;
 }
 .final-score > span {
-  color: #89937d;
-  font-size: 11px;
+  color: #465740;
+  font-size: 12px;
   letter-spacing: 1px;
 }
 .final-score strong {
@@ -778,13 +779,13 @@ dialog[data-view="pause"] > .primary-button {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
-  color: #8a967d;
+  font-size: 12px;
+  color: #465740;
 }
 .stat-label .icon {
   width: 14px;
   height: 14px;
-  color: #97a082;
+  color: #465740;
 }
 .result-stats > div + div .icon {
   color: #b39b60;
@@ -794,24 +795,24 @@ dialog[data-view="pause"] > .primary-button {
   align-items: baseline;
   gap: 4px;
   margin-top: 7px;
-  font-size: 23px;
+  font-size: 24px;
   line-height: 1.25;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
 .result-stats small {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 400;
-  color: #8a967d;
+  color: #465740;
 }
 .collision-tip {
   display: flex;
   align-items: flex-start;
   gap: 7px;
   margin: 16px 0 19px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
-  color: #89947b;
+  color: #465740;
 }
 .collision-tip .icon {
   width: 14px;
@@ -824,7 +825,7 @@ dialog[data-view="pause"] > .primary-button {
   gap: 10px;
 }
 .result-actions button {
-  font-size: 12px;
+  font-size: 14px;
   white-space: nowrap;
 }
 .countdown {
@@ -839,7 +840,7 @@ dialog[data-view="pause"] > .primary-button {
   font-size: 118px;
   line-height: 1;
   color: #faf1d5;
-  font-weight: 900;
+  font-weight: 700;
   text-shadow:
     0 4px 0 #36523b,
     0 10px 28px #223a2c66;
@@ -941,21 +942,21 @@ dialog[data-view="pause"] > .primary-button {
     transform: translate(-50%, -50%) scale(1);
   }
 }
-html[lang="en-US"] h1 {
+html[lang="en-US"] .intro h1 {
   letter-spacing: -3px;
 }
-html[lang="en-US"] h1 .title-accent::before {
+html[lang="en-US"] .intro h1 .title-accent::before {
   content: " ";
   white-space: pre;
 }
-html[lang="ja-JP"] h1 {
-  font-size: clamp(45px, 5vw, 70px);
+html[lang="ja-JP"] .intro h1 {
+  font-size: clamp(30px, 3.6vw, 44px);
   letter-spacing: -1px;
 }
-html[lang="ko-KR"] h1 {
+html[lang="ko-KR"] .intro h1 {
   letter-spacing: 0;
 }
-@media (pointer: coarse), (max-width: 700px) {
+@media (pointer: coarse), (max-width: 820px) {
   .touch-only {
     display: inline;
   }
@@ -963,7 +964,7 @@ html[lang="ko-KR"] h1 {
     display: none;
   }
 }
-@media (max-width: 700px) {
+@media (max-width: 820px) {
   .shell {
     min-height: 0;
     padding: max(15px, env(safe-area-inset-top)) 21px
@@ -976,12 +977,12 @@ html[lang="ko-KR"] h1 {
     gap: 8px;
   }
   .brand strong {
-    font-size: 11px;
+    font-size: 14px;
     letter-spacing: 1px;
   }
   .brand-mark {
-    width: 35px;
-    height: 35px;
+    width: 44px;
+    height: 44px;
     border-radius: 7px;
   }
   .brand-mark .icon {
@@ -989,8 +990,8 @@ html[lang="ko-KR"] h1 {
     height: 23px;
   }
   .icon-button {
-    width: 35px;
-    height: 35px;
+    width: 44px;
+    height: 44px;
   }
   .icon-button .icon {
     width: 18px;
@@ -1008,35 +1009,23 @@ html[lang="ko-KR"] h1 {
     );
   }
   .intro {
-    top: 23px;
+    top: 18px;
     left: 0;
+    width: min(340px, 100%);
+    padding: 20px;
     transform: none;
     max-width: 100%;
   }
-  .trail-badge {
-    font-size: 9px;
-    letter-spacing: 1px;
-    gap: 6px;
-  }
-  .trail-badge .icon {
-    width: 12px;
-    height: 12px;
-  }
   h1 {
-    font-size: clamp(36px, 11.5vw, 53px);
-    margin: 12px 0 7px;
+    font-size: clamp(32px, 8vw, 44px);
+    margin: 0 0 18px;
     letter-spacing: 0;
   }
-  .wordmark {
-    font-size: 8px;
-    letter-spacing: 4px;
-    margin: 0 0 20px 2px;
-  }
   .start-button {
-    width: 180px;
+    width: 100%;
     min-height: 48px;
-    font-size: 12px;
-    border-radius: 6px;
+    font-size: 16px;
+    border-radius: 8px;
   }
   .best-record {
     margin-top: 18px;
@@ -1048,7 +1037,7 @@ html[lang="ko-KR"] h1 {
     margin-left: 7px;
   }
   .best-record small {
-    font-size: 9px;
+    font-size: 12px;
   }
   .best-record > .icon {
     width: 15px;
@@ -1075,7 +1064,7 @@ html[lang="ko-KR"] h1 {
     font-size: clamp(18px, 4.8vw, 23px);
   }
   .hud-main small {
-    font-size: 8px;
+    font-size: 12px;
   }
   .hud-secondary {
     flex-direction: column;
@@ -1087,7 +1076,7 @@ html[lang="ko-KR"] h1 {
     font-size: 12px;
   }
   .hud-secondary small {
-    font-size: 9px;
+    font-size: 12px;
   }
   .distance-counter,
   .coin-counter {
@@ -1103,7 +1092,7 @@ html[lang="ko-KR"] h1 {
   }
   .live-hint {
     max-width: 100%;
-    font-size: 9px;
+    font-size: 12px;
     letter-spacing: 0;
     padding: 8px 11px;
     bottom: 6px;
@@ -1112,8 +1101,8 @@ html[lang="ko-KR"] h1 {
     height: 35px;
   }
   .help-button {
-    width: 30px;
-    height: 30px;
+    width: 44px;
+    height: 44px;
   }
   dialog {
     padding: 23px;
@@ -1124,7 +1113,7 @@ html[lang="ko-KR"] h1 {
   }
   .setting-label {
     gap: 8px;
-    font-size: 11px;
+    font-size: 12px;
   }
   .language-picker,
   .segmented {
@@ -1141,35 +1130,29 @@ html[lang="ko-KR"] h1 {
   }
   .result-actions button {
     padding: 12px 8px;
-    font-size: 11px;
+    font-size: 12px;
   }
-  html[lang="en-US"] h1 {
-    font-size: clamp(33px, 10.9vw, 50px);
+  html[lang="en-US"] .intro h1 {
+    font-size: clamp(28px, 7.5vw, 40px);
     letter-spacing: -2px;
   }
-  html[lang="ja-JP"] h1 {
-    font-size: clamp(29px, 9.4vw, 44px);
+  html[lang="ja-JP"] .intro h1 {
+    font-size: clamp(26px, 6.7vw, 36px);
     letter-spacing: -1px;
   }
-  html[lang="ko-KR"] h1 {
-    font-size: clamp(37px, 11.5vw, 53px);
+  html[lang="ko-KR"] .intro h1 {
+    font-size: clamp(30px, 8vw, 42px);
   }
 }
-@media (max-height: 650px) and (max-width: 700px) {
+@media (max-height: 650px) and (max-width: 820px) {
   .intro {
     top: 12px;
-  }
-  .trail-badge {
-    display: none;
-  }
-  .wordmark {
-    margin-bottom: 13px;
   }
   .best-record {
     margin-top: 13px;
   }
 }
-@media (max-height: 520px) and (min-width: 701px) {
+@media (max-height: 520px) and (min-width: 821px) {
   .shell {
     min-height: 0;
     padding-top: 9px;
@@ -1184,12 +1167,6 @@ html[lang="ko-KR"] h1 {
   h1 {
     font-size: 48px;
     margin: 10px 0;
-  }
-  .trail-badge {
-    display: none;
-  }
-  .wordmark {
-    margin-bottom: 17px;
   }
   .best-record {
     margin-top: 16px;
@@ -1225,14 +1202,17 @@ html[lang="ko-KR"] h1 {
   border: 1px solid #c8d1bd;
   border-radius: 9px;
   background: #f5f2e8e8;
-  font-size: 12px;
+  font-size: 14px;
+  width: 100%;
+  justify-content: space-between;
+  min-height: 48px;
 }
 .supply-button > span {
   display: flex;
   align-items: center;
   gap: 5px;
   padding-left: 18px;
-  color: #956a29;
+  color: #76501d;
 }
 .supply-button .icon {
   width: 18px;
@@ -1244,7 +1224,7 @@ html[lang="ko-KR"] h1 {
   justify-content: space-between;
   padding: 17px 0;
   font-size: 12px;
-  color: #788471;
+  color: #465740;
 }
 .inline-notice {
   color: #9a713f;
@@ -1256,7 +1236,7 @@ html[lang="ko-KR"] h1 {
   align-items: center;
   gap: 7px;
   color: #946b2e;
-  font-size: 22px;
+  font-size: 24px;
 }
 .shop-wallet .icon {
   width: 20px;
@@ -1270,18 +1250,18 @@ html[lang="ko-KR"] h1 {
   border-top: 1px solid #dce1d1;
 }
 .supply-card h3 {
-  font-size: 15px;
+  font-size: 14px;
   margin: 0 0 6px;
 }
 .supply-card p {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.8;
-  color: #75816c;
+  color: #465740;
   margin: 0 0 7px;
 }
 .supply-card small {
   color: #8c794d;
-  font-size: 10px;
+  font-size: 12px;
 }
 .supply-icon {
   display: grid;
@@ -1303,8 +1283,8 @@ html[lang="ko-KR"] h1 {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: #956a29;
-  font-size: 13px;
+  color: #76501d;
+  font-size: 14px;
 }
 .purchase-row .icon {
   width: 16px;
@@ -1321,7 +1301,7 @@ html[lang="ko-KR"] h1 {
 .revive-copy,
 .powers-guide {
   font-size: 12px;
-  color: #77846d;
+  color: #465740;
   line-height: 1.8;
 }
 .revive-stock {
@@ -1336,15 +1316,15 @@ html[lang="ko-KR"] h1 {
   margin-top: 12px;
 }
 .wallet-receipt {
-  color: #7d876e;
-  font-size: 10px;
+  color: #465740;
+  font-size: 12px;
   text-align: center;
   margin: 10px 0 20px;
 }
 .run-status {
   position: fixed;
   left: 50%;
-  top: max(92px, 13vh, calc(env(safe-area-inset-top) + 76px));
+  top: max(92px, calc(env(safe-area-inset-top) + 76px));
   transform: translateX(-50%);
   width: max-content;
   max-width: calc(100vw - 28px);
@@ -1367,7 +1347,7 @@ html[lang="ko-KR"] h1 {
   padding: 8px 7px 11px;
   border: 1px solid #d4c9ad;
   border-radius: 11px;
-  background: #f9f5e999;
+  background: #f9f5e9f2;
   box-shadow: 0 3px 12px #25332414;
   color: #4a5e43;
   animation: power-appear 0.24s ease-out both;
@@ -1383,8 +1363,8 @@ html[lang="ko-KR"] h1 {
   height: 38px;
 }
 .power-art .art-icon {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
 }
 .power-readout {
   display: flex;
@@ -1397,17 +1377,17 @@ html[lang="ko-KR"] h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.25;
 }
 .power-time {
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 .power-state {
-  font-size: 8px;
-  opacity: 0.74;
+  font-size: 12px;
+  color: #465740;
 }
 .power-meter {
   position: absolute;
@@ -1497,7 +1477,7 @@ html[lang="ko-KR"] h1 {
   height: 29px;
 }
 .active-tool span {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
 }
 .active-tool:disabled {
@@ -1529,8 +1509,8 @@ html[lang="ko-KR"] h1 {
   height: 26px;
 }
 .brand-mark .art-icon {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
 }
 .supply-card {
   grid-template-columns: 76px minmax(0, 1fr);
@@ -1623,8 +1603,8 @@ html[lang="ko-KR"] h1 {
 }
 .setting-copy > small {
   display: block;
-  color: #8a937b;
-  font-size: 10px;
+  color: #465740;
+  font-size: 12px;
   line-height: 1.5;
   margin-top: 4px;
   max-width: 230px;
@@ -1657,7 +1637,7 @@ html[lang="ko-KR"] h1 {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  font-size: 10px;
+  font-size: 12px;
   color: #958156;
 }
 .tutorial-caption .art-icon {
@@ -1673,8 +1653,8 @@ html[lang="ko-KR"] h1 {
 .tutorial-prompt > small {
   display: block;
   margin-top: 6px;
-  font-size: 11px;
-  color: #8d947c;
+  font-size: 12px;
+  color: #465740;
 }
 .tutorial-prompt .keyboard-only {
   display: none;
@@ -1865,7 +1845,7 @@ html[lang="ko-KR"] h1 {
     transform: translateY(6px) scale(0.6);
   }
 }
-@media (max-width: 700px) {
+@media (max-width: 820px) {
   .tutorial-prompt {
     bottom: max(70px, calc(env(safe-area-inset-bottom) + 50px));
     padding: 10px 14px 14px;
@@ -1878,7 +1858,7 @@ html[lang="ko-KR"] h1 {
     height: 100px;
   }
 }
-@media (max-width: 700px) {
+@media (max-width: 820px) {
   .run-status {
     gap: 5px;
   }
@@ -1898,14 +1878,14 @@ html[lang="ko-KR"] h1 {
     font-size: 16px;
   }
   .power-name {
-    font-size: 8px;
+    font-size: 12px;
   }
   .power-state {
-    font-size: 7px;
+    font-size: 12px;
   }
   .route-notice {
     top: 26%;
-    font-size: 11px;
+    font-size: 12px;
     padding: 10px 13px;
   }
   .active-tool {
@@ -1932,7 +1912,32 @@ html[lang="ko-KR"] h1 {
   }
   .supply-button {
     padding: 9px 11px;
-    font-size: 11px;
+    font-size: 12px;
     margin-top: 11px;
   }
+}
+
+/* Small screens keep controls reachable and secondary text readable. */
+@media (max-width: 420px) {
+  .shell { padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right)); }
+  .header-actions { gap: 6px; }
+  .playing .header { gap: 6px; }
+  .hud { padding: 7px 8px; gap: 8px; }
+  .hud-main { min-width: 58px; }
+  .hud-secondary { padding-left: 8px; }
+  dialog { padding: 20px 16px; }
+  .language-picker, .segmented { width: 132px; }
+  .setting-row { gap: 8px; }
+  .run-status { flex-wrap: wrap; width: calc(100vw - 24px); }
+  .power-slot { flex: 1 1 100px; min-width: 0; max-width: 145px; }
+}
+@media (max-height: 520px) {
+  .shell { padding-block: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-bottom)); }
+  .intro { top: 8px; transform: none; padding: 14px 18px; width: min(330px, 100%); }
+  .intro h1 { font-size: 32px; margin: 0 0 12px; }
+  .intro .start-button { min-height: 44px; }
+  .supply-button { margin-top: 8px; min-height: 44px; padding-block: 7px; }
+  .best-record { margin-top: 8px; padding-top: 8px; }
+  .shell footer { height: 20px; }
+  .header { height: 44px; }
 }

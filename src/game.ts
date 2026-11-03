@@ -123,7 +123,6 @@ export class RunnerGame {
   private nextRow = 65;
   private seed = 1;
   private autoSpawn: boolean;
-  private trainingOpening = false;
   private random: () => number;
   private onCoins: (count: number) => void;
   private launchTime = LAUNCH_DURATION;
@@ -190,7 +189,7 @@ export class RunnerGame {
     return sectionAt(this.distance);
   }
   get gapWarning() {
-    const gap = nextGap(this.distance);
+    const gap = nextGap(this.distance, this.seed);
     if (gap && (!this.completedWallTutorial || this.tutorialGaps.has(gap.id)))
       gap.tutorial = true;
     return gap &&
@@ -219,7 +218,7 @@ export class RunnerGame {
         : "GO!";
   }
   begin() {
-    if (this.mode !== "ready") this.start();
+    this.start();
     this.mode = "intro";
     this.introTime = 0;
     this.launchTime = 0;
@@ -233,7 +232,6 @@ export class RunnerGame {
     this.waterLevel = 1;
     this.waterY = CONFIG.waterHeights[1];
     this.worldTime = 0;
-    this.trainingOpening = false;
     this.idBase = ++this.runSerial * 1000000000000;
     this.nextId = 800000000000;
     this.mode = "running";
@@ -264,22 +262,18 @@ export class RunnerGame {
     this.tutorialGaps.clear();
     this.completedWallTutorial = false;
     this.shattered = [];
-    this.seed = Math.floor(this.random() * 2147483647);
+    this.seed = 1 + Math.floor(this.random() * 2147483646);
     this.nextRow = 65;
     this.runClock = 0;
     this.lastSnapshot = -1;
     this.history = [];
     this.rewindTarget = undefined;
-    if (this.autoSpawn) {
-      this.openingTrack();
-      this.fillTrack();
-    }
     this.capture();
   }
   move(direction: number) {
     if (this.mode !== "running" || this.boosting || this.wallSide || this.transitioning) return false;
     const side = Math.sign(direction);
-    const gap = entryAt(this.distance);
+    const gap = entryAt(this.distance, this.seed);
     if (this.lane === side && gap && Math.abs(this.x - side * 2.5) < 0.8) {
       this.wallSide = this.wallVisualSide = side;
       this.wallGap = gap;
@@ -415,30 +409,16 @@ export class RunnerGame {
       shelf: this.shelfFor(type, lane, worldZ, localId),
     });
   }
-  private openingTrack() {
-    if (this.trainingOpening) {
-      for (let z = 7; z <= 19; z += 4) this.emit("coin", -1, z, 1.1, z);
-      this.emit("log", -1, 24, 0, 100);
-      this.emit("arch", -1, 42, 0, 101);
-      this.emit("rock", -1, 62, 0, 102);
-      for (let z = 67; z <= 83; z += 4) this.emit("coin", 0, z, 1.1, z);
-      return;
-    }
-    for (let z = 7; z <= 39; z += 4) this.emit("coin", 0, z, 1.1, z);
-    this.emit("log", 1, 24, 0, 100);
-    this.emit("arch", -1, 39, 0, 101);
-  }
-  prepareTutorialOpening() {
-    this.trainingOpening = true;
-    this.items = this.items.filter((item) => item.worldZ >= 90);
-    if (this.autoSpawn) this.openingTrack();
-  }
+  get trackSeed() { return this.seed; }
   private fillTrack() {
+    if (this.distance < 8) return;
     while (this.nextRow <= this.distance + CONFIG.trackLookahead) {
-      const z = this.nextRow;
-      const row = Math.round((z - 65) / CONFIG.rowSpacing);
+      const row = Math.round((this.nextRow - 65) / CONFIG.rowSpacing);
+      const biome = sectionAt(this.nextRow).biome;
+      const shifted = this.nextRow + (this.hash(row, 30) - 0.5) * 12;
+      const z = biome !== "water" && sectionAt(shifted).biome === biome ? shifted : this.nextRow;
       const base = 1000 + row * 128;
-      if (obstacleAllowed(z) && (!this.trainingOpening || z >= 90)) {
+      if (obstacleAllowed(z, this.seed)) {
         if (sectionAt(z).biome === "water") {
           this.waterRow(z, row, base);
           this.nextRow += CONFIG.rowSpacing;
@@ -464,7 +444,7 @@ export class RunnerGame {
         available.sort((a, b) => (a === safeLane ? -1 : b === safeLane ? 1 : a - b));
         for (const l of available.slice(0, count))
           for (let i = 0; i < 5; i++)
-            if (obstacleAllowed(z - 8 + i * 3.5))
+            if (obstacleAllowed(z - 8 + i * 3.5, this.seed))
               this.emit("coin", l, z - 8 + i * 3.5, 0.95, base + 16 + (l + 1) * 5 + i);
         if (
           this.hash(row, 3) < CONFIG.pickupChance &&
@@ -489,7 +469,7 @@ export class RunnerGame {
       }
       this.nextRow += CONFIG.rowSpacing;
     }
-    for (const gap of gapsNear(this.distance)) {
+    for (const gap of gapsNear(this.distance, this.seed)) {
       if (
         gap.start > this.distance + CONFIG.trackLookahead ||
         gap.end < this.distance - 24 ||
@@ -509,7 +489,7 @@ export class RunnerGame {
         ) {
           const level = tutorial
             ? 1
-            : [1, 2, 1, 0][Math.floor((offset - 8) / 22) % 4];
+            : [1, 2, 1, 0][(Math.floor((offset - 8) / 22) + Math.floor(this.hash(gap.id, 31) * 4)) % 4];
           this.emit(
             "coin",
             side,
@@ -531,7 +511,7 @@ export class RunnerGame {
             offset < gap.end - gap.start - 12;
             offset += 22, column++
           ) {
-            const safe = [1, 2, 1, 0][column % 4];
+            const safe = [1, 2, 1, 0][(column + Math.floor(this.hash(gap.id, 31) * 4)) % 4];
             for (let level = 0; level < 3; level++)
               if (level !== safe)
                 this.emit(
@@ -578,7 +558,7 @@ export class RunnerGame {
     // Interleave an extra school between ordinary rows without adding coins or pickups.
     const extraZ = z + CONFIG.rowSpacing / 2;
     if (this.hash(row, 16) < CONFIG.waterExtraFishChance &&
-        sectionAt(extraZ).biome === "water" && obstacleAllowed(extraZ)) {
+        sectionAt(extraZ).biome === "water" && obstacleAllowed(extraZ, this.seed)) {
       this.emit("fish", lane, extraZ, CONFIG.waterHeights[fishLevels[Math.floor(this.hash(row, 17) * fishLevels.length)]] + 0.95, base + 64);
       const school = this.items.find(item => item.id === this.idBase + base + 64);
       if (school) school.fish = this.fishCrossing(extraZ, row, base + 64, 18);
@@ -589,7 +569,7 @@ export class RunnerGame {
       .filter(cell => type === "fish" || (coral ? !touchesCoral(coral, cell.lane * 2.5, CONFIG.waterHeights[cell.level] + 0.95, 0, 0.7) : cell.lane !== lane));
     for (const [route, cell] of routes.slice(0, count).entries())
       for (let i = 0; i < 5; i++)
-        if (obstacleAllowed(z - 8 + i * 3.5))
+        if (obstacleAllowed(z - 8 + i * 3.5, this.seed))
           this.emit("coin", cell.lane, z - 8 + i * 3.5, CONFIG.waterHeights[cell.level] + 0.95, base + 16 + route * 5 + i);
     if (this.hash(row, 3) < CONFIG.pickupChance &&
         Array.from({length: Math.ceil(CONFIG.pickupMinSpacing / CONFIG.rowSpacing) - 1}, (_, i) => row - i - 1)
@@ -637,7 +617,6 @@ export class RunnerGame {
       65 +
       Math.max(0, Math.floor((this.distance - 30 - 65) / CONFIG.rowSpacing)) *
         CONFIG.rowSpacing;
-    this.openingTrack();
     this.fillTrack();
   }
   private collect(item: TrackItem) {
@@ -674,7 +653,7 @@ export class RunnerGame {
       return b.active && Math.abs(b.x) < b.rx + 0.5 + (item.fish ? CONFIG.fishSpeed * 0.6 : 0) && Math.abs(this.visualWaterY + 0.95 - b.y) < b.ry + 0.5;
     });
     return (
-      !gapsNear(this.distance).some(
+      !gapsNear(this.distance, this.seed).some(
         (gap) =>
           this.distance >=
             gap.start -
@@ -727,7 +706,7 @@ export class RunnerGame {
   private revivalPoint() {
     const valid = this.history.filter(
       (s) =>
-        !gapAt(s.distance) ||
+        !gapAt(s.distance, this.seed) ||
         (s.wallSide !== 0 && s.wallGap && s.distance < s.wallGap.end),
     );
     return (
@@ -885,7 +864,7 @@ export class RunnerGame {
           this.y = this.velocity = 0;
           this.protectionTime = CONFIG.boostProtection;
         }
-      } else if (gapAt(this.distance) && !this.wallSide) {
+      } else if (gapAt(this.distance, this.seed) && !this.wallSide) {
         this.mode = "over";
         this.lastHit = "gap";
       }

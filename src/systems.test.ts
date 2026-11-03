@@ -112,8 +112,8 @@ test("route boundaries, dark tunnel interiors and gap approach buffers use one p
   assert.equal(sectionAt(599.9).biome, "forest");
   assert.equal(sectionAt(600).biome, "tunnel");
   assert.equal(sectionAt(660).biome, "canyon");
-  assert.equal(sectionAt(1260).biome, "beach");
-  assert.equal(sectionAt(1320).biome, "beach");
+  assert.equal(sectionAt(1460).biome, "beach");
+  assert.equal(sectionAt(1520).biome, "beach");
   assert.equal(tunnelDarkness(630), 1);
   assert.equal(tunnelDarkness(600), 0);
   assert.ok(tunnelDarkness(605) > 0 && tunnelDarkness(605) < 1);
@@ -209,7 +209,7 @@ test("shield absorbs one ordinary hit and protects briefly, but cannot prevent a
   assert.equal(game.mode, "over");
   game.start();
   game.shield = true;
-  game.distance = gapsNear(800)[0].start - 0.1;
+  game.distance = gapsNear(800, game.trackSeed)[0].start - 0.1;
   game.jump();
   game.update(0.02);
   assert.equal(game.mode, "over");
@@ -258,7 +258,7 @@ test("booster crosses a tunnel and extends its flight to a safe landing beyond a
   assert.equal(game.mode, "running");
   assert.equal(game.boosting, false);
   game.start();
-  const gap = gapsNear(800)[0];
+  const gap = gapsNear(800, game.trackSeed)[0];
   game.distance = gap.start - 10;
   game.activateBooster(true);
   game.boostRemaining = 25;
@@ -266,7 +266,7 @@ test("booster crosses a tunnel and extends its flight to a safe landing beyond a
   assert.equal(game.boosting, false);
   assert.equal(game.mode, "running");
   assert.ok(game.distance >= gap.end + 6);
-  assert.equal(gapAt(game.distance), undefined);
+  assert.equal(gapAt(game.distance, game.trackSeed), undefined);
   assert.ok(game.protectionTime > 0);
 });
 
@@ -277,7 +277,7 @@ test("wall entry needs an extra outward gesture, height has limits and exit retu
   game.x = -2.5;
   game.move(-1);
   assert.equal(game.wallSide, 0);
-  const gap = gapsNear(800)[0];
+  const gap = gapsNear(800, game.trackSeed)[0];
   game.distance = gap.start - 10;
   assert.equal(game.move(-1), true);
   assert.equal(game.wallSide, -1);
@@ -288,7 +288,7 @@ test("wall entry needs an extra outward gesture, height has limits and exit retu
   assert.equal(game.wallLevel, 1);
   game.move(1);
   assert.equal(game.wallSide, -1);
-  for (let n = 0; n < 200 && game.wallSide; n++) game.update(0.02);
+  for (let n = 0; n < 400 && game.wallSide; n++) game.update(0.02);
   assert.equal(game.mode, "running");
   assert.equal(game.wallSide, 0);
   assert.equal(game.lane, -1);
@@ -298,19 +298,20 @@ test("wall entry needs an extra outward gesture, height has limits and exit retu
 test("wall generation leaves a reachable height and the first wall section is obstacle-free", () => {
   const game = new RunnerGame({ random: () => 0.5 });
   game.start();
-  game.distance = 790;
+  const [firstGap, secondGap] = gapsNear(800, game.trackSeed);
+  game.distance = firstGap.start - 20;
   game.update(0.001);
   assert.ok(game.items.some((i) => i.route === "wall" && i.type === "coin"));
   assert.equal(
-    game.items.some((i) => i.type === "wall-rock" && i.worldZ < 900),
+    game.items.some((i) => i.type === "wall-rock" && i.worldZ < firstGap.end),
     false,
   );
-  game.distance = 800;
+  game.distance = firstGap.start - 10;
   game.lane = -1;
   game.x = -2.5;
   game.move(-1);
-  for (let n = 0; n < 200 && game.wallSide; n++) game.update(0.02);
-  game.distance = 1038;
+  for (let n = 0; n < 400 && game.wallSide; n++) game.update(0.02);
+  game.distance = secondGap.start - 12;
   game.update(0.001);
   const rows = new Map<string, Set<number>>();
   for (const item of game.items.filter((i) => i.type === "wall-rock")) {
@@ -384,12 +385,12 @@ test("rewind spends once, keeps unique coin income and clears obstacles without 
 test("rewinding to a wall state restores an attached route that can still exit", () => {
   const game = new RunnerGame({ autoSpawn: false });
   game.start();
-  const gap = gapsNear(800)[0];
+  const gap = gapsNear(800, game.trackSeed)[0];
   game.distance = gap.start - 10;
   game.lane = -1;
   game.x = -2.5;
   game.move(-1);
-  for (let n = 0; n < 200 && game.wallSide; n++) game.update(0.02);
+  for (let n = 0; n < 400 && game.wallSide; n++) game.update(0.02);
   game.update(1.2);
   game.addItem("rock", -1, 1);
   game.update(0.1);
@@ -413,26 +414,23 @@ test("procedurally generated coins retain identity across rewind and never credi
     onCoins: (n) => (credited += n),
   });
   game.start();
-  const ids = new Set(
-    game.items.filter((item) => item.type === "coin").map((item) => item.id),
-  );
-  game.update(3);
+  game.update(0.8);
+  const coin = game.items.find(item => item.type === "coin")!;
+  assert.ok(coin);
+  game.lane = coin.lane; game.x = coin.lane * 2.5;
+  game.distance = coin.worldZ - 0.3;
+  game.update(0.05);
   const earnings = credited;
   assert.ok(earnings > 0);
-  game.addItem("rock", 0, 1);
+  game.addItem("rock", game.lane, 1);
   game.update(0.1);
   assert.equal(game.mode, "over");
-  assert.equal(
-    game.useHourglass(() => true),
-    true,
-  );
+  assert.equal(game.useHourglass(() => true), true);
   game.update(CONFIG.rewindDuration + 0.01);
-  assert.ok(
-    game.items
-      .filter((item) => item.type === "coin" && item.worldZ < 40)
-      .every((item) => ids.has(item.id)),
-  );
-  game.update(3);
+  game.lane = coin.lane; game.x = coin.lane * 2.5;
+  game.distance = coin.worldZ - 0.3;
+  game.update(0.05);
+  assert.ok(!game.items.some(item => item.id === coin.id));
   assert.equal(credited, earnings);
   assert.equal(game.coins, earnings);
 });
@@ -474,7 +472,7 @@ test("failed consumption leaves the booster and game state intact", () => {
 
 test("water grid clamps heights and freezes dynamic hazards while paused", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1500;
+  game.start(); game.distance = 1700;
   assert.equal(game.swimming, true);
   game.jump(); game.jump(); game.jump();
   assert.equal(game.waterLevel, 2);
@@ -493,7 +491,7 @@ test("water grid clamps heights and freezes dynamic hazards while paused", () =>
 
 test("parallel water coins collect locally, then individually with magnet", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1500;
+  game.start(); game.distance = 1700;
   const local = game.addItem("coin", 0, 1, CONFIG.waterHeights[1] + 0.95);
   const side = game.addItem("coin", 1, 5, CONFIG.waterHeights[1] + 0.95);
   const upper = game.addItem("coin", 0, 5, CONFIG.waterHeights[2] + 0.95);
@@ -505,7 +503,7 @@ test("parallel water coins collect locally, then individually with magnet", () =
 
 test("water generation leaves connected safe columns with unique IDs", () => {
   const game = new RunnerGame({random: () => 0.4});
-  game.start(); game.distance = 1450; game.update(0.01);
+  game.start(); game.distance = 1650; game.update(0.01);
   const waterItems = game.items.filter(i => sectionAt(i.worldZ).biome === "water");
   assert.ok(waterItems.some(i => i.type === "coin"));
   assert.equal(new Set(game.items.map(i => i.id)).size, game.items.length);
@@ -527,7 +525,7 @@ test("water generation leaves connected safe columns with unique IDs", () => {
 
 test("water rewind restores dynamic time and clears aquatic hazards", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1500; game.update(3.2);
+  game.start(); game.distance = 1700; game.update(3.2);
   const clock = game.worldTime;
   game.addItem("bubble", 0, 1, CONFIG.waterHeights[1] + 0.95); game.update(0.1);
   assert.equal(game.mode, "over");
@@ -540,7 +538,7 @@ test("water rewind restores dynamic time and clears aquatic hazards", () => {
 
 test("volcano warns for two seconds before its visible thermal column is dangerous", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1500;
+  game.start(); game.distance = 1700;
   const volcano = game.addItem("volcano", 1, 20, CONFIG.seabedHeight + 0.65);
   game.worldTime = 2 - volcano.worldZ * 0.017 + 100;
   assert.equal(game.waterBounds(volcano).warning, true);
@@ -555,7 +553,7 @@ test("volcano warns for two seconds before its visible thermal column is dangero
 
 test("lowest swimming cell reaches a dormant seabed vent", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1500;
+  game.start(); game.distance = 1700;
   game.waterLevel = 0; game.waterY = CONFIG.waterHeights[0];
   game.lane = 1; game.x = 2.5;
   const vent = game.addItem("volcano", 1, 1, CONFIG.seabedHeight + 0.65);
@@ -573,7 +571,7 @@ test("corals grow from the bed and block only the heights their branches reach",
   for (const lane of [-1, 0, 1]) {
     for (let tiers = 1; tiers <= 3; tiers++) {
       const game = new RunnerGame({autoSpawn: false});
-      game.start(); game.distance = 1500;
+      game.start(); game.distance = 1700;
       const coral = game.addItem("coral", lane, 1);
       coral.coral = makeCoral(lane, tiers);
       assert.ok(coral.coral.rootY <= CONFIG.seabedHeight);
@@ -598,7 +596,7 @@ test("side-grown reefs reach two columns and preserve the opposite column", () =
 
 test("coral collision follows swimming between cells rather than only target lanes", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1500;
+  game.start(); game.distance = 1700;
   game.lane = -1; game.x = -2.5;
   game.addItem("coral", 0, 2);
   game.move(1); game.move(1);
@@ -642,7 +640,7 @@ test("fish cross once from outside the left or right edge without reversing", ()
 
 test("all swimming levels stay below the surface while the lowest level still meets the bed", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1500;
+  game.start(); game.distance = 1700;
   game.jump(); game.update(2);
   assert.equal(game.waterLevel, 2);
   assert.ok(game.waterY + 2.1 < CONFIG.waterSurface - 0.12);
@@ -657,7 +655,7 @@ test("ocean rows add extra schools across all heights with distinct IDs and a ro
   const fishHeights = new Set<number>();
   for (let seed = 1; seed <= 12; seed++) {
     const game = new RunnerGame({random: () => seed / 13});
-    game.start(); game.distance = 1500; game.update(0.001);
+    game.start(); game.distance = 1700; game.update(0.001);
     const hazards = game.items.filter(item => sectionAt(item.worldZ).biome === "water" &&
       ["bubble", "coral", "volcano", "fish"].includes(item.type));
     assert.equal(new Set(game.items.map(item => item.id)).size, game.items.length);
@@ -700,4 +698,22 @@ test("magnet attracts nearby coins behind the runner across routes", () => {
   assert.equal(distant.attraction, undefined);
   game.update(0.5);
   assert.equal(game.coins, 3);
+});
+
+
+test("seeded canyon gaps vary per run, remain stable for rewind and leave approach buffers", () => {
+  const layouts = new Set<string>();
+  for (let seed = 1; seed <= 30; seed++) {
+    const gaps = gapsNear(800, seed).filter(gap => gap.id < 2);
+    assert.deepEqual(gapsNear(800, seed).filter(gap => gap.id < 2), gaps);
+    layouts.add(JSON.stringify(gaps));
+    assert.ok(gaps[1].start - gaps[0].end > 100);
+    for (const gap of gaps) {
+      assert.equal(sectionAt(gap.start).biome, "canyon");
+      assert.equal(sectionAt(gap.end).biome, "canyon");
+      assert.equal(obstacleAllowed(gap.start - CONFIG.wallEntry, seed), false);
+      assert.equal(obstacleAllowed(gap.end + 10, seed), false);
+    }
+  }
+  assert.ok(layouts.size > 25);
 });

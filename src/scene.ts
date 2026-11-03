@@ -1768,7 +1768,7 @@ export class ForestScene {
     const waterBefore = this.runner.position.y;
     const pose = this.motion.update(game, dt);
     const scroll = ready || introducing ? 0 : game.distance;
-    this.terrainView.update(scroll, game.worldTime);
+    this.terrainView.update(scroll, game.worldTime, game.trackSeed);
     // Exposure follows the lens crossing the mouth, not the runner seven metres ahead.
     const cameraDistance = Math.max(0, scroll + this.camera.position.z);
     const darkness = tunnelDarkness(cameraDistance);
@@ -2093,7 +2093,7 @@ export class ForestScene {
       );
     this.lastPhase = footfall;
     this.lastLanding = pose.landing;
-    // Home, countdown and running share these meshes and their item IDs.
+    // Item IDs remain stable within a run, including rewinds.
     const alive = new Set(game.items.map((item) => item.id));
     for (const [id, mesh] of this.itemMeshes)
       if (!alive.has(id)) {
