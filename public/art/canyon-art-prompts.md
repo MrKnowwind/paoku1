@@ -2,7 +2,7 @@
 
 Generated with the built-in ImageGen tool on 2026-11-03. The generated originals stay in the Codex generated_images directory; production copies are stored here. No remote asset hosts are used.
 
-- The original sixteen perspective sprites have been replaced by `icons-v2/*.png`. See `icons-v2/README.md` for the new thirty front-facing icons and their final prompt. The original atlas prompt below is retained as asset history.
+- The original sixteen perspective sprites have been replaced by `icons-v3/*.png`. See `icons-v3/README.md` for the new thirty front-facing icons and their final prompt. The original atlas prompt below is retained as asset history.
 - `canyon-sandstone.jpg`, `canyon-trail.jpg`: 1024 × 1024, JPEG quality 87, mipmapped in Babylon.js.
 
 ## Icon atlas prompt

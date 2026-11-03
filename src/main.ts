@@ -435,8 +435,18 @@ function updateFeatureUi() {
     .forEach((el) => (el.textContent = n(state.wallet)));
   const runningView = game.mode !== "ready" && !game.introducing;
   const status = document.querySelector<HTMLElement>("#run-status")!;
-  status.hidden = !runningView;
-  const markup = ["magnet", "shield", "rocket"]
+  const protectedTime = game.shield ? game.shieldTime : game.protectionTime;
+  const rewind = game.mode === "rewinding";
+  const activePowers = [
+    ...(game.magnetTime > 0 ? ["magnet"] : []),
+    ...(protectedTime > 0 ? ["shield"] : []),
+    ...(game.boosting || rewind ? ["rocket"] : []),
+  ];
+  const showPowers =
+    (game.mode === "running" || rewind) && activePowers.length > 0;
+  status.hidden = !showPowers;
+  document.body.classList.toggle("powers-active", showPowers);
+  const markup = activePowers
     .map(
       (name) =>
         `<article class="power-slot" data-power="${name}"><span class="power-art">${icon(name)}</span><div class="power-readout"><span class="power-name"></span><strong class="power-time"></strong><small class="power-state"></small></div><div class="power-meter"><i></i></div></article>`,
@@ -458,8 +468,9 @@ function updateFeatureUi() {
     live: boolean,
     glyph = name,
   ) => {
+    if (!live) return;
     const slot = status.querySelector<HTMLElement>(`[data-power="${name}"]`)!;
-    slot.dataset.state = live ? "active" : time > 0 ? "cooling" : "idle";
+    slot.dataset.state = "active";
     slot.classList.toggle("is-ending", live && time > 0 && time <= 3);
     slot.querySelector(".power-name")!.textContent = label;
     slot.querySelector(".power-time")!.textContent =
@@ -483,7 +494,6 @@ function updateFeatureUi() {
     t(game.magnetTime > 0 ? "powerActive" : "powerIdle"),
     game.magnetTime > 0,
   );
-  const protectedTime = game.shield ? game.shieldTime : game.protectionTime;
   power(
     "shield",
     t(game.shield || !protectedTime ? "shield" : "briefProtection"),
@@ -493,7 +503,6 @@ function updateFeatureUi() {
     protectedTime > 0,
     game.shield || !protectedTime ? "shield" : "protection",
   );
-  const rewind = game.mode === "rewinding";
   const flightTime = game.boostRemaining / (game.baseSpeed * CONFIG.boostSpeed);
   power(
     "rocket",

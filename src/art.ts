@@ -32,4 +32,4 @@ export const artIcons = new Set([
 ]);
 
 export const iconAsset = (name: string) =>
-  `${import.meta.env.BASE_URL}art/icons-v2/${name}.png`;
+  `${import.meta.env.BASE_URL}art/icons-v3/${name}.png`;
