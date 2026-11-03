@@ -1,7 +1,11 @@
 export const CONFIG = {
   waterLength: 600,
   beachLength: 80,
-  waterHeights: [-6.65, -3, -1],
+  waterSurface: -0.15,
+  seabedHeight: -10,
+  waterHeights: [-9.65, -6, -2.6],
+  fishHalfSpan: 40,
+  fishSpeed: 8,
   waterSafety: 80,
   coinSingleRatio: 0.5,
   coinDoubleRatio: 0.35,

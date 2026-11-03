@@ -1,3 +1,4 @@
+import { CONFIG } from "./config.ts";
 import { Scene } from "@babylonjs/core/scene";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
@@ -98,11 +99,11 @@ export class OceanWater {
 
   cell(parent: TransformNode, world: number, floor: (x: number, d: number) => number) {
     const mesh = CreateGround("continuous-moving-water", {width: 180, height: 10, subdivisionsX: 72, subdivisionsY: 5}, this.scene);
-    mesh.parent = parent; mesh.position.set(0, -0.15, 5);
+    mesh.parent = parent; mesh.position.set(0, CONFIG.waterSurface, 5);
     const vertices = mesh.getVerticesData(VertexBuffer.PositionKind)!;
     const depths: number[] = [];
     for (let i = 0; i < vertices.length; i += 3)
-      depths.push(-0.15 - floor(vertices[i], world + 5 + vertices[i + 2]));
+      depths.push(CONFIG.waterSurface - floor(vertices[i], world + 5 + vertices[i + 2]));
     mesh.setVerticesData("waterDepth", depths, false, 1);
     mesh.material = this.material;
     mesh.isPickable = false;

@@ -1,3 +1,4 @@
+import { CONFIG } from "./config.ts";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
@@ -1191,8 +1192,9 @@ export class ForestScene {
         }
       } else if (item.type === "volcano") {
         this.ocean.vent(root);
-        const plume = CreateCylinder("thermal-plume", {height: 6.0, diameterTop: 1.1, diameterBottom: 0.55, tessellation: 20}, this.scene);
-        plume.parent = root; plume.position.y = 3.65;
+        const plumeHeight = CONFIG.waterSurface - CONFIG.seabedHeight - 1.3;
+        const plume = CreateCylinder("thermal-plume", {height: plumeHeight, diameterTop: 1.1, diameterBottom: 0.55, tessellation: 20}, this.scene);
+        plume.parent = root; plume.position.y = 0.65 + plumeHeight / 2;
         const steam = this.ocean.material("steam", "#f4c083");
         steam.alpha = 0.3; plume.material = steam; plume.setEnabled(false);
         for (let i = 0; i < 9; i++) {
@@ -2077,7 +2079,9 @@ export class ForestScene {
         const b = game.waterBounds(item);
         mesh.position.set(b.x, item.type === "volcano" ? item.y : b.y, item.z);
         if (item.type === "fish") {
-          mesh.rotation.x = Math.cos(game.worldTime * 0.65 + item.worldZ) * -0.45;
+          mesh.rotation.y = b.direction * Math.PI / 2;
+          mesh.rotation.x = 0;
+          mesh.setEnabled(b.active);
           for (const tail of mesh.getChildMeshes().filter(m => m.name === "fish-fan-tail"))
             tail.rotation.y = Math.sin(game.worldTime * 7 + item.id) * 0.3;
         }
@@ -2086,14 +2090,14 @@ export class ForestScene {
           plume?.setEnabled(b.eruption || b.warning);
           if (plume) {
             plume.scaling.y = b.eruption ? 1 : 0.08;
-            plume.position.y = 0.65 + 3 * plume.scaling.y;
+            plume.position.y = 0.65 + (CONFIG.waterSurface - CONFIG.seabedHeight - 1.3) / 2 * plume.scaling.y;
             plume.visibility = b.eruption ? 0.7 : 0.4 + Math.sin(game.worldTime * 12) * 0.2;
           }
           for (const steam of mesh.getChildMeshes().filter(m => m.name.startsWith("vent-steam-"))) {
             const i = Number(steam.name.split("-").pop());
             steam.setEnabled(b.eruption || b.warning);
             const lift = ((game.worldTime * (b.eruption ? 1.4 : 0.35) + i * 0.37) % 1);
-            steam.position.set(Math.sin(i * 2.4) * 0.3, 0.65 + lift * (b.eruption ? 5.6 : 0.45), Math.cos(i * 2.4) * 0.3);
+            steam.position.set(Math.sin(i * 2.4) * 0.3, 0.65 + lift * (b.eruption ? CONFIG.waterSurface - CONFIG.seabedHeight - 1.3 : 0.45), Math.cos(i * 2.4) * 0.3);
             steam.scaling.setAll(0.35 + Math.sin(lift * Math.PI) * 0.8);
           }
         }
@@ -2211,7 +2215,7 @@ export class ForestScene {
       3.1 +
         1.3 * cameraProgress +
         game.wallBlend * (1 + game.wallY * 0.7) +
-        game.boostBlend * 2.5 * (1 - immersed) - immersed * 5.8 + immersed * (game.waterY + 3) * 0.35,
+        game.boostBlend * 2.5 * (1 - immersed) + immersed * (game.waterY + 2 - 4.4),
       5,
       dt,
     );
@@ -2228,7 +2232,7 @@ export class ForestScene {
       1.1 -
         cameraProgress * 0.1 +
         game.wallBlend * game.wallY * 0.75 +
-        game.boostBlend * 3.2 * (1 - immersed) - immersed * 3.0 + immersed * (game.waterY + 3) * 0.4,
+        game.boostBlend * 3.2 * (1 - immersed) + immersed * (game.waterY + 0.95 - 1),
       1.5 + 9.0 * cameraProgress,
     );
     Vector3.LerpToRef(

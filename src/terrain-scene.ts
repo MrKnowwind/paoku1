@@ -1,3 +1,7 @@
+import { CoastSurface } from "./coast-surface.ts";
+import { coastFloor, coastWeights, coastSandUV } from "./coast-layout.ts";
+import type { Material } from "@babylonjs/core/Materials/material";
+import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { coastGridIndices } from "./ocean-geometry.ts";
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -28,7 +32,8 @@ const smooth = (value: number) => {
 
 export class TerrainScene {
   private cells = new Map<number, TransformNode>();
-  private sand: StandardMaterial;
+  private sand: ShaderMaterial;
+  private coastSurface: CoastSurface;
   private water: OceanWater;
   private ocean: OceanProps;
   private grass: StandardMaterial;
@@ -57,7 +62,8 @@ export class TerrainScene {
       return mat;
     };
     this.ocean = new OceanProps(scene);
-    this.sand = this.ocean.material("sand", "#e0d3ac");
+    this.coastSurface = new CoastSurface(scene);
+    this.sand = this.coastSurface.material;
     this.water = new OceanWater(scene);
 
     this.grass = material("grass-floor", "#ffffff", "woodland-grass.webp");
@@ -99,7 +105,7 @@ export class TerrainScene {
     uvs: number[],
     colors: number[],
     parent: TransformNode,
-    material: StandardMaterial,
+    material: Material,
   ) {
     const mesh = new Mesh(name, this.scene);
     const data = new VertexData();
@@ -124,7 +130,7 @@ export class TerrainScene {
     y: number,
     z: number,
     parent: TransformNode,
-    material: StandardMaterial,
+    material: Material,
     world: number,
   ) {
     const mesh = CreateGround(
@@ -142,6 +148,17 @@ export class TerrainScene {
     for (let i = 0; i < uv.length; i += 2) {
       uv[i] = (uv[i] * width + x - width / 2) / tile;
       uv[i + 1] = (uv[i + 1] * length + world) / tile;
+    }
+    if (material === this.sand) {
+      const vertices = mesh.getVerticesData(VertexBuffer.PositionKind)!;
+      const weights: number[] = [];
+      for (let i = 0; i < vertices.length; i += 3) {
+        const d = world + length / 2 + vertices[i + 2];
+        const pair = coastSandUV(x + vertices[i], d);
+        uv[i / 3 * 2] = pair[0]; uv[i / 3 * 2 + 1] = pair[1];
+        weights.push(...coastWeights(d));
+      }
+      mesh.setVerticesData(VertexBuffer.ColorKind, weights);
     }
     mesh.setVerticesData(VertexBuffer.UVKind, uv);
     mesh.parent = parent;
@@ -298,13 +315,6 @@ export class TerrainScene {
     }
   }
 
-  private coastFloor(d: number) {
-    const section = sectionAt(d);
-    if (section.biome === "beach") return 0.06 - 7.06 * smooth((d - section.end + 24) / 24);
-    if (section.biome === "shore") return -7 + 7.06 * smooth((d - section.start) / 60);
-    return section.biome === "water" ? -7 : 0.06;
-  }
-
   private coastHeight(x: number, d: number) {
     const section = sectionAt(d);
     const underwater = section.biome === "water";
@@ -313,7 +323,7 @@ export class TerrainScene {
     const relief = underwater
       ? (Math.sin(x * 0.27 + d * 0.07) * 0.65 + Math.cos(x * 0.5 - d * 0.04) * 0.3) * smooth((Math.abs(x) - 4) / 7)
       : (Math.exp(-Math.pow((Math.abs(x) - 11) / 5, 2)) * 1.2 - smooth((Math.abs(x) - 18) / 18) * 5) * edgeBlend;
-    return this.coastFloor(d) + relief;
+    return coastFloor(d) + relief;
   }
 
   private coastCell(world: number, index: number, root: TransformNode) {
@@ -323,15 +333,11 @@ export class TerrainScene {
     const columns = 40, rows = 5;
     for (let row = 0; row <= rows; row++) {
       const z = row * 2, d = world + z;
-      const shore = sectionAt(d);
       for (let col = 0; col <= columns; col++) {
         const x = (col - columns / 2) * 4;
         const height = this.coastHeight(x, d);
-        positions.push(x, height, z); uvs.push(x / 6, d / 6);
-        const shade = 0.87 + Math.sin(x * 0.4 + d * 0.16) * 0.06;
-        const start = shore.biome === "beach" ? 1 - smooth((d - shore.start) / 24) : 0;
-        const end = shore.biome === "shore" ? smooth((d - shore.end + 20) / 20) : 0;
-        colors.push(shade * (1 - end * 0.12), shade * (1 - start * 0.11), shade * (1 - start * 0.2 - end * 0.12), 1);
+        positions.push(x, height, z); uvs.push(...coastSandUV(x, d));
+        colors.push(...coastWeights(d));
 
       }
     }
@@ -371,13 +377,13 @@ export class TerrainScene {
         // Large arches sit outside the nine-cell corridor and frame the distant reef.
         const archPath = Array.from({length: 17}, (_, i) => {
           const a = i * Math.PI / 16;
-          return new Vector3(side * 19 + Math.cos(a) * 6, -7 + Math.sin(a) * 6.5, 5 + Math.sin(a * 2) * 0.6);
+          return new Vector3(side * 19 + Math.cos(a) * 6, CONFIG.seabedHeight + Math.sin(a) * 8.5, 5 + Math.sin(a * 2) * 0.6);
         });
         const arch = CreateTube("ancient-eroded-reef-arch", {path: archPath, radius: 1.3, tessellation: 10, cap: 3}, this.scene);
         arch.parent = root; arch.material = this.ocean.material("basalt", "#66838b");
         for (let tower = 0; tower < 3; tower++) {
           const mesa = this.ocean.rock(root, [7, 10 + tower * 3, 12], world * 0.37 + tower, "#66838b");
-          mesa.position.set(side * (35 + tower * 9), -9, 5); mesa.material = arch.material;
+          mesa.position.set(side * (35 + tower * 9), CONFIG.seabedHeight - 2, 5); mesa.material = arch.material;
         }
         for (let fish = 0; fish < 8; fish++) {
           const model = this.ocean.fish(root, "#7daeb9");
@@ -393,9 +399,9 @@ export class TerrainScene {
         light.emissiveColor = Color3.FromHexString("#b9ebe0");
         light.backFaceCulling = false;
         for (const side of [-1, 1]) {
-          const shaft = CreateCylinder("slanted-underwater-sunbeam", {height: 6.5, diameterTop: 0.6, diameterBottom: 2.4, tessellation: 12}, this.scene);
+          const shaft = CreateCylinder("slanted-underwater-sunbeam", {height: 9.5, diameterTop: 0.6, diameterBottom: 2.4, tessellation: 12}, this.scene);
           shaft.parent = root; shaft.material = light;
-          shaft.position.set(side * 9.5, -3.4, 4); shaft.rotation.z = side * 0.23;
+          shaft.position.set(side * 9.5, -4.9, 4); shaft.rotation.z = side * 0.23;
         }
       }
       for (let i = 0; i < 3; i++) {
@@ -406,7 +412,7 @@ export class TerrainScene {
           this.ground(0.025, 7, side * 3.8, CONFIG.waterHeights[i] - 0.1, 5, root, this.guide, world);
       }
     }
-    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && mesh.material instanceof StandardMaterial && mesh.material.alpha === 1) as Mesh[];
+    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && (mesh.material === this.sand || mesh.material instanceof StandardMaterial && mesh.material.alpha === 1)) as Mesh[];
     if (opaque.length) { const batch = mergeSceneryMeshes(opaque); batch.parent = root; batch.name = "batched-coastal-reef"; }
   }
 
@@ -418,16 +424,8 @@ export class TerrainScene {
       this.coastCell(world, index, root);
       return root;
     }
-    if (section.biome === "canyon" && world >= section.end - 60 ||
-        section.biome === "forest" && section.start > 0 && world < section.start + 30) {
-      const widthAt = (d: number) => section.biome === "canyon"
-        ? smooth((d - section.end + 60) / 60) * 5.7
-        : (1 - smooth((d - section.start) / 30)) * 4.3;
-      const a = widthAt(world), b = widthAt(world + 10);
-      this.surface("sand-feathered-into-trail", [-a, 0.075, 0, a, 0.075, 0, -b, 0.075, 10, b, 0.075, 10],
-        coastGridIndices(1, 1), [-a / 6, world / 6, a / 6, world / 6, -b / 6, (world + 10) / 6, b / 6, (world + 10) / 6],
-        new Array(16).fill(1), root, this.sand);
-    }
+    const blendingCoast = section.biome === "canyon" && world >= section.end - 60 ||
+      section.biome === "forest" && section.start > 0 && world < section.start + 20;
     const gap = gapsNear(world).find(
       (gap) => gap.start < world + 10 && gap.end > world,
     );
@@ -437,7 +435,7 @@ export class TerrainScene {
         ? section.start - 1
         : section.end + 1,
     );
-    const floor =
+    const floor = blendingCoast ? this.sand :
       section.biome === "forest"
         ? this.trail
         : section.biome === "canyon"
@@ -472,7 +470,7 @@ export class TerrainScene {
     }
     if (section.biome === "forest") {
       for (const side of [-1, 1])
-        this.ground(70, 10, side * 39.3, 0, 5, root, this.grass, world);
+        this.ground(70, 10, side * 39.3, 0, 5, root, blendingCoast ? this.sand : this.grass, world);
     } else if (section.biome === "tunnel") {
       this.arch(world, root);
       if (world === section.start) this.arch(world, root, true);
@@ -646,6 +644,7 @@ export class TerrainScene {
   }
   update(distance: number, time = 0) {
     this.water.update(distance, time);
+    this.coastSurface.update(distance);
     const first = Math.floor((distance - 50) / 10),
       last = Math.ceil((distance + 180) / 10);
     for (const [index, root] of this.cells)

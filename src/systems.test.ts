@@ -1,3 +1,6 @@
+import { fishPosition } from "./fish.ts";
+import { coastFloor, coastWeights, coastSandUV } from "./coast-layout.ts";
+import { CYCLE_LENGTH } from "./track.ts";
 import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -481,8 +484,9 @@ test("water grid clamps heights and freezes dynamic hazards while paused", () =>
   game.pause(); game.update(4);
   assert.deepEqual(game.waterBounds(fish), before);
   game.resume(); game.update(0.1);
-  assert.notEqual(game.waterBounds(fish).y, before.y);
-  assert.ok(game.waterY > -3 && game.waterY < -1);
+  assert.notEqual(game.waterBounds(fish).x, before.x);
+  assert.equal(game.waterBounds(fish).y, before.y);
+  assert.ok(game.waterY > CONFIG.waterHeights[1] && game.waterY < CONFIG.waterHeights[2]);
   game.slide(); game.slide(); game.slide();
   assert.equal(game.waterLevel, 0);
 });
@@ -490,9 +494,9 @@ test("water grid clamps heights and freezes dynamic hazards while paused", () =>
 test("parallel water coins collect locally, then individually with magnet", () => {
   const game = new RunnerGame({autoSpawn: false});
   game.start(); game.distance = 1500;
-  const local = game.addItem("coin", 0, 1, -2.05);
-  const side = game.addItem("coin", 1, 5, -2.05);
-  const upper = game.addItem("coin", 0, 5, -0.05);
+  const local = game.addItem("coin", 0, 1, CONFIG.waterHeights[1] + 0.95);
+  const side = game.addItem("coin", 1, 5, CONFIG.waterHeights[1] + 0.95);
+  const upper = game.addItem("coin", 0, 5, CONFIG.waterHeights[2] + 0.95);
   assert.equal(new Set([local.id, side.id, upper.id]).size, 3);
   game.update(0.07); assert.equal(game.coins, 1);
   game.magnetTime = 10; game.update(0.6);
@@ -512,6 +516,8 @@ test("water generation leaves connected safe columns with unique IDs", () => {
     if (item.coral) {
       for (const y of CONFIG.waterHeights)
         assert.equal(touchesCoral(item.coral, safeX, y + 0.95, 0, 0.7), false);
+    } else if (item.type === "fish") {
+      assert.ok(Math.abs(item.y - CONFIG.waterHeights[2] - 0.95) > 2);
     } else {
       const b = game.waterBounds(item);
       assert.ok(Math.abs(b.x - safeX) - b.rx > 0.95);
@@ -523,7 +529,7 @@ test("water rewind restores dynamic time and clears aquatic hazards", () => {
   const game = new RunnerGame({autoSpawn: false});
   game.start(); game.distance = 1500; game.update(3.2);
   const clock = game.worldTime;
-  game.addItem("bubble", 0, 1, -2.05); game.update(0.1);
+  game.addItem("bubble", 0, 1, CONFIG.waterHeights[1] + 0.95); game.update(0.1);
   assert.equal(game.mode, "over");
   assert.equal(game.useHourglass(() => true), true);
   game.update(CONFIG.rewindDuration + 0.01);
@@ -535,7 +541,7 @@ test("water rewind restores dynamic time and clears aquatic hazards", () => {
 test("volcano warns for two seconds before its visible thermal column is dangerous", () => {
   const game = new RunnerGame({autoSpawn: false});
   game.start(); game.distance = 1500;
-  const volcano = game.addItem("volcano", 1, 20, -6.35);
+  const volcano = game.addItem("volcano", 1, 20, CONFIG.seabedHeight + 0.65);
   game.worldTime = 2 - volcano.worldZ * 0.017 + 100;
   assert.equal(game.waterBounds(volcano).warning, true);
   assert.equal(game.waterBounds(volcano).eruption, false);
@@ -552,14 +558,14 @@ test("lowest swimming cell reaches a dormant seabed vent", () => {
   game.start(); game.distance = 1500;
   game.waterLevel = 0; game.waterY = CONFIG.waterHeights[0];
   game.lane = 1; game.x = 2.5;
-  const vent = game.addItem("volcano", 1, 1, -6.35);
+  const vent = game.addItem("volcano", 1, 1, CONFIG.seabedHeight + 0.65);
   game.worldTime = 0.5 - vent.worldZ * 0.017 + 100;
   game.shield = true;
   game.update(0.07);
   assert.equal(game.mode, "running");
   assert.equal(game.shield, false);
   assert.equal(game.shieldBreakSerial, 1);
-  assert.ok(game.waterY > -7 && game.waterY < -6.5);
+  assert.ok(game.waterY > CONFIG.seabedHeight && game.waterY < CONFIG.seabedHeight + 0.5);
 });
 
 
@@ -570,7 +576,7 @@ test("corals grow from the bed and block only the heights their branches reach",
       game.start(); game.distance = 1500;
       const coral = game.addItem("coral", lane, 1);
       coral.coral = makeCoral(lane, tiers);
-      assert.ok(coral.coral.rootY <= -7);
+      assert.ok(coral.coral.rootY <= CONFIG.seabedHeight);
       assert.equal(coral.coral.branches[0].from.y, 0);
       for (let level = 0; level < 3; level++)
         assert.equal(touchesCoral(coral.coral, lane * 2.5, CONFIG.waterHeights[level] + 0.95, 0), level < tiers);
@@ -599,4 +605,48 @@ test("coral collision follows swimming between cells rather than only target lan
   game.update(0.15);
   assert.equal(game.mode, "over");
   assert.equal(game.lastHit, "coral");
+});
+
+
+test("coastal texture coordinates keep world scale and remain continuous at both shorelines", () => {
+  const canyonEnd = CONFIG.forestLength + CONFIG.tunnelLength + CONFIG.canyonLength;
+  for (const distance of [canyonEnd, canyonEnd + CONFIG.beachLength, CYCLE_LENGTH - CONFIG.beachLength, CYCLE_LENGTH]) {
+    const before = coastSandUV(0, distance - 0.001), after = coastSandUV(0, distance + 0.001);
+    assert.ok(Math.abs(after[1] - before[1]) < 0.002);
+    const a = coastWeights(distance - 0.001), b = coastWeights(distance + 0.001);
+    a.forEach((weight, i) => assert.ok(Math.abs(weight - b[i]) < 0.001));
+    assert.ok(Math.abs(coastFloor(distance - 0.001) - coastFloor(distance + 0.001)) < 0.002);
+    assert.equal(coastSandUV(3, distance)[0] - coastSandUV(0, distance)[0], 1);
+  }
+  // The entry slope needs more texture length than its flat projection.
+  const waterStart = canyonEnd + CONFIG.beachLength;
+  assert.ok(coastSandUV(0, waterStart)[1] - coastSandUV(0, waterStart - 24)[1] > 8);
+});
+
+test("fish cross once from outside the left or right edge without reversing", () => {
+  for (const direction of [-1, 1]) {
+    const crossing = {direction, startTime: 10};
+    assert.equal(fishPosition(crossing, 9).active, false);
+    let previous = fishPosition(crossing, 10).x;
+    assert.equal(previous, -direction * CONFIG.fishHalfSpan);
+    const duration = CONFIG.fishHalfSpan * 2 / CONFIG.fishSpeed;
+    for (let step = 1; step <= 100; step++) {
+      const p = fishPosition(crossing, 10 + duration * step / 100);
+      assert.ok((p.x - previous) * direction > 0);
+      previous = p.x;
+    }
+    assert.equal(fishPosition(crossing, 11 + duration).active, false);
+    assert.equal(previous, direction * CONFIG.fishHalfSpan);
+  }
+});
+
+test("all swimming levels stay below the surface while the lowest level still meets the bed", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.start(); game.distance = 1500;
+  game.jump(); game.update(2);
+  assert.equal(game.waterLevel, 2);
+  assert.ok(game.waterY + 2.1 < CONFIG.waterSurface - 0.12);
+  game.slide(); game.slide(); game.update(2);
+  assert.ok(game.waterY - CONFIG.seabedHeight < 0.5);
+  assert.ok(game.waterY > CONFIG.seabedHeight);
 });

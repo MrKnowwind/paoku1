@@ -124,8 +124,14 @@ export function tunnelDarkness(distance: number): number {
 export function waterBlend(distance: number): number {
   const s = sectionAt(distance);
   if (s.biome === "water") return 1;
-  if (s.biome === "beach") return Math.max(0, (distance - (s.end - 24)) / 24);
-  if (s.biome === "shore") return Math.max(0, 1 - (distance - s.start) / 60);
+  if (s.biome === "beach") {
+    const t = Math.max(0, Math.min(1, (distance - s.end + 24) / 24));
+    return t * t * (3 - 2 * t);
+  }
+  if (s.biome === "shore") {
+    const t = Math.max(0, Math.min(1, (distance - s.start) / 60));
+    return 1 - t * t * (3 - 2 * t);
+  }
   return 0;
 }
 export function waterTransition(distance: number): boolean {

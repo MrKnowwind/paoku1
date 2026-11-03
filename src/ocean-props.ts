@@ -12,7 +12,8 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
-import { makeCoral } from "./coral.ts";
+import { CONFIG } from "./config.ts";
+import { makeCoral, coralPath } from "./coral.ts";
 import type { CoralPlan } from "./coral.ts";
 import { mergeSceneryMeshes } from "./scenery-mesh";
 
@@ -102,12 +103,16 @@ export class OceanProps {
     const root = new TransformNode("rooted-branching-reef", this.scene); root.parent = parent;
     const mat = this.material("coral", color);
     for (const b of plan.branches) {
-      const from = new Vector3(b.from.x, b.from.y, b.from.z), to = new Vector3(b.to.x, b.to.y, b.to.z);
-      const path = Array.from({length: 5}, (_, i) => Vector3.Lerp(from, to, i / 4));
-      const mesh = CreateTube("tapered-porous-coral-branch", {path, tessellation: 12, cap: 3,
-        radiusFunction: i => b.radius + (b.tipRadius - b.radius) * i / 4}, this.scene);
+      const path = coralPath(b).map(p => new Vector3(p.x, p.y, p.z));
+      const mesh = CreateTube("tapered-porous-coral-branch", {path, tessellation: 20, cap: 3,
+        radiusFunction: i => b.radius + (b.tipRadius - b.radius) * i / (path.length - 1)}, this.scene);
       mesh.parent = root; mesh.material = mat;
       this.naturalUV(mesh, 0.45);
+      if (b.tipRadius < 0.08) {
+        const crown = CreateSphere("rounded-coral-tip", {diameter: b.tipRadius * 2, segments: 10}, this.scene);
+        crown.parent = root; crown.position.copyFrom(path[path.length - 1]); crown.material = mat;
+        this.naturalUV(crown, 0.45);
+      }
     }
     const batch = mergeSceneryMeshes(root.getChildMeshes() as Mesh[]);
     batch.parent = root; batch.name = "textured-coral-branches";
@@ -116,7 +121,7 @@ export class OceanProps {
 
   coral(parent: TransformNode, shape: number, height = 1.3, color = "#da8b9f") {
     const root = this.grownCoral(parent, makeCoral(0, 3), color);
-    root.scaling.set(shape % 3 === 2 ? 1.6 : 1, height / 6.71, shape % 3 === 2 ? 0.55 : 1);
+    root.scaling.set(shape % 3 === 2 ? 1.6 : 1, height / (CONFIG.waterHeights[2] + 0.65 - CONFIG.seabedHeight + 0.06), shape % 3 === 2 ? 0.55 : 1);
     root.rotation.y = shape * 0.7;
     return root;
   }

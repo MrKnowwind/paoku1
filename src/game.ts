@@ -1,3 +1,5 @@
+import { fishPosition } from "./fish.ts";
+import type { FishCrossing } from "./fish.ts";
 import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
 import type { CoralPlan } from "./coral.ts";
 import { CONFIG } from "./config.ts";
@@ -52,6 +54,7 @@ export interface TrackItem {
   shelf?: RockShelf;
   shape?: number;
   coral?: CoralPlan;
+  fish?: FishCrossing;
 }
 interface Snapshot {
   waterLevel: number;
@@ -78,7 +81,7 @@ interface Snapshot {
 export class RunnerGame {
   mode: GameMode = "ready";
   waterLevel = 1;
-  waterY = -3;
+  waterY: number = CONFIG.waterHeights[1];
   worldTime = 0;
   get swimming() { return this.terrain.biome === "water"; }
   get waterBlend() { return waterBlend(this.distance); }
@@ -127,6 +130,7 @@ export class RunnerGame {
   private boostActive = false;
   private wallGap?: TrackGap;
   private generatedWalls = new Set<number>();
+  private fishCrossings = new Map<number, FishCrossing>();
   private tutorialGaps = new Set<number>();
   private completedWallTutorial = false;
   private collected = new Set<number>();
@@ -227,7 +231,7 @@ export class RunnerGame {
   }
   start() {
     this.waterLevel = 1;
-    this.waterY = -3;
+    this.waterY = CONFIG.waterHeights[1];
     this.worldTime = 0;
     this.trainingOpening = false;
     this.idBase = ++this.runSerial * 1000000000000;
@@ -256,6 +260,7 @@ export class RunnerGame {
     this.collected.clear();
     this.cleared.clear();
     this.generatedWalls.clear();
+    this.fishCrossings.clear();
     this.tutorialGaps.clear();
     this.completedWallTutorial = false;
     this.shattered = [];
@@ -298,6 +303,7 @@ export class RunnerGame {
       worldZ: this.distance + z,
       shelf: this.shelfFor(type, lane, this.distance + z, localId),
       coral: type === "coral" ? makeCoral(lane, 2) : undefined,
+      fish: type === "fish" ? {direction: Math.sign(lane) || 1, startTime: this.worldTime - CONFIG.fishHalfSpan / CONFIG.fishSpeed} : undefined,
     };
     this.items.push(item);
     return item;
@@ -548,7 +554,7 @@ export class RunnerGame {
     const lane = blocked[Math.floor(this.hash(row, 10) * blocked.length)];
     const types: ItemType[] = ["bubble", "coral", "volcano", "fish"];
     const type = types[Math.floor(this.hash(row, 11) * 4)];
-    const level = type === "volcano" ? 0 : Math.floor(this.hash(row, 12) * 3);
+    const level = type === "volcano" ? 0 : Math.floor(this.hash(row, 12) * (type === "fish" ? 2 : 3));
     let coral: CoralPlan | undefined;
     if (type === "coral") {
       const neighbour = Math.abs(blocked[0] - blocked[1]) === 1 && this.hash(row, 13) < 0.5
@@ -556,13 +562,19 @@ export class RunnerGame {
       const side = Math.sign(lane || neighbour || -safeLane);
       coral = makeCoral(lane, level + 1, neighbour, this.hash(row, 14) < 0.5 ? side : 0);
     }
-    this.emit(type, lane, z, coral ? coral.rootY : type === "volcano" ? -6.35 : CONFIG.waterHeights[level] + 0.95, base);
+    this.emit(type, lane, z, coral ? coral.rootY : type === "volcano" ? CONFIG.seabedHeight + 0.65 : CONFIG.waterHeights[level] + 0.95, base);
     const hazard = this.items.find(i => i.id === this.idBase + base);
-    if (hazard) { hazard.shape = row % 3; hazard.coral = coral; }
+    if (type === "fish" && !this.fishCrossings.has(row)) {
+      this.fishCrossings.set(row, {
+        direction: this.hash(row, 15) < 0.5 ? -1 : 1,
+        startTime: this.worldTime + (z - this.distance) / this.baseSpeed - CONFIG.fishHalfSpan / CONFIG.fishSpeed,
+      });
+    }
+    if (hazard) { hazard.shape = row % 3; hazard.coral = coral; hazard.fish = this.fishCrossings.get(row); }
     const roll = this.hash(row, 8);
     const count = roll < CONFIG.coinSingleRatio ? 1 : roll < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
-    const routes = [1, 0, 2].flatMap(level => [safeLane, ...blocked].map(l => ({lane: l, level})))
-      .filter(cell => coral ? !touchesCoral(coral, cell.lane * 2.5, CONFIG.waterHeights[cell.level] + 0.95, 0, 0.7) : cell.lane !== lane);
+    const routes = (type === "fish" ? [2] : [1, 0, 2]).flatMap(level => [safeLane, ...blocked].map(l => ({lane: l, level})))
+      .filter(cell => type === "fish" || (coral ? !touchesCoral(coral, cell.lane * 2.5, CONFIG.waterHeights[cell.level] + 0.95, 0, 0.7) : cell.lane !== lane));
     for (const [route, cell] of routes.slice(0, count).entries())
       for (let i = 0; i < 5; i++)
         if (obstacleAllowed(z - 8 + i * 3.5))
@@ -570,18 +582,20 @@ export class RunnerGame {
     if (this.hash(row, 3) < CONFIG.pickupChance &&
         Array.from({length: Math.ceil(CONFIG.pickupMinSpacing / CONFIG.rowSpacing) - 1}, (_, i) => row - i - 1)
           .every(r => this.hash(r, 3) >= CONFIG.pickupChance))
-      this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", safeLane, z, -2.05, base + 8);
+      this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", safeLane, z, CONFIG.waterHeights[type === "fish" ? 2 : 1] + 0.95, base + 8);
   }
   waterBounds(item: TrackItem) {
     const phase = ((this.worldTime + item.worldZ * 0.017) % 10 + 10) % 10;
     const eruption = item.type === "volcano" && phase >= 4 && phase < 6;
     const warning = item.type === "volcano" && phase >= 2 && phase < 4;
-    const fish = item.type === "fish";
+    const fish = item.fish ? fishPosition(item.fish, this.worldTime) : undefined;
     return {
-      x: item.coral?.rootX ?? item.lane * 2.5,
-      y: fish ? -2.05 + Math.sin(this.worldTime * 0.65 + item.worldZ) * 1.8 : eruption ? -2.7 : item.coral?.rootY ?? item.y,
+      x: fish?.x ?? item.coral?.rootX ?? item.lane * 2.5,
+      y: eruption ? (CONFIG.seabedHeight + 1.3 + CONFIG.waterSurface) / 2 : item.coral?.rootY ?? item.y,
+      active: fish?.active ?? true,
+      direction: fish?.direction ?? 0,
       rx: fish ? 0.8 : 0.65,
-      ry: eruption ? 3.0 : item.type === "coral" ? 0.65 + (item.shape ?? 0) * 0.3 : 0.65,
+      ry: eruption ? (CONFIG.waterSurface - CONFIG.seabedHeight - 1.3) / 2 : item.type === "coral" ? 0.65 + (item.shape ?? 0) * 0.3 : 0.65,
       phase, eruption, warning,
     };
   }
@@ -634,7 +648,7 @@ export class RunnerGame {
       if (!["bubble", "coral", "volcano", "fish"].includes(item.type) || Math.abs(item.z) > 16) return false;
       if (item.coral) return touchesCoral(item.coral, 0, this.visualWaterY + 0.95, 0, 0.65);
       const b = this.waterBounds(item);
-      return Math.abs(b.x) < b.rx + 0.5 && Math.abs(this.visualWaterY + 0.95 - b.y) < b.ry + 0.5;
+      return b.active && Math.abs(b.x) < b.rx + 0.5 + (item.fish ? CONFIG.fishSpeed * 0.6 : 0) && Math.abs(this.visualWaterY + 0.95 - b.y) < b.ry + 0.5;
     });
     return (
       !gapsNear(this.distance).some(
@@ -793,7 +807,7 @@ export class RunnerGame {
       const wasSwimming = this.swimming;
       this.distance += travel;
       if (!wasSwimming && this.swimming) {
-        this.waterLevel = 1; this.waterY = -3; this.lane = 0;
+        this.waterLevel = 1; this.waterY = CONFIG.waterHeights[1]; this.lane = 0;
         this.y = this.velocity = this.slideTime = 0; this.fastFalling = false;
       }
       if (this.transitioning) { this.lane = 0; this.waterLevel = 1; }
@@ -866,7 +880,7 @@ export class RunnerGame {
             continue;
           }
           const bounds = this.waterBounds(item);
-          if (Math.abs(item.z) < 1.15 && Math.abs(this.x - bounds.x) < bounds.rx + 0.35 &&
+          if (bounds.active && Math.abs(item.z) < 1.15 && Math.abs(this.x - bounds.x) < bounds.rx + 0.35 &&
               Math.abs(this.visualWaterY + 0.95 - bounds.y) < bounds.ry + 0.45) this.collide(item);
           continue;
         }
@@ -922,7 +936,7 @@ export class RunnerGame {
       }
       this.items = this.items.filter(
         (item) =>
-          (item.z > -24 || item.attraction !== undefined) &&
+          (item.z > -24 || item.attraction !== undefined || item.fish && this.worldTime < item.fish.startTime + CONFIG.fishHalfSpan * 2 / CONFIG.fishSpeed) &&
           !this.collected.has(item.id) &&
           !this.cleared.has(item.id),
       );
