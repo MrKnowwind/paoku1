@@ -2,6 +2,10 @@ import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { OceanProps } from "./ocean-props.ts";
+import { CONFIG } from "./config.ts";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
@@ -24,7 +28,7 @@ export class TerrainScene {
   private cells = new Map<number, TransformNode>();
   private sand: StandardMaterial;
   private water: StandardMaterial;
-  private coral: StandardMaterial;
+  private ocean: OceanProps;
   private grass: StandardMaterial;
   private trail: StandardMaterial;
   private stone: StandardMaterial;
@@ -50,12 +54,13 @@ export class TerrainScene {
       }
       return mat;
     };
-    this.sand = material("coastal-sand", "#dccb99", "canyon-trail.webp");
-    this.water = material("ocean-surface", "#56bdcf");
+    this.ocean = new OceanProps(scene);
+    this.sand = this.ocean.material("sand", "#e0d3ac");
+    this.water = this.ocean.material("water", "#56bdcf");
     this.water.alpha = 0.3;
     this.water.backFaceCulling = false;
     this.water.emissiveColor.set(0.08, 0.23, 0.26);
-    this.coral = material("reef-decoration", "#c96c82");
+
     this.grass = material("grass-floor", "#ffffff", "woodland-grass.webp");
     this.trail = material("forest-trail", "#e3dccc", "woodland-trail.webp");
     this.stone = material("canyon-road", "#ffffff", "canyon-trail.webp");
@@ -160,7 +165,7 @@ export class TerrainScene {
         Math.sin(absolute * 0.037 + side) * 2.4 +
         Math.sin(absolute * 0.11) * 0.6;
       for (let row = 0; row <= rows; row++) {
-        const coast = sectionAt(absolute);
+        const coast = sectionAt(world + 0.1);
         const taper = coast.biome === "canyon" ? smooth((coast.end - absolute) / 80) : 1;
         const y = (-18 + (row / rows) * (crest + 18)) * taper;
         // Keep the three playable wall heights close to the collision surface.
@@ -294,40 +299,122 @@ export class TerrainScene {
     }
   }
 
+  private coastFloor(d: number) {
+    const section = sectionAt(d);
+    if (section.biome === "beach") return 0.06 - 7.06 * smooth((d - section.end + 24) / 24);
+    if (section.biome === "shore") return -7 + 7.06 * smooth((d - section.start) / 60);
+    return section.biome === "water" ? -7 : 0.06;
+  }
+
+  private coastCell(world: number, index: number, root: TransformNode) {
+    const section = sectionAt(world + 5);
+    const underwater = section.biome === "water";
+    const positions: number[] = [], indices: number[] = [], uvs: number[] = [], colors: number[] = [];
+    const columns = 40, rows = 5;
+    for (let row = 0; row <= rows; row++) {
+      const z = row * 2, d = world + z;
+      const floor = this.coastFloor(d);
+      const shore = sectionAt(d);
+      const edgeBlend = shore.biome === "beach" ? smooth((d - shore.start) / 24)
+        : shore.biome === "shore" ? 1 - smooth((d - shore.start - 50) / 30) : underwater ? 1 : 0;
+      for (let col = 0; col <= columns; col++) {
+        const x = (col - columns / 2) * 4;
+        const verge = smooth((Math.abs(x) - 4) / 7);
+        const relief = underwater
+          ? (Math.sin(x * 0.27 + d * 0.07) * 0.65 + Math.cos(x * 0.5 - d * 0.04) * 0.3) * verge
+          : (Math.exp(-Math.pow((Math.abs(x) - 11) / 5, 2)) * 1.2 - smooth((Math.abs(x) - 18) / 18) * 5) * edgeBlend;
+        positions.push(x, floor + relief, z); uvs.push(x / 6, d / 6);
+        const shade = 0.87 + Math.sin(x * 0.4 + d * 0.16) * 0.06;
+        const start = shore.biome === "beach" ? 1 - smooth((d - shore.start) / 24) : 0;
+        const end = shore.biome === "shore" ? smooth((d - shore.end + 20) / 20) : 0;
+        colors.push(shade * (1 - end * 0.12), shade * (1 - start * 0.11), shade * (1 - start * 0.2 - end * 0.12), 1);
+        if (row < rows && col < columns) {
+          const a = row * (columns + 1) + col;
+          indices.push(a, a + columns + 1, a + 1, a + 1, a + columns + 1, a + columns + 2);
+        }
+      }
+    }
+    this.surface("rippled-coastal-contours", positions, indices, uvs, colors, root, this.sand);
+    // The water never covers the dry centre of the approach beach.
+    if (this.coastFloor(world + 5) < -0.2)
+      this.ground(180, 10, 0, -0.15, 5, root, this.water, world);
+    else for (const side of [-1, 1])
+      this.ground(65, 10, side * 55, -0.15, 5, root, this.water, world);
+    for (const side of [-1, 1]) {
+      for (let cluster = 0; cluster < 2; cluster++) {
+        const x = side * (7 + cluster * 7 + Math.sin(world * 0.13 + side) * 0.8);
+        const z = 2 + cluster * 5;
+        const y = this.coastFloor(world + z);
+        const rock = this.props.sandstone("coastal-reef-outcrop", [2.8 + cluster, 1.4 + cluster, 3.6], world + side + cluster, root);
+        rock.position.set(x, y + 0.35, z);
+        rock.material = this.ocean.material("basalt", underwater ? "#6b8990" : "#b4aa91");
+        if (underwater) {
+          const coral = this.ocean.coral(root, index + cluster, 1.5 + cluster * 0.8,
+            ["#c78198", "#cdac71", "#819dca"][Math.abs(index + cluster) % 3]);
+          coral.position.set(x - side * 0.7, y + 1.4, z); coral.scaling.setAll(1.25);
+          const kelp = this.ocean.kelp(root, 2.5 + cluster * 1.8, index + cluster);
+          kelp.position.set(x + side * 1.7, y, z + 1.5);
+          const fan = this.ocean.coral(root, 2, 2.5, "#bb899c");
+          fan.position.set(x + side * 3.6, y + 1.6, z + 2); fan.scaling.set(1.7, 1, 0.35);
+        } else {
+          // Rock pools, scattered shells and low vegetation bridge canyon and forest shores.
+          for (let i = 0; i < 4; i++) {
+            const shell = CreateSphere("ribbed-beach-shell", {diameter: 0.24, segments: 8}, this.scene);
+            shell.parent = root; shell.material = this.ocean.material("shell", "#e8cfba");
+            shell.scaling.set(1, 0.28, 0.75); shell.position.set(x + i * side * 0.4, y + 0.14, z + i * 0.6);
+          }
+          const grass = this.ocean.kelp(root, 0.65, index);
+          grass.position.set(side * 9, y + 0.5, z);
+        }
+      }
+      if (underwater && index % 5 === 0) {
+        // Large arches sit outside the nine-cell corridor and frame the distant reef.
+        const archPath = Array.from({length: 17}, (_, i) => {
+          const a = i * Math.PI / 16;
+          return new Vector3(side * 19 + Math.cos(a) * 6, -7 + Math.sin(a) * 6.5, 5 + Math.sin(a * 2) * 0.6);
+        });
+        const arch = CreateTube("ancient-eroded-reef-arch", {path: archPath, radius: 1.3, tessellation: 10, cap: 3}, this.scene);
+        arch.parent = root; arch.material = this.ocean.material("basalt", "#66838b");
+        for (let tower = 0; tower < 3; tower++) {
+          const mesa = this.props.sandstone("distant-ocean-pinnacle", [7, 10 + tower * 3, 12], world + tower, root);
+          mesa.position.set(side * (35 + tower * 9), -9, 5); mesa.material = arch.material;
+        }
+        for (let fish = 0; fish < 8; fish++) {
+          const model = this.ocean.fish(root, "#7daeb9");
+          model.position.set(side * (11 + fish * 0.7), -2 - (fish % 3) * 0.4, fish * 0.7);
+          model.scaling.setAll(0.65);
+        }
+      }
+    }
+    if (underwater) {
+      for (let i = 0; i < 3; i++) {
+        const bubble = CreateSphere("tiny-decorative-bubble", {diameter: 0.06, segments: 6}, this.scene);
+        bubble.parent = root; bubble.material = this.water; bubble.position.set(-5 + i * 5, -5 + i * 2, 5);
+        for (const side of [-1, 1])
+          this.ground(0.025, 7, side * 3.8, CONFIG.waterHeights[i] - 0.1, 5, root, this.guide, world);
+      }
+    }
+    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && mesh.material !== this.water) as Mesh[];
+    if (opaque.length) { const batch = mergeSceneryMeshes(opaque); batch.parent = root; batch.name = "batched-coastal-reef"; }
+  }
+
   private build(index: number) {
     const world = index * 10,
       section = sectionAt(world + 5);
     const root = new TransformNode(`terrain-${index}`, this.scene);
     if (["beach", "water", "shore"].includes(section.biome)) {
-      const floorY = (d: number) => {
-        const s = sectionAt(d);
-        if (s.biome === "beach") return -7 * smooth((d - s.start) / (s.end - s.start));
-        if (s.biome === "shore") return -7 * (1 - smooth((d - s.start) / 60));
-        return -7;
-      };
-      this.surface("continuous-sandy-seabed", [-70, floorY(world), 0, 70, floorY(world), 0,
-        -70, floorY(world + 10), 10, 70, floorY(world + 10), 10],
-        [0, 2, 1, 1, 2, 3], [0, world / 6, 20, world / 6, 0, (world + 10) / 6, 20, (world + 10) / 6],
-        new Array(16).fill(1), root, this.sand);
-      this.ground(180, 10, 0, 0.65, 5, root, this.water, world);
-      if (section.biome === "water") {
-        for (const side of [-1, 1]) {
-          for (let i = 0; i < 4; i++) {
-            const coral = CreateCylinder("decorative-reef", {height: 1 + i * 0.3, diameterTop: 0.15, diameterBottom: 0.35, tessellation: 7}, this.scene);
-            coral.parent = root; coral.material = this.coral;
-            coral.position.set(side * (7 + i), -6.5 + i * 0.15, 2 + i * 2);
-            coral.rotation.z = side * i * 0.15;
-          }
-        }
-        for (let i = 0; i < 3; i++) {
-          const bubble = CreateSphere("tiny-decorative-bubble", {diameter: 0.08, segments: 6}, this.scene);
-          bubble.parent = root; bubble.material = this.water;
-          bubble.position.set(-5 + i * 5, -5 + i * 2, 5);
-          for (const side of [-1, 1])
-            this.ground(0.025, 8, side * 3.8, -5 + i * 2, 5, root, this.guide, world);
-        }
-      }
+      this.coastCell(world, index, root);
       return root;
+    }
+    if (section.biome === "canyon" && world >= section.end - 60 ||
+        section.biome === "forest" && section.start > 0 && world < section.start + 30) {
+      const widthAt = (d: number) => section.biome === "canyon"
+        ? smooth((d - section.end + 60) / 60) * 5.7
+        : (1 - smooth((d - section.start) / 30)) * 4.3;
+      const a = widthAt(world), b = widthAt(world + 10);
+      this.surface("sand-feathered-into-trail", [-a, 0.075, 0, a, 0.075, 0, -b, 0.075, 10, b, 0.075, 10],
+        [0, 2, 1, 1, 2, 3], [-a / 6, world / 6, a / 6, world / 6, -b / 6, (world + 10) / 6, b / 6, (world + 10) / 6],
+        new Array(16).fill(1), root, this.sand);
     }
     const gap = gapsNear(world).find(
       (gap) => gap.start < world + 10 && gap.end > world,
@@ -498,7 +585,7 @@ export class TerrainScene {
     if (section.biome === "canyon") {
       const taper = smooth((section.end - world) / 80);
       for (const mesh of root.getChildMeshes()) {
-        if (mesh.name.includes("road") || mesh.name === "terrain-surface") continue;
+        if (mesh.name.includes("road") || mesh.name === "terrain-surface" || mesh.name === "eroded-continuous-cliff") continue;
         mesh.position.y *= taper; mesh.scaling.y *= Math.max(0.03, taper);
       }
     }

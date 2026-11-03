@@ -84,3 +84,16 @@ test("returning to the menu restores the idle pose even during a slide", () => {
   assert.ok(motion.pose.slide < 0.01);
   assert.ok(motion.pose.hipY > 0.9);
 });
+
+test("swimming blends out the running pose and freezes on pause", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  const motion = new RunnerMotion();
+  game.start(); game.distance = 1500;
+  for (let i = 0; i < 60; i++) { game.update(1 / 60); motion.update(game, 1 / 60); }
+  assert.ok(motion.pose.swim > 0.99);
+  assert.ok(motion.pose.run < 0.01);
+  game.pause();
+  const before = {...motion.pose};
+  motion.update(game, 1);
+  assert.deepEqual(motion.pose, before);
+});

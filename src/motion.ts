@@ -2,6 +2,7 @@ import type { RunnerGame } from "./game.ts";
 
 export class RunnerMotion {
   pose = {
+    swim: 0,
     slide: 0,
     dive: 0,
     hipY: 0.95,
@@ -22,6 +23,7 @@ export class RunnerMotion {
       this.pose.landing = 0;
     }
     this.distance = game.distance;
+    this.pose.swim += (game.waterBlend - this.pose.swim) * (1 - Math.exp(-dt * 9));
     if (game.mode !== "over")
       this.pose.phase +=
         dt *
@@ -41,7 +43,7 @@ export class RunnerMotion {
       ((game.fastFalling && game.mode === "running" ? 1 : 0) - this.pose.dive) *
       (1 - Math.exp(-dt * 30));
     this.pose.run +=
-      ((game.mode === "running" && game.y === 0 ? game.launchProgress : 0) -
+      ((game.mode === "running" && game.y === 0 ? game.launchProgress * (1 - this.pose.swim) : 0) -
         this.pose.run) *
       (1 - Math.exp(-dt * 12));
     this.pose.air +=

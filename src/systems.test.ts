@@ -537,3 +537,18 @@ test("volcano warns for two seconds before its visible thermal column is dangero
   game.worldTime += 2;
   assert.equal(game.waterBounds(volcano).eruption, false);
 });
+
+test("lowest swimming cell reaches a dormant seabed vent", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.start(); game.distance = 1500;
+  game.waterLevel = 0; game.waterY = CONFIG.waterHeights[0];
+  game.lane = 1; game.x = 2.5;
+  const vent = game.addItem("volcano", 1, 1, -6.35);
+  game.worldTime = 0.5 - vent.worldZ * 0.017 + 100;
+  game.shield = true;
+  game.update(0.07);
+  assert.equal(game.mode, "running");
+  assert.equal(game.shield, false);
+  assert.equal(game.shieldBreakSerial, 1);
+  assert.ok(game.waterY > -7 && game.waterY < -6.5);
+});

@@ -28,6 +28,8 @@ import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
 import type { RunnerGame, TrackItem } from "./game.ts";
 import { INTRO_TIMING } from "./game.ts";
 import { RunnerMotion } from "./motion.ts";
+import { OceanProps } from "./ocean-props.ts";
+import { FresnelParameters } from "@babylonjs/core/Materials/fresnelParameters";
 import { ForestProps } from "./props.ts";
 import { TerrainScene } from "./terrain-scene.ts";
 import { sectionAt, tunnelDarkness } from "./track.ts";
@@ -64,6 +66,7 @@ export class ForestScene {
   private lookTarget = new Vector3(0, 1, 1.5);
   private shadows: ShadowGenerator;
   private props: ForestProps;
+  private ocean: OceanProps;
   private restStop: TransformNode;
   private runner!: TransformNode;
   private hips!: TransformNode;
@@ -154,6 +157,7 @@ export class ForestScene {
     this.shadows.normalBias = 0.02;
     this.shadows.setDarkness(0.3);
     this.props = new ForestProps(this.scene);
+    this.ocean = new OceanProps(this.scene);
     this.restStop = this.props.createRestStop();
     this.restStop.position.set(REST_X, 0, REST_Z);
     for (const mesh of this.restStop.getChildMeshes())
@@ -1166,35 +1170,37 @@ export class ForestScene {
     if (["bubble", "coral", "volcano", "fish"].includes(item.type)) {
       const root = new TransformNode(item.type, this.scene);
       if (item.type === "bubble") {
-        const bubble = CreateSphere("hazard-bubble", {diameter: 1.3, segments: 20}, this.scene);
-        const mat = this.mat("#9be9fa", true).clone("hazard-bubble-glass")!;
-        mat.alpha = 0.55; bubble.material = mat; bubble.parent = root;
-        const rim = CreateTorus("bubble-rim", {diameter: 1.28, thickness: 0.05}, this.scene);
-        rim.rotation.x = Math.PI / 2; rim.parent = root; rim.material = this.mat("#d5ffff", true);
+        const bubble = CreateSphere("hazard-bubble", {diameter: 1.3, segments: 32}, this.scene);
+        const mat = this.ocean.material("bubble", "#9be9fa");
+        mat.alpha = 0.38; mat.specularColor.setAll(0.8); mat.specularPower = 96;
+        mat.emissiveFresnelParameters = new FresnelParameters({
+          leftColor: Color3.FromHexString("#c4faff"), rightColor: Color3.FromHexString("#163b50"), power: 3,
+        });
+        bubble.material = mat; bubble.parent = root;
+        for (let i = 0; i < 3; i++) {
+          const shine = CreateSphere("bubble-pearly-highlight", {diameter: 0.13 - i * 0.03, segments: 10}, this.scene);
+          shine.parent = root; shine.material = this.mat("#eaffff", true);
+          shine.position.set(-0.28 + i * 0.09, 0.37 + i * 0.045, -0.43);
+          shine.scaling.set(0.6, 1.5, 0.35); shine.rotation.z = -0.5;
+        }
       } else if (item.type === "fish") {
-        for (let i = 0; i < 5; i++) {
-          const fish = CreateSphere("school-fish", {diameter: 0.4, segments: 8}, this.scene);
-          fish.scaling.set(0.7, 0.65, 1.8); fish.parent = root;
-          fish.position.set((i % 3 - 1) * 0.5, (Math.floor(i / 3) - 0.5) * 0.4, 0);
-          fish.material = this.mat("#ffb866");
-          const tail = CreateCylinder("fish-tail", {height: 0.3, diameterTop: 0, diameterBottom: 0.3, tessellation: 3}, this.scene);
-          tail.parent = fish; tail.rotation.x = Math.PI / 2; tail.position.z = -0.55; tail.material = fish.material;
+        for (let i = 0; i < 6; i++) {
+          const fish = this.ocean.fish(root, i % 2 ? "#efba69" : "#e6a177");
+          fish.position.set((i % 3 - 1) * 0.5, (Math.floor(i / 3) - 0.5) * 0.4, (i % 2) * 0.18);
+          fish.scaling.setAll(0.85);
         }
       } else if (item.type === "volcano") {
-        const body = CreateCylinder("volcano-body", {height: 1.3, diameterTop: 0.5, diameterBottom: 1.3, tessellation: 10}, this.scene);
-        body.parent = root; body.material = this.mat("#655365");
-        const plume = CreateCylinder("thermal-plume", {height: 6.0, diameter: 1.3, tessellation: 12}, this.scene);
-        plume.parent = root; plume.position.y = 3.65; plume.material = this.mat("#ffbb65", true);
-        plume.setEnabled(false);
-      } else {
-        const height = 1.3 + (item.shape ?? 0) * 0.6;
-        const body = CreateSphere("solid-coral-core", {diameter: 1, segments: 10}, this.scene);
-        body.parent = root; body.scaling.set(1.3, height, 1.3); body.material = this.mat("#e389aa");
-        for (const side of [-1, 1]) {
-          const branch = CreateSphere("coral-branch", {diameter: 0.5, segments: 8}, this.scene);
-          branch.parent = root; branch.position.set(side * 0.45, height * 0.15, 0);
-          branch.scaling.set(0.7, 1.3, 1); branch.material = body.material;
+        this.ocean.vent(root);
+        const plume = CreateCylinder("thermal-plume", {height: 6.0, diameterTop: 1.1, diameterBottom: 0.55, tessellation: 20}, this.scene);
+        plume.parent = root; plume.position.y = 3.65;
+        const steam = this.ocean.material("steam", "#f4c083");
+        steam.alpha = 0.3; plume.material = steam; plume.setEnabled(false);
+        for (let i = 0; i < 9; i++) {
+          const bubble = CreateSphere(`vent-steam-${i}`, {diameter: 0.15 + i * 0.035, segments: 10}, this.scene);
+          bubble.parent = root; bubble.material = this.mat("#ffe3ac", true); bubble.setEnabled(false);
         }
+      } else {
+        this.ocean.coral(root, item.shape ?? 0, 1.3 + (item.shape ?? 0) * 0.6);
       }
       root.position.set(item.lane * 2.5, item.y, item.z);
       return root;
@@ -1826,7 +1832,7 @@ export class ForestScene {
         : 0,
     );
     if (game.transitioning && running && (waterBefore >= 0 && this.runner.position.y < 0 || waterBefore < 0 && this.runner.position.y >= 0))
-      this.burst(new Vector3(game.x, 0.65, 0), "#c5f8ff", 28, 4, 0.8, 0.16, 3);
+      this.burst(new Vector3(game.x, -0.15, 0), "#c5f8ff", 28, 4, 0.8, 0.16, 3);
     if (opening) this.runner.rotation.y = openingYaw;
     else
       this.runner.rotation.y = damp(
@@ -1967,10 +1973,31 @@ export class ForestScene {
     this.contact.setEnabled(
       immersed < 0.01 && game.wallBlend < 0.1 && game.boostBlend < 0.1 && game.lastHit !== "gap",
     );
-    if (immersed > 0) {
-      this.runner.rotation.x += immersed * (0.9 + Math.sin(game.worldTime * 2) * 0.05);
-      for (const arm of this.arms) arm.upper.rotation.x = Math.sin(game.worldTime * 3 + arm.side) * 0.7 - 1.2;
-      for (const leg of this.legs) leg.upper.rotation.x = Math.sin(game.worldTime * 4 + leg.side * Math.PI) * 0.3;
+    if (pose.swim > 0.001) {
+      const swim = pose.swim;
+      const cycle = game.worldTime * (game.boosting ? 3.8 : 2.6);
+      const mix = (a: number, b: number) => a + (b - a) * swim;
+      const heave = Math.sin(cycle * 2) * 0.025;
+      // Small body roll follows the pulling shoulder instead of a rigid whole-body tilt.
+      this.runner.rotation.x = mix(this.runner.rotation.x, 1.05 + heave);
+      this.runner.rotation.z = mix(this.runner.rotation.z, Math.sin(cycle) * 0.075 - pose.turn * 0.18);
+      this.hips.rotation.y = mix(this.hips.rotation.y, Math.sin(cycle - 0.35) * 0.07);
+      this.torso.rotation.x = mix(this.torso.rotation.x, 0.04 + heave);
+      this.torso.rotation.z = mix(this.torso.rotation.z, Math.sin(cycle + 0.2) * 0.045);
+      this.head.rotation.x = mix(this.head.rotation.x, -0.22);
+      for (const arm of this.arms) {
+        const stroke = cycle + (arm.side > 0 ? Math.PI : 0);
+        const pull = Math.sin(stroke);
+        arm.upper.rotation.x = mix(arm.upper.rotation.x, -1.7 + pull * 1.05);
+        arm.upper.rotation.z = mix(arm.upper.rotation.z, arm.side * (0.22 + (1 - Math.cos(stroke)) * 0.18));
+        arm.lower.rotation.x = mix(arm.lower.rotation.x, -0.25 - Math.max(0, Math.cos(stroke - 0.5)) * 1.05);
+      }
+      for (const leg of this.legs) {
+        const kick = cycle * 2 + (leg.side > 0 ? Math.PI : 0);
+        leg.upper.rotation.x = mix(leg.upper.rotation.x, Math.sin(kick) * 0.2 - 0.08);
+        leg.lower.rotation.x = mix(leg.lower.rotation.x, 0.14 + Math.max(0, Math.sin(kick - 0.6)) * 0.28);
+        if (leg.foot) leg.foot.rotation.x = mix(leg.foot.rotation.x, 0.2 + Math.sin(kick - 0.9) * 0.08);
+      }
     }
     this.contact.position.x = this.runner.position.x;
     this.contact.position.z = this.runner.position.z;
@@ -2045,11 +2072,26 @@ export class ForestScene {
       if (["bubble", "coral", "volcano", "fish"].includes(item.type)) {
         const b = game.waterBounds(item);
         mesh.position.set(b.x, item.type === "volcano" ? item.y : b.y, item.z);
-        if (item.type === "fish") mesh.rotation.x = Math.cos(game.worldTime * 0.65 + item.worldZ) * -0.45;
+        if (item.type === "fish") {
+          mesh.rotation.x = Math.cos(game.worldTime * 0.65 + item.worldZ) * -0.45;
+          for (const tail of mesh.getChildMeshes().filter(m => m.name === "fish-fan-tail"))
+            tail.rotation.y = Math.sin(game.worldTime * 7 + item.id) * 0.3;
+        }
         if (item.type === "volcano") {
           const plume = mesh.getChildMeshes().find(m => m.name === "thermal-plume");
           plume?.setEnabled(b.eruption || b.warning);
-          if (plume) { plume.scaling.y = b.eruption ? 1 : 0.08; plume.visibility = b.eruption ? 0.8 : 0.5 + Math.sin(game.worldTime * 12) * 0.3; }
+          if (plume) {
+            plume.scaling.y = b.eruption ? 1 : 0.08;
+            plume.position.y = 0.65 + 3 * plume.scaling.y;
+            plume.visibility = b.eruption ? 0.7 : 0.4 + Math.sin(game.worldTime * 12) * 0.2;
+          }
+          for (const steam of mesh.getChildMeshes().filter(m => m.name.startsWith("vent-steam-"))) {
+            const i = Number(steam.name.split("-").pop());
+            steam.setEnabled(b.eruption || b.warning);
+            const lift = ((game.worldTime * (b.eruption ? 1.4 : 0.35) + i * 0.37) % 1);
+            steam.position.set(Math.sin(i * 2.4) * 0.3, 0.65 + lift * (b.eruption ? 5.6 : 0.45), Math.cos(i * 2.4) * 0.3);
+            steam.scaling.setAll(0.35 + Math.sin(lift * Math.PI) * 0.8);
+          }
         }
       }
       if (item.type === "coin") {
@@ -2165,7 +2207,7 @@ export class ForestScene {
       3.1 +
         1.3 * cameraProgress +
         game.wallBlend * (1 + game.wallY * 0.7) +
-        game.boostBlend * 2.5 * (1 - immersed) - immersed * 5.8,
+        game.boostBlend * 2.5 * (1 - immersed) - immersed * 5.8 + immersed * (game.waterY + 3) * 0.35,
       5,
       dt,
     );
@@ -2182,7 +2224,7 @@ export class ForestScene {
       1.1 -
         cameraProgress * 0.1 +
         game.wallBlend * game.wallY * 0.75 +
-        game.boostBlend * 3.2 * (1 - immersed) - immersed * 3.0,
+        game.boostBlend * 3.2 * (1 - immersed) - immersed * 3.0 + immersed * (game.waterY + 3) * 0.4,
       1.5 + 9.0 * cameraProgress,
     );
     Vector3.LerpToRef(
