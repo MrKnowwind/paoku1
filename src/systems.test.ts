@@ -64,7 +64,8 @@ test("progress migrates independently and purchases atomically persist currency 
   assert.equal(economy.state.wallet, 0);
   economy.credit(500);
   assert.equal(economy.buy("booster"), "ok");
-  assert.equal(economy.buy("booster"), "owned");
+  assert.equal(economy.buy("booster"), "funds");
+  assert.equal(economy.state.boosters, 1);
   assert.equal(economy.state.wallet, 200);
   assert.equal(economy.buy("hourglass"), "ok");
   assert.equal(economy.state.hourglasses, 1);
@@ -95,7 +96,7 @@ test("failed purchase writes neither charge nor grant an item", () => {
   assert.equal(economy.state.wallet, 400);
   assert.equal(economy.state.hourglasses, 0);
   assert.equal(economy.buy("booster"), "storage");
-  assert.equal(economy.state.boosterUnlocked, false);
+  assert.equal(economy.state.boosters, 0);
   failing = false;
   assert.equal(economy.buy("hourglass"), "ok");
   failing = true;
@@ -430,4 +431,39 @@ test("procedurally generated coins retain identity across rewind and never credi
   game.update(3);
   assert.equal(credited, earnings);
   assert.equal(game.coins, earnings);
+});
+
+
+test("legacy booster unlock becomes one consumable and persists after use", () => {
+  let raw = JSON.stringify({ version: 1, wallet: 500, boosterUnlocked: true, hourglasses: 2 });
+  const storage = { getItem: () => raw, setItem: (_: string, value: string) => { raw = value; } };
+  const economy = new Economy(storage);
+  assert.equal(economy.state.boosters, 1);
+  assert.equal(economy.buy("booster"), "ok");
+  assert.equal(economy.state.boosters, 2);
+  const game = new RunnerGame({ autoSpawn: false });
+  const use = () => game.activateBooster(true, () => economy.consumeBooster());
+  assert.equal(use(), false);
+  assert.equal(economy.state.boosters, 2);
+  game.start();
+  assert.equal(use(), true);
+  assert.equal(economy.state.boosters, 1);
+  assert.equal(use(), false);
+  assert.equal(economy.state.boosters, 1);
+  assert.equal(new Economy(storage).state.boosters, 1);
+  assert.equal(economy.consumeBooster(), true);
+  assert.equal(economy.consumeBooster(), false);
+});
+
+test("failed consumption leaves the booster and game state intact", () => {
+  const economy = new Economy({
+    getItem: () => JSON.stringify({ version: 2, wallet: 0, boosters: 1, hourglasses: 0 }),
+    setItem: () => { throw new Error("storage unavailable"); },
+  });
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  assert.equal(game.activateBooster(true, () => economy.consumeBooster()), false);
+  assert.equal(economy.state.boosters, 1);
+  assert.equal(game.boosting, false);
+  assert.equal(game.boostCooldown, 0);
 });

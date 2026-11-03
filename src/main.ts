@@ -194,9 +194,8 @@ function renderDialog() {
       glyph: string,
       price: number,
     ) => {
-      const owned = kind === "booster" && state.boosterUnlocked;
       const unavailable = state.wallet < price;
-      return `<article class="supply-card"><span class="supply-icon">${icon(glyph)}</span><div><h3>${t(kind)}</h3><p>${t(kind === "booster" ? "boosterDesc" : "hourglassDesc")}</p><small>${kind === "booster" ? t("permanent") : `${t("stock")} · ${n(state.hourglasses)}`}</small></div><div class="purchase-row"><span>${icon("coin")}${n(price)}</span><button class="secondary-button" data-action="buy-${kind}" ${owned || unavailable ? "disabled" : ""}>${t(owned ? "owned" : unavailable ? "insufficient" : "buy")}</button></div></article>`;
+      return `<article class="supply-card"><span class="supply-icon">${icon(glyph)}</span><div><h3>${t(kind)}</h3><p>${t(kind === "booster" ? "boosterDesc" : "hourglassDesc")}</p><small>${t("stock")} · ${n(kind === "booster" ? state.boosters : state.hourglasses)}</small></div><div class="purchase-row"><span>${icon("coin")}${n(price)}</span><button class="secondary-button" data-action="buy-${kind}" ${unavailable ? "disabled" : ""}>${t(unavailable ? "insufficient" : "buy")}</button></div></article>`;
     };
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("shop")}</span><h2 id="dialog-title">${t("shop")}</h2></div><div class="shop-wallet">${t("wallet")}<strong>${icon("coin")}<span class="wallet-count">${n(state.wallet)}</span></strong></div>${product("booster", "rocket", CONFIG.boosterPrice)}${product("hourglass", "hourglass", CONFIG.hourglassPrice)}<button class="secondary-button full-width" data-action="close">${t("closeShop")}</button>`;
   } else if (activeDialog === "revive") {
@@ -465,7 +464,7 @@ function updateFeatureUi() {
       ? game.rewindRemaining
       : game.boosting
         ? flightTime
-        : state.boosterUnlocked
+        : state.boosters > 0
           ? game.boostCooldown
           : 0,
     rewind
@@ -478,7 +477,7 @@ function updateFeatureUi() {
         ? game.boosting && !game.boostRemaining
           ? "flightExtending"
           : "powerActive"
-        : !state.boosterUnlocked
+        : state.boosters <= 0
           ? "toolLocked"
           : game.boostCooldown > 0
             ? "cooldown"
@@ -490,19 +489,19 @@ function updateFeatureUi() {
   const button = document.querySelector<HTMLButtonElement>("#booster-button")!;
   button.hidden = !runningView;
   button.disabled =
-    !state.boosterUnlocked ||
+    state.boosters <= 0 ||
     game.mode !== "running" ||
     game.boosting ||
     game.boostCooldown > 0;
   button.classList.toggle("tool-live", game.boosting);
   document.querySelector("#booster-status")!.textContent =
-    !state.boosterUnlocked
-      ? t("toolLocked")
-      : game.boosting
-        ? `${Math.ceil(game.boostRemaining)}m`
+    game.boosting
+      ? `${Math.ceil(game.boostRemaining)}m`
+      : state.boosters <= 0
+        ? t("toolLocked")
         : game.boostCooldown > 0
           ? `${Math.ceil(game.boostCooldown)}s`
-          : t("toolReady");
+          : `${t("stock")} · ${n(state.boosters)}`;
   const notice = document.querySelector<HTMLElement>("#route-notice")!;
   const message =
     game.mode === "rewinding"
@@ -550,7 +549,11 @@ function act(action: string) {
     return;
   }
   if (action === "boost") {
-    if (game.activateBooster(economy.state.boosterUnlocked)) {
+    if (game.activateBooster(economy.state.boosters > 0, () => {
+      const consumed = economy.consumeBooster();
+      if (!consumed) showToast(t("storageError"));
+      return consumed;
+    })) {
       tutorial.complete("booster");
       beep("start");
       showToast(t("boostHint"));
@@ -833,7 +836,7 @@ try {
     previous = now;
     const wasRunning = game.mode === "running";
     const previousMode = game.mode;
-    tutorial.update(game, dt, economy.state.boosterUnlocked);
+    tutorial.update(game, dt, economy.state.boosters > 0);
     const simulationDt = dt * tutorial.timeScale(game);
     game.update(simulationDt);
     if (game.mode !== previousMode) syncView();

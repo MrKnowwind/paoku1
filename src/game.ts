@@ -318,12 +318,13 @@ export class RunnerGame {
   resume() {
     if (this.mode === "paused") this.mode = this.resumeMode;
   }
-  activateBooster(unlocked: boolean) {
+  activateBooster(available: boolean, consume: () => boolean = () => true) {
     if (
-      !unlocked ||
+      !available ||
       this.mode !== "running" ||
       this.boosting ||
-      this.boostCooldown > 0
+      this.boostCooldown > 0 ||
+      !consume()
     )
       return false;
     this.boostActive = true;

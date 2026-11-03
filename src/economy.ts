@@ -1,9 +1,9 @@
 import { CONFIG } from "./config.ts";
 
 export interface ProgressSave {
-  version: 1;
+  version: 2;
   wallet: number;
-  boosterUnlocked: boolean;
+  boosters: number;
   hourglasses: number;
 }
 export interface SaveStorage {
@@ -19,9 +19,9 @@ const integer = (value: unknown) =>
 
 export class Economy {
   private value: ProgressSave = {
-    version: 1,
+    version: 2,
     wallet: 0,
-    boosterUnlocked: false,
+    boosters: 0,
     hourglasses: 0,
   };
   private storage: SaveStorage;
@@ -29,11 +29,13 @@ export class Economy {
     this.storage = storage;
     try {
       const data = JSON.parse(storage.getItem(PROGRESS_KEY) ?? "null");
-      if (data?.version === 1)
+      if (data?.version === 1 || data?.version === 2)
         this.value = {
-          version: 1,
+          version: 2,
           wallet: integer(data.wallet),
-          boosterUnlocked: data.boosterUnlocked === true,
+          boosters: data.version === 1
+            ? (data.boosterUnlocked === true ? 1 : 0)
+            : integer(data.boosters),
           hourglasses: integer(data.hourglasses),
         };
     } catch {
@@ -66,14 +68,19 @@ export class Economy {
     this.commit(this.value, false);
   }
   buy(product: "booster" | "hourglass"): PurchaseResult {
-    if (product === "booster" && this.value.boosterUnlocked) return "owned";
     const price =
       product === "booster" ? CONFIG.boosterPrice : CONFIG.hourglassPrice;
     if (this.value.wallet < price) return "funds";
     const next = { ...this.value, wallet: this.value.wallet - price };
-    if (product === "booster") next.boosterUnlocked = true;
+    if (product === "booster") next.boosters++;
     else next.hourglasses++;
     return this.commit(next, true) ? "ok" : "storage";
+  }
+  consumeBooster(): boolean {
+    return (
+      this.value.boosters > 0 &&
+      this.commit({ ...this.value, boosters: this.value.boosters - 1 }, true)
+    );
   }
   consumeHourglass(): boolean {
     return (
