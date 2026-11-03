@@ -116,7 +116,7 @@ def extract(source, output):
         crop.thumbnail((224, 224), Image.Resampling.LANCZOS)
         icon = Image.new("RGBA", (256, 256))
         icon.alpha_composite(crop, ((256 - crop.width) // 2, (256 - crop.height) // 2))
-        icon.save(output / f"{name}.png", optimize=True)
+        icon.save(output / f"{name}.webp", quality=85, method=6)
         print(f"{name}: {len(group)} connected part(s), source bounds {box}")
 
 

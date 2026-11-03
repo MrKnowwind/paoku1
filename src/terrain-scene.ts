@@ -44,28 +44,28 @@ export class TerrainScene {
       }
       return mat;
     };
-    this.grass = material("grass-floor", "#ffffff", "woodland-grass.jpg");
-    this.trail = material("forest-trail", "#e3dccc", "woodland-trail.jpg");
-    this.stone = material("canyon-road", "#ffffff", "canyon-trail.jpg");
+    this.grass = material("grass-floor", "#ffffff", "woodland-grass.webp");
+    this.trail = material("forest-trail", "#e3dccc", "woodland-trail.webp");
+    this.stone = material("canyon-road", "#ffffff", "canyon-trail.webp");
     this.cliff = material(
       "layered-sandstone",
       "#ffffff",
-      "canyon-sandstone.jpg",
+      "canyon-sandstone.webp",
     );
     this.cliff.backFaceCulling = false;
     this.cliff.twoSidedLighting = true;
-    this.tunnel = material("cave-interior", "#9e9586", "canyon-sandstone.jpg");
+    this.tunnel = material("cave-interior", "#9e9586", "canyon-sandstone.webp");
     this.tunnel.backFaceCulling = false;
     this.tunnel.twoSidedLighting = true;
     this.tunnelTrail = material(
       "cave-trail-floor",
       "#e3dccc",
-      "woodland-trail.jpg",
+      "woodland-trail.webp",
     );
     this.tunnelStone = material(
       "cave-canyon-floor",
       "#ffffff",
-      "canyon-trail.jpg",
+      "canyon-trail.webp",
     );
     this.guide = material("chalk-wall-route", "#ead8ac");
     this.guide.backFaceCulling = false;

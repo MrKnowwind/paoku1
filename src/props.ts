@@ -39,7 +39,7 @@ export class ForestProps {
     material.specularColor.setAll(0.025);
     if (surface === "sandstone") {
       material.diffuseTexture = new Texture(
-        import.meta.env.BASE_URL + "art/canyon-sandstone.jpg",
+        import.meta.env.BASE_URL + "art/canyon-sandstone.webp",
         this.scene,
       );
       material.diffuseTexture.anisotropicFilteringLevel = 8;
