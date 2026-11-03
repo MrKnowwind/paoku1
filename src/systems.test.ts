@@ -650,3 +650,34 @@ test("all swimming levels stay below the surface while the lowest level still me
   assert.ok(game.waterY - CONFIG.seabedHeight < 0.5);
   assert.ok(game.waterY > CONFIG.seabedHeight);
 });
+
+
+test("ocean rows add extra crossing schools with distinct IDs and an open upper layer", () => {
+  let rows = 0, extras = 0, schools = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const game = new RunnerGame({random: () => seed / 13});
+    game.start(); game.distance = 1500; game.update(0.001);
+    const hazards = game.items.filter(item => sectionAt(item.worldZ).biome === "water" &&
+      ["bubble", "coral", "volcano", "fish"].includes(item.type));
+    assert.equal(new Set(game.items.map(item => item.id)).size, game.items.length);
+    for (const item of hazards) {
+      const rowOffset = (item.worldZ - 65) % CONFIG.rowSpacing;
+      if (rowOffset === 0) rows++;
+      else {
+        assert.equal(rowOffset, CONFIG.rowSpacing / 2);
+        assert.equal(item.type, "fish");
+        extras++;
+      }
+      if (item.type !== "fish") continue;
+      schools++;
+      assert.ok(item.fish);
+      assert.ok(item.y + 0.65 + 0.45 < CONFIG.waterHeights[2] + 0.95);
+      const before = game.waterBounds(item);
+      game.pause(); game.update(5);
+      assert.deepEqual(game.waterBounds(item), before);
+      game.resume();
+    }
+  }
+  assert.ok(extras > rows * 0.3, "extra schools increase obstacle density");
+  assert.ok(schools > (rows + extras) * 0.5, "fish account for most ocean encounters");
+});

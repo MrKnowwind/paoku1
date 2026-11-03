@@ -552,8 +552,10 @@ export class RunnerGame {
     const safeLane = waterSafeLane(row);
     const blocked = [-1, 0, 1].filter(lane => lane !== safeLane);
     const lane = blocked[Math.floor(this.hash(row, 10) * blocked.length)];
-    const types: ItemType[] = ["bubble", "coral", "volcano", "fish"];
-    const type = types[Math.floor(this.hash(row, 11) * 4)];
+    const types: ItemType[] = ["bubble", "coral", "volcano"];
+    const rollType = this.hash(row, 11);
+    const type: ItemType = rollType < CONFIG.waterFishChance ? "fish"
+      : types[Math.floor((rollType - CONFIG.waterFishChance) / (1 - CONFIG.waterFishChance) * types.length)];
     const level = type === "volcano" ? 0 : Math.floor(this.hash(row, 12) * (type === "fish" ? 2 : 3));
     let coral: CoralPlan | undefined;
     if (type === "coral") {
@@ -564,13 +566,19 @@ export class RunnerGame {
     }
     this.emit(type, lane, z, coral ? coral.rootY : type === "volcano" ? CONFIG.seabedHeight + 0.65 : CONFIG.waterHeights[level] + 0.95, base);
     const hazard = this.items.find(i => i.id === this.idBase + base);
-    if (type === "fish" && !this.fishCrossings.has(row)) {
-      this.fishCrossings.set(row, {
-        direction: this.hash(row, 15) < 0.5 ? -1 : 1,
-        startTime: this.worldTime + (z - this.distance) / this.baseSpeed - CONFIG.fishHalfSpan / CONFIG.fishSpeed,
-      });
+    if (hazard) {
+      hazard.shape = row % 3;
+      hazard.coral = coral;
+      if (type === "fish") hazard.fish = this.fishCrossing(z, row, base, 15);
     }
-    if (hazard) { hazard.shape = row % 3; hazard.coral = coral; hazard.fish = this.fishCrossings.get(row); }
+    // Interleave an extra school between ordinary rows without adding coins or pickups.
+    const extraZ = z + CONFIG.rowSpacing / 2;
+    if (this.hash(row, 16) < CONFIG.waterExtraFishChance &&
+        sectionAt(extraZ).biome === "water" && obstacleAllowed(extraZ)) {
+      this.emit("fish", lane, extraZ, CONFIG.waterHeights[Math.floor(this.hash(row, 17) * 2)] + 0.95, base + 64);
+      const school = this.items.find(item => item.id === this.idBase + base + 64);
+      if (school) school.fish = this.fishCrossing(extraZ, row, base + 64, 18);
+    }
     const roll = this.hash(row, 8);
     const count = roll < CONFIG.coinSingleRatio ? 1 : roll < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
     const routes = (type === "fish" ? [2] : [1, 0, 2]).flatMap(level => [safeLane, ...blocked].map(l => ({lane: l, level})))
@@ -583,6 +591,17 @@ export class RunnerGame {
         Array.from({length: Math.ceil(CONFIG.pickupMinSpacing / CONFIG.rowSpacing) - 1}, (_, i) => row - i - 1)
           .every(r => this.hash(r, 3) >= CONFIG.pickupChance))
       this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", safeLane, z, CONFIG.waterHeights[type === "fish" ? 2 : 1] + 0.95, base + 8);
+  }
+  private fishCrossing(z: number, row: number, id: number, salt: number): FishCrossing {
+    let crossing = this.fishCrossings.get(id);
+    if (!crossing) {
+      crossing = {
+        direction: this.hash(row, salt) < 0.5 ? -1 : 1,
+        startTime: this.worldTime + (z - this.distance) / this.baseSpeed - CONFIG.fishHalfSpan / CONFIG.fishSpeed,
+      };
+      this.fishCrossings.set(id, crossing);
+    }
+    return crossing;
   }
   waterBounds(item: TrackItem) {
     const phase = ((this.worldTime + item.worldZ * 0.017) % 10 + 10) % 10;

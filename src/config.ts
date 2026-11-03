@@ -7,6 +7,8 @@ export const CONFIG = {
   fishHalfSpan: 40,
   fishSpeed: 8,
   waterSafety: 80,
+  waterFishChance: 0.45,
+  waterExtraFishChance: 0.5,
   coinSingleRatio: 0.5,
   coinDoubleRatio: 0.35,
   forestLength: 600,
