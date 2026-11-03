@@ -7,8 +7,9 @@ const root = document.querySelector<HTMLElement>("#startup-loader")!;
 let language = "zh";
 try { language = localStorage.getItem("wild-dash:language") ?? "zh"; } catch {}
 const copy = startupCopy[language as keyof typeof startupCopy] ?? startupCopy.zh;
-for (const element of root.querySelectorAll<HTMLElement>("[data-startup]"))
+root.querySelectorAll<HTMLElement>("[data-startup]").forEach(element => {
   element.textContent = copy[element.dataset.startup as keyof typeof copy];
+});
 const status = root.querySelector<HTMLElement>("#startup-status")!;
 const detail = root.querySelector<HTMLElement>("#startup-detail")!;
 const bar = root.querySelector<HTMLElement>("[role=progressbar]")!;
