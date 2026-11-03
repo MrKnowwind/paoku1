@@ -8,7 +8,6 @@ import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { FresnelParameters } from "@babylonjs/core/Materials/fresnelParameters";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -33,7 +32,6 @@ import { ForestProps } from "./props.ts";
 import { TerrainScene } from "./terrain-scene.ts";
 import { sectionAt, tunnelDarkness } from "./track.ts";
 import { iconAsset } from "./art.ts";
-import { rockShelfSpan } from "./rock-shelf.ts";
 
 type Triple = [number, number, number];
 type Particle = {
@@ -92,7 +90,7 @@ export class ForestScene {
   private forestBackdrop!: TransformNode;
   private sky: HemisphericLight;
   private sun: DirectionalLight;
-  private shieldAura!: Mesh;
+  private shieldAura!: TransformNode;
   private magnetAura!: Mesh;
   private shieldRims: Mesh[] = [];
   private magnetSparks: Mesh[] = [];
@@ -1197,20 +1195,6 @@ export class ForestScene {
         item.shelf,
       );
       root.position.set(item.shelf ? 0 : item.lane * 2.5, 0, item.z);
-      if (item.type === "arch" && sectionAt(item.worldZ).biome === "canyon") {
-        for (const lane of item.shelf
-          ? rockShelfSpan(item.shelf).lanes
-          : [item.lane]) {
-          const cue = CreatePlane(
-            "rock-slide-mark",
-            { width: 0.38, height: 0.3 },
-            this.scene,
-          );
-          cue.parent = root;
-          cue.position.set(lane * 2.5, 2.0, -1.08);
-          cue.material = this.pickupArt("chevron");
-        }
-      }
       return root;
     }
     const root = new TransformNode("coin", this.scene);
@@ -1344,36 +1328,38 @@ export class ForestScene {
   }
 
   private createRunEffects() {
-    this.shieldAura = CreateSphere(
-      "shield-aura",
-      { diameter: 2.5, segments: 32 },
-      this.scene,
-    );
-    const shieldMat = new StandardMaterial("shield-aura-material", this.scene);
-    shieldMat.diffuseColor = Color3.FromHexString("#9bc9dd");
-    shieldMat.emissiveColor = shieldMat.diffuseColor.scale(0.35);
-    shieldMat.alpha = 0.38;
-    shieldMat.opacityFresnelParameters = new FresnelParameters({
-      bias: 0.08,
-      power: 2.5,
-      leftColor: Color3.White(),
-      rightColor: Color3.Black(),
-    });
-    shieldMat.backFaceCulling = true;
-    this.shieldAura.material = shieldMat;
+    this.shieldAura = new TransformNode("orbiting-shields", this.scene);
     this.shieldAura.parent = this.runner;
     this.shieldAura.position.y = 1.15;
-    for (let i = 0; i < 2; i++) {
-      const rim = CreateTorus(
-        "shield-light-meridian",
-        { diameter: 2.45, thickness: 0.018, tessellation: 48 },
-        this.scene,
-      );
-      rim.parent = this.shieldAura;
-      rim.rotation.x = Math.PI / 2;
-      rim.rotation.z = (i * Math.PI) / 2;
-      rim.material = this.mat("#a9dce6", true);
-      this.shieldRims.push(rim);
+    // Closed shield silhouettes with real thickness, rather than flat icon planes.
+    const outline = [[-0.32, 0.38], [0.32, 0.38], [0.36, 0.08],
+      [0.23, -0.26], [0, -0.45], [-0.23, -0.26], [-0.36, 0.08]];
+    const positions: number[] = [];
+    const indices: number[] = [];
+    for (const z of [-0.06, 0.06]) {
+      positions.push(0, 0, z);
+      for (const [x, y] of outline) positions.push(x, y, z);
+    }
+    for (let i = 0; i < outline.length; i++) {
+      const a = i + 1, b = (i + 1) % outline.length + 1;
+      indices.push(0, a, b, 8, b + 8, a + 8,
+        a, a + 8, b, b, a + 8, b + 8);
+    }
+    const normals: number[] = [];
+    VertexData.ComputeNormals(positions, indices, normals);
+    const data = new VertexData();
+    data.positions = positions;
+    data.indices = indices;
+    data.normals = normals;
+    for (let i = 0; i < 3; i++) {
+      const shield = new Mesh(`orbit-shield-${i}`, this.scene);
+      data.applyToMesh(shield);
+      shield.parent = this.shieldAura;
+      shield.material = this.mat("#e5bc69", true);
+      const inset = shield.clone(`shield-inset-${i}`, shield)!;
+      inset.scaling.set(0.78, 0.8, 1.1);
+      inset.material = this.mat("#609ca4", true);
+      this.shieldRims.push(shield);
     }
     this.magnetAura = CreateTorus(
       "magnet-field",
@@ -1515,17 +1501,14 @@ export class ForestScene {
       ? 0.58 + Math.sin(this.time * 14) * 0.3
       : 0.85 + Math.sin(this.time * 2.8) * 0.08;
     this.shieldAura.setEnabled(this.shieldVisual > 0.01);
-    this.shieldAura.visibility = this.shieldVisual * shieldPulse;
-    this.shieldAura.scaling.setAll(
-      0.82 + this.shieldVisual * 0.2 + Math.sin(this.time * 2.8) * 0.012,
-    );
-    const shieldMaterial = this.shieldAura.material as StandardMaterial;
-    shieldMaterial.diffuseColor = Color3.FromHexString(
-      warning ? "#e9c57e" : "#9bc9dd",
-    );
-    this.shieldRims.forEach((rim, i) => {
-      rim.rotation.y = this.time * (i ? -0.4 : 0.4);
-      rim.visibility = this.shieldVisual * shieldPulse * 0.38;
+    this.shieldAura.scaling.setAll(0.85 + this.shieldVisual * 0.15);
+    this.shieldRims.forEach((shield, i) => {
+      const angle = this.time * 1.8 + i * Math.PI * 2 / 3;
+      shield.position.set(Math.cos(angle) * 1.15,
+        Math.sin(this.time * 3 + i * 2) * 0.08, Math.sin(angle) * 1.15);
+      shield.rotation.y = Math.PI / 2 - angle;
+      for (const mesh of [shield, ...shield.getChildMeshes()])
+        mesh.visibility = this.shieldVisual * shieldPulse;
     });
     this.magnetAura.setEnabled(this.magnetVisual > 0.01);
     this.magnetAura.visibility = this.magnetVisual * 0.5;

@@ -82,28 +82,23 @@ test("new obstacle lessons trigger only nearby and completed lessons persist acr
   assert.equal(activeLesson(replay), "jump");
 });
 
-test("automatic powers still wait for player input before restoring speed", () => {
-  const game = new RunnerGame({ autoSpawn: false });
-  game.start();
-  const tutorial = new Tutorial(
-    ["basics", "move", "jump", "slide", "dodge", "coin"],
-    () => {},
-  );
-  tutorial.resetRun(game);
-  game.addItem("shield", 0, 1);
-  game.update(0.1);
-  tutorial.update(game, 0.1, false);
-  assert.equal(tutorial.active?.id, "shield");
-  tutorial.update(game, 120, false);
-  assert.ok(tutorial.timeScale(game) < 1);
-  game.distance = 802;
-  assert.equal(
-    tutorial.timeScale(game),
-    0,
-    "waiting near the first chasm must stay safe",
-  );
-  game.wallSide = -1;
-  tutorial.action("left", game, game.move(-1));
-  assert.equal(tutorial.active, null);
-  assert.equal(tutorial.timeScale(game), 1);
+test("pickups and unlocked powers do not interrupt play with tutorials", () => {
+  for (const testMode of [false, true]) {
+    for (const type of ["shield", "magnet", "coin"] as const) {
+      const game = new RunnerGame({ autoSpawn: false });
+      game.start();
+      game.distance = 30;
+      const tutorial = new Tutorial(
+        ["basics", "move", "jump", "slide", "dodge"], () => {}, testMode,
+      );
+      tutorial.resetRun(game);
+      game.addItem(type, 0, 1);
+      game.update(0.1);
+      tutorial.update(game, 0.1, true);
+      assert.equal(tutorial.active, null);
+      assert.equal(tutorial.timeScale(game), 1);
+      tutorial.update(game, 120, true);
+      assert.equal(tutorial.active, null);
+    }
+  }
 });

@@ -122,12 +122,8 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <button class="active-tool" id="booster-button" data-action="boost" data-label="activateBoost" hidden>${icon("rocket")}<span id="booster-status"></span></button>
   <div class="notice-toast" id="notice-toast" hidden role="status"></div>
   <div class="tutorial-overlay" id="tutorial-overlay" hidden>
-    <div class="tutorial-spotlight" id="tutorial-spotlight" hidden></div>
-    <div class="tutorial-prompt" id="tutorial-prompt" data-gesture="left">
-      <div class="tutorial-caption"><span id="tutorial-icon"></span><span>${text("tutorialSlow")}</span></div>
-      <div class="gesture-stage" aria-hidden="true"><span class="gesture-track"></span><span class="swipe-hand"></span><span class="gesture-spark"></span></div>
+    <div class="tutorial-prompt" id="tutorial-prompt">
       <strong id="tutorial-title" role="status"></strong>
-      <small class="touch-only">${t("tutorialSwipeAnywhere")}</small><small class="keyboard-only" id="tutorial-keys"></small>
     </div>
   </div>
   <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
@@ -210,7 +206,7 @@ function renderDialog() {
       : economy.state.hourglasses === 0
         ? "noHourglass"
         : "reviveHint";
-    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div><p class="revive-copy">${t(hint)}</p><div class="revive-stock">${icon("hourglass")}${t("stock")} · ${n(economy.state.hourglasses)}</div>${usable && !tutorial.knows("hourglass") ? `<div class="revive-tutorial"><span class="tap-finger" aria-hidden="true"></span><span>${t("lessonHourglass")}</span></div>` : ""}<button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div><p class="revive-copy">${t(hint)}</p><div class="revive-stock">${icon("hourglass")}${t("stock")} · ${n(economy.state.hourglasses)}</div><button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
   } else if (activeDialog === "settings") {
     const selected = languages.find((item) => item.code === language)!;
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("settings")}</span><h2 id="dialog-title">${t("settings")}</h2></div>
@@ -236,7 +232,7 @@ function renderDialog() {
         )
         .join(
           "",
-        )}</div><p class="powers-guide">${t("powersGuide")}</p><button class="primary-button full-width" data-action="close">${t("gotIt")}${icon("check")}</button>`;
+        )}</div><button class="primary-button full-width" data-action="close">${t("gotIt")}${icon("check")}</button>`;
   } else if (activeDialog === "pause") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
@@ -380,53 +376,11 @@ const lessonTitles: Record<LessonId, MessageKey> = {
   booster: "lessonBooster",
   hourglass: "lessonHourglass",
 };
-let tutorialUiKey = "";
 function updateTutorialUi() {
   const overlay = document.querySelector<HTMLElement>("#tutorial-overlay")!;
   const lesson = tutorial.active;
-  const visible = !!lesson && game.mode === "running" && !activeDialog;
-  overlay.hidden = !visible;
-  document.body.classList.toggle("tutorial-active", visible);
-  document
-    .querySelector("#booster-button")!
-    .classList.toggle("tutorial-target", visible && lesson?.id === "booster");
-  if (!visible || !lesson) return;
-  const key = `${lesson.id}/${lesson.gesture}/${language}`;
-  if (key !== tutorialUiKey) {
-    tutorialUiKey = key;
-    const glyph =
-      lesson.id === "booster"
-        ? "rocket"
-        : lesson.id === "move" ||
-            lesson.id === "dodge" ||
-            lesson.id.startsWith("wall")
-          ? "compass"
-          : lesson.id;
-    document.querySelector("#tutorial-icon")!.innerHTML = icon(glyph);
-    document.querySelector("#tutorial-title")!.textContent = t(
-      lessonTitles[lesson.id],
-    );
-    document.querySelector<HTMLElement>("#tutorial-prompt")!.dataset.gesture =
-      lesson.gesture;
-    document.querySelector("#tutorial-keys")!.textContent =
-      lesson.gesture === "tap"
-        ? t("tutorialTap")
-        : lesson.gesture === "up"
-          ? "↑ / W / Space"
-          : lesson.gesture === "down"
-            ? "↓ / S"
-            : "← / → / A / D";
-    overlay.querySelector(".touch-only")!.textContent = t(
-      lesson.gesture === "tap" ? "tutorialTap" : "tutorialSwipeAnywhere",
-    );
-  }
-  const ring = document.querySelector<HTMLElement>("#tutorial-spotlight")!;
-  const anchor = lesson.target ? world?.getTutorialAnchor(lesson.target) : null;
-  ring.hidden = !anchor?.visible;
-  if (anchor?.visible) {
-    ring.style.left = `${anchor.x}px`;
-    ring.style.top = `${anchor.y}px`;
-  }
+  overlay.hidden = !lesson || game.mode !== "running" || !!activeDialog;
+  if (lesson) document.querySelector("#tutorial-title")!.textContent = t(lessonTitles[lesson.id]);
 }
 function updateFeatureUi() {
   const state = economy.state;

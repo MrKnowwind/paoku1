@@ -32,9 +32,6 @@ export class Tutorial {
   private seen: Set<string>;
   private runSeen: Set<string>;
   private cooldown = 0;
-  private pickupSerial = 0;
-  private coins = 0;
-  private pending: LessonId[] = [];
   private handled = new Set<string>();
   private persist: (seen: string[]) => void;
   testMode: boolean;
@@ -54,14 +51,11 @@ export class Tutorial {
   knows(id: string) {
     return this.runSeen.has(id);
   }
-  resetRun(game: RunnerGame) {
+  resetRun(_game: RunnerGame) {
     this.runSeen = new Set(this.testMode ? [] : this.seen);
     if (this.needsBasics) basics.forEach((id) => this.runSeen.delete(id));
     this.active = null;
     this.cooldown = 0;
-    this.pickupSerial = game.pickupSerial;
-    this.coins = game.coins;
-    this.pending = [];
     this.handled.clear();
   }
   complete(id: LessonId) {
@@ -130,21 +124,9 @@ export class Tutorial {
     );
     return (target && target.z < game.baseSpeed * 0.3) || near ? 0 : 0.08;
   }
-  update(game: RunnerGame, dt: number, boosterUnlocked: boolean) {
+  update(game: RunnerGame, dt: number, _boosterUnlocked: boolean) {
     if (game.mode !== "running") return;
     this.cooldown = Math.max(0, this.cooldown - dt);
-    if (game.pickupSerial !== this.pickupSerial) {
-      this.pickupSerial = game.pickupSerial;
-      if (!this.knows(game.lastPickup) || this.testMode)
-        this.pending.push(game.lastPickup);
-    }
-    if (
-      game.coins > this.coins &&
-      (!this.knows("coin") || this.testMode) &&
-      !this.pending.includes("coin")
-    )
-      this.pending.push("coin");
-    this.coins = game.coins;
     if (this.active) {
       const id = this.active.id;
       if (id === "booster" && game.boosting) this.complete(id);
@@ -210,29 +192,6 @@ export class Tutorial {
         });
         return;
       }
-    }
-    const imminent = game.items.some(
-      (item) =>
-        ["log", "arch", "rock", "wall-rock"].includes(item.type) &&
-        item.z > 0 &&
-        item.z < game.baseSpeed * 1.5 &&
-        (item.route === "wall"
-          ? game.wallSide === item.side
-          : onPath(item, game.x)),
-    );
-    if (!imminent && this.pending.length) {
-      const id = this.pending.shift()!;
-      if (!this.knows(id) || this.testMode)
-        this.show({ id, gesture: "collect" });
-    } else if (
-      !imminent &&
-      boosterUnlocked &&
-      (!this.knows("booster") || this.testMode) &&
-      basics.every((id) => this.knows(id)) &&
-      !game.wallSide &&
-      game.boostCooldown <= 0
-    ) {
-      this.show({ id: "booster", gesture: "tap" });
     }
   }
 }

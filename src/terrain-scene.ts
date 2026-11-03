@@ -1,6 +1,7 @@
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
@@ -313,17 +314,15 @@ export class TerrainScene {
         span.start,
       );
       if (section.biome === "canyon") {
-        const slab = this.props.sandstone(
-          "fractured-road-foundation",
-          [8.7, 1.5, span.end - span.start + 0.3],
-          world,
-          root,
-        );
-        slab.position.set(
-          0,
-          -0.9,
-          span.start - world + (span.end - span.start) / 2,
-        );
+        // A solid, square-ended rock bed meets the road, including at chasm lips.
+        const slab = CreateBox("solid-road-foundation", {
+          width: 8.6, height: 5, depth: span.end - span.start,
+        }, this.scene);
+        slab.parent = root;
+        slab.material = this.cliff;
+        slab.position.set(0, 0.055 - 2.5,
+          span.start - world + (span.end - span.start) / 2);
+        slab.receiveShadows = true;
       }
     }
     if (section.biome === "forest") {
@@ -376,20 +375,11 @@ export class TerrainScene {
               root,
             );
             scree.position.set(side * (4.7 + n * 0.16), 0.12, 1.5 + n * 3.1);
-            const tuft = this.props
-              .scenery("grass", n)
-              .createInstance("canyon-dry-grass");
-            tuft.parent = root;
-            tuft.position.set(side * 4.65, 0.02, 2.4 + n * 3.1);
-            tuft.scaling.setAll(0.58);
           }
           if (index % 2 === 0) {
-            const shrub = this.props
-              .scenery("bush", index)
-              .createInstance("canyon-sage-shrub");
-            shrub.parent = root;
-            shrub.position.set(side * 4.95, 0, 6);
-            shrub.scaling.setAll(0.43);
+            const outcrop = this.props.sandstone("canyon-verge-outcrop",
+              [0.8, 0.65, 1.2], world + side, root);
+            outcrop.position.set(side * 4.9, 0.15, 6);
           }
         } else {
           for (let level = 0; level < 3; level++) {
@@ -410,9 +400,17 @@ export class TerrainScene {
           }
         }
       }
-      if (gap) {
-        for (const edge of [gap.start, gap.end]) {
+      for (const nearbyGap of gapsNear(world)) {
+        for (const edge of [nearbyGap.start, nearbyGap.end]) {
           if (edge >= world && edge < world + 10) {
+            const face = CreateBox("chasm-rock-cross-section", {
+              width: 8.6, height: 18, depth: 1.2,
+            }, this.scene);
+            face.parent = root;
+            face.material = this.cliff;
+            face.position.set(0, -9,
+              edge - world + (edge === nearbyGap.start ? -0.6 : 0.6));
+            face.receiveShadows = true;
             for (let chip = 0; chip < 7; chip++) {
               const fracture = this.props.sandstone(
                 "broken-canyon-lip",
@@ -423,7 +421,7 @@ export class TerrainScene {
               fracture.position.set(
                 (chip - 3) * 1.2,
                 -0.28,
-                edge - world + (edge === gap.start ? -0.4 : 0.4),
+                edge - world + (edge === nearbyGap.start ? -0.4 : 0.4),
               );
             }
           }
