@@ -118,10 +118,10 @@ button:active {
   place-items: center;
   width: 44px;
   height: 44px;
-  border: 1px solid #c8d1bd;
-  border-radius: 50%;
-  color: #4e6650;
-  background: #f5f4e7df;
+  border: 1px solid #5d725b;
+  border-radius: 9px;
+  color: #ece9d5;
+  background: #344e3c;
 }
 .brand-mark .icon {
   width: 26px;
