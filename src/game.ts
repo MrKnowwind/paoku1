@@ -862,7 +862,7 @@ export class RunnerGame {
         const aquatic = ["bubble", "coral", "volcano", "fish"].includes(item.type);
         if (aquatic) {
           if (item.coral) {
-            if (touchesCoral(item.coral, this.x, this.visualWaterY + 0.95, -item.z)) this.collide(item);
+            if (Math.abs(item.z) < 1.4 && touchesCoral(item.coral, this.x, this.visualWaterY + 0.95, -item.z)) this.collide(item);
             continue;
           }
           const bounds = this.waterBounds(item);

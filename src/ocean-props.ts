@@ -72,7 +72,7 @@ export class OceanProps {
       const height = ctx.getImageData(0, 0, 256, 256).data;
       const normal = new DynamicTexture(`ocean-normal-${key}`, 256, this.scene, true);
       const normalCtx = normal.getContext();
-      const pixels = normalCtx.createImageData(256, 256);
+      const pixels = normalCtx.getImageData(0, 0, 256, 256);
       const sample = (x: number, y: number) => height[(((y + 256) % 256) * 256 + (x + 256) % 256) * 4] / 255;
       for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
         const nx = (sample(x - 1, y) - sample(x + 1, y)) * 1.4;
