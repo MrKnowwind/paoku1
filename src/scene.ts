@@ -1200,9 +1200,9 @@ export class ForestScene {
           bubble.parent = root; bubble.material = this.mat("#ffe3ac", true); bubble.setEnabled(false);
         }
       } else {
-        this.ocean.coral(root, item.shape ?? 0, 1.3 + (item.shape ?? 0) * 0.6);
+        if (item.coral) this.ocean.grownCoral(root, item.coral);
       }
-      root.position.set(item.lane * 2.5, item.y, item.z);
+      root.position.set(item.coral?.rootX ?? item.lane * 2.5, item.coral?.rootY ?? item.y, item.z);
       return root;
     }
     if (item.type === "magnet" || item.type === "shield") {
@@ -1756,11 +1756,15 @@ export class ForestScene {
     const canyonBlend =
       (from === "canyon" ? 1 : 0) * (1 - progress) +
       (to === "canyon" ? 1 : 0) * progress;
-    const outside = Color3.Lerp(
+    const inlandSky = Color3.Lerp(
       Color3.FromHexString("#d9e9db"),
       Color3.FromHexString("#ddc9ad"),
       canyonBlend,
     );
+    const coastalSky = section.biome === "beach" || section.biome === "water" ? 1
+      : section.biome === "shore" ? 1 - smooth((cameraDistance - section.start - 50) / 30)
+      : section.biome === "canyon" ? smooth((cameraDistance - section.end + 80) / 80) : 0;
+    const outside = Color3.Lerp(inlandSky, Color3.FromHexString("#b8dce7"), coastalSky);
     const immersed = game.waterBlend;
     const fog = Color3.Lerp(outside.scale(1 - darkness * 0.96), Color3.FromHexString("#247f98"), immersed);
 
@@ -1775,7 +1779,7 @@ export class ForestScene {
       canyonBlend,
     );
     this.forestVisible = canyonBlend < 0.5;
-    this.forestBackdrop.setEnabled(canyonBlend < 0.999 && immersed < 0.01);
+    this.forestBackdrop.setEnabled(canyonBlend < 0.999 && immersed < 0.01 && coastalSky < 0.15);
     for (const hill of this.forestBackdrop.getChildMeshes())
       hill.visibility = 1 - canyonBlend;
     this.chunks.forEach((root, i) => {

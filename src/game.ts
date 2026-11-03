@@ -1,3 +1,5 @@
+import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
+import type { CoralPlan } from "./coral.ts";
 import { CONFIG } from "./config.ts";
 import { underRockShelf } from "./rock-shelf.ts";
 import type { RockShelf } from "./rock-shelf.ts";
@@ -49,6 +51,7 @@ export interface TrackItem {
   attractionFromZ?: number;
   shelf?: RockShelf;
   shape?: number;
+  coral?: CoralPlan;
 }
 interface Snapshot {
   waterLevel: number;
@@ -294,6 +297,7 @@ export class RunnerGame {
       y,
       worldZ: this.distance + z,
       shelf: this.shelfFor(type, lane, this.distance + z, localId),
+      coral: type === "coral" ? makeCoral(lane, 2) : undefined,
     };
     this.items.push(item);
     return item;
@@ -537,18 +541,28 @@ export class RunnerGame {
       }
     }
   }
-  // Middle column remains connected across every row; side hazards never sweep into it.
+  // Reserve a reachable column, then place rooted reefs and coins around it.
   private waterRow(z: number, row: number, base: number) {
-    const side = this.hash(row, 10) < 0.5 ? -1 : 1;
+    const safeLane = waterSafeLane(row);
+    const blocked = [-1, 0, 1].filter(lane => lane !== safeLane);
+    const lane = blocked[Math.floor(this.hash(row, 10) * blocked.length)];
     const types: ItemType[] = ["bubble", "coral", "volcano", "fish"];
     const type = types[Math.floor(this.hash(row, 11) * 4)];
     const level = type === "volcano" ? 0 : Math.floor(this.hash(row, 12) * 3);
-    this.emit(type, side, z, type === "volcano" ? -6.35 : CONFIG.waterHeights[level] + 0.95, base);
+    let coral: CoralPlan | undefined;
+    if (type === "coral") {
+      const neighbour = Math.abs(blocked[0] - blocked[1]) === 1 && this.hash(row, 13) < 0.5
+        ? blocked.find(l => l !== lane) : undefined;
+      const side = Math.sign(lane || neighbour || -safeLane);
+      coral = makeCoral(lane, level + 1, neighbour, this.hash(row, 14) < 0.5 ? side : 0);
+    }
+    this.emit(type, lane, z, coral ? coral.rootY : type === "volcano" ? -6.35 : CONFIG.waterHeights[level] + 0.95, base);
     const hazard = this.items.find(i => i.id === this.idBase + base);
-    if (hazard) hazard.shape = row % 3;
+    if (hazard) { hazard.shape = row % 3; hazard.coral = coral; }
     const roll = this.hash(row, 8);
     const count = roll < CONFIG.coinSingleRatio ? 1 : roll < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
-    const routes = [{ lane: 0, level: 1 }, { lane: -side, level: 1 }, { lane: 0, level: row % 2 ? 0 : 2 }];
+    const routes = [1, 0, 2].flatMap(level => [safeLane, ...blocked].map(l => ({lane: l, level})))
+      .filter(cell => coral ? !touchesCoral(coral, cell.lane * 2.5, CONFIG.waterHeights[cell.level] + 0.95, 0, 0.7) : cell.lane !== lane);
     for (const [route, cell] of routes.slice(0, count).entries())
       for (let i = 0; i < 5; i++)
         if (obstacleAllowed(z - 8 + i * 3.5))
@@ -556,7 +570,7 @@ export class RunnerGame {
     if (this.hash(row, 3) < CONFIG.pickupChance &&
         Array.from({length: Math.ceil(CONFIG.pickupMinSpacing / CONFIG.rowSpacing) - 1}, (_, i) => row - i - 1)
           .every(r => this.hash(r, 3) >= CONFIG.pickupChance))
-      this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", 0, z, -2.05, base + 8);
+      this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", safeLane, z, -2.05, base + 8);
   }
   waterBounds(item: TrackItem) {
     const phase = ((this.worldTime + item.worldZ * 0.017) % 10 + 10) % 10;
@@ -564,8 +578,8 @@ export class RunnerGame {
     const warning = item.type === "volcano" && phase >= 2 && phase < 4;
     const fish = item.type === "fish";
     return {
-      x: item.lane * 2.5,
-      y: fish ? -2.05 + Math.sin(this.worldTime * 0.65 + item.worldZ) * 1.8 : eruption ? -2.7 : item.y,
+      x: item.coral?.rootX ?? item.lane * 2.5,
+      y: fish ? -2.05 + Math.sin(this.worldTime * 0.65 + item.worldZ) * 1.8 : eruption ? -2.7 : item.coral?.rootY ?? item.y,
       rx: fish ? 0.8 : 0.65,
       ry: eruption ? 3.0 : item.type === "coral" ? 0.65 + (item.shape ?? 0) * 0.3 : 0.65,
       phase, eruption, warning,
@@ -618,6 +632,7 @@ export class RunnerGame {
     if (this.transitioning) return false;
     if (this.swimming) return !this.items.some(item => {
       if (!["bubble", "coral", "volcano", "fish"].includes(item.type) || Math.abs(item.z) > 16) return false;
+      if (item.coral) return touchesCoral(item.coral, 0, this.visualWaterY + 0.95, 0, 0.65);
       const b = this.waterBounds(item);
       return Math.abs(b.x) < b.rx + 0.5 && Math.abs(this.visualWaterY + 0.95 - b.y) < b.ry + 0.5;
     });
@@ -846,6 +861,10 @@ export class RunnerGame {
           continue;
         const aquatic = ["bubble", "coral", "volcano", "fish"].includes(item.type);
         if (aquatic) {
+          if (item.coral) {
+            if (touchesCoral(item.coral, this.x, this.visualWaterY + 0.95, -item.z)) this.collide(item);
+            continue;
+          }
           const bounds = this.waterBounds(item);
           if (Math.abs(item.z) < 1.15 && Math.abs(this.x - bounds.x) < bounds.rx + 0.35 &&
               Math.abs(this.visualWaterY + 0.95 - bounds.y) < bounds.ry + 0.45) this.collide(item);

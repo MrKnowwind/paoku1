@@ -1,3 +1,4 @@
+import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONFIG } from "./config.ts";
@@ -498,15 +499,23 @@ test("parallel water coins collect locally, then individually with magnet", () =
   assert.equal(game.coins, 3);
 });
 
-test("water generation leaves a continuous middle column with unique IDs", () => {
+test("water generation leaves connected safe columns with unique IDs", () => {
   const game = new RunnerGame({random: () => 0.4});
   game.start(); game.distance = 1450; game.update(0.01);
   const waterItems = game.items.filter(i => sectionAt(i.worldZ).biome === "water");
   assert.ok(waterItems.some(i => i.type === "coin"));
   assert.equal(new Set(game.items.map(i => i.id)).size, game.items.length);
   for (const item of waterItems.filter(i => ["bubble", "coral", "volcano", "fish"].includes(i.type))) {
-    const b = game.waterBounds(item);
-    assert.ok(Math.abs(b.x) - b.rx > 0.95);
+    const row = Math.round((item.worldZ - 65) / CONFIG.rowSpacing);
+    const safeX = waterSafeLane(row) * 2.5;
+    assert.ok(Math.abs(waterSafeLane(row) - waterSafeLane(Math.max(0, row - 1))) <= 1);
+    if (item.coral) {
+      for (const y of CONFIG.waterHeights)
+        assert.equal(touchesCoral(item.coral, safeX, y + 0.95, 0, 0.7), false);
+    } else {
+      const b = game.waterBounds(item);
+      assert.ok(Math.abs(b.x - safeX) - b.rx > 0.95);
+    }
   }
 });
 
@@ -551,4 +560,43 @@ test("lowest swimming cell reaches a dormant seabed vent", () => {
   assert.equal(game.shield, false);
   assert.equal(game.shieldBreakSerial, 1);
   assert.ok(game.waterY > -7 && game.waterY < -6.5);
+});
+
+
+test("corals grow from the bed and block only the heights their branches reach", () => {
+  for (const lane of [-1, 0, 1]) {
+    for (let tiers = 1; tiers <= 3; tiers++) {
+      const game = new RunnerGame({autoSpawn: false});
+      game.start(); game.distance = 1500;
+      const coral = game.addItem("coral", lane, 1);
+      coral.coral = makeCoral(lane, tiers);
+      assert.ok(coral.coral.rootY <= -7);
+      assert.equal(coral.coral.branches[0].from.y, 0);
+      for (let level = 0; level < 3; level++)
+        assert.equal(touchesCoral(coral.coral, lane * 2.5, CONFIG.waterHeights[level] + 0.95, 0), level < tiers);
+    }
+  }
+});
+
+test("side-grown reefs reach two columns and preserve the opposite column", () => {
+  for (const side of [-1, 1]) {
+    const coral = makeCoral(side, 3, 0, side);
+    assert.ok(Math.abs(coral.rootX) > 5);
+    for (const y of CONFIG.waterHeights) {
+      assert.equal(touchesCoral(coral, side * 2.5, y + 0.95, 0), true);
+      assert.equal(touchesCoral(coral, 0, y + 0.95, 0), true);
+      assert.equal(touchesCoral(coral, -side * 2.5, y + 0.95, 0, 0.7), false);
+    }
+  }
+});
+
+test("coral collision follows swimming between cells rather than only target lanes", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.start(); game.distance = 1500;
+  game.lane = -1; game.x = -2.5;
+  game.addItem("coral", 0, 2);
+  game.move(1); game.move(1);
+  game.update(0.15);
+  assert.equal(game.mode, "over");
+  assert.equal(game.lastHit, "coral");
 });

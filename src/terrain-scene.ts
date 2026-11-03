@@ -4,6 +4,7 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { OceanWater } from "./ocean-water.ts";
 import { OceanProps } from "./ocean-props.ts";
 import { CONFIG } from "./config.ts";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
@@ -27,7 +28,7 @@ const smooth = (value: number) => {
 export class TerrainScene {
   private cells = new Map<number, TransformNode>();
   private sand: StandardMaterial;
-  private water: StandardMaterial;
+  private water: OceanWater;
   private ocean: OceanProps;
   private grass: StandardMaterial;
   private trail: StandardMaterial;
@@ -56,10 +57,7 @@ export class TerrainScene {
     };
     this.ocean = new OceanProps(scene);
     this.sand = this.ocean.material("sand", "#e0d3ac");
-    this.water = this.ocean.material("water", "#56bdcf");
-    this.water.alpha = 0.3;
-    this.water.backFaceCulling = false;
-    this.water.emissiveColor.set(0.08, 0.23, 0.26);
+    this.water = new OceanWater(scene);
 
     this.grass = material("grass-floor", "#ffffff", "woodland-grass.webp");
     this.trail = material("forest-trail", "#e3dccc", "woodland-trail.webp");
@@ -306,6 +304,17 @@ export class TerrainScene {
     return section.biome === "water" ? -7 : 0.06;
   }
 
+  private coastHeight(x: number, d: number) {
+    const section = sectionAt(d);
+    const underwater = section.biome === "water";
+    const edgeBlend = section.biome === "beach" ? smooth((d - section.start) / 24)
+      : section.biome === "shore" ? 1 - smooth((d - section.start - 50) / 30) : underwater ? 1 : 0;
+    const relief = underwater
+      ? (Math.sin(x * 0.27 + d * 0.07) * 0.65 + Math.cos(x * 0.5 - d * 0.04) * 0.3) * smooth((Math.abs(x) - 4) / 7)
+      : (Math.exp(-Math.pow((Math.abs(x) - 11) / 5, 2)) * 1.2 - smooth((Math.abs(x) - 18) / 18) * 5) * edgeBlend;
+    return this.coastFloor(d) + relief;
+  }
+
   private coastCell(world: number, index: number, root: TransformNode) {
     const section = sectionAt(world + 5);
     const underwater = section.biome === "water";
@@ -313,17 +322,11 @@ export class TerrainScene {
     const columns = 40, rows = 5;
     for (let row = 0; row <= rows; row++) {
       const z = row * 2, d = world + z;
-      const floor = this.coastFloor(d);
       const shore = sectionAt(d);
-      const edgeBlend = shore.biome === "beach" ? smooth((d - shore.start) / 24)
-        : shore.biome === "shore" ? 1 - smooth((d - shore.start - 50) / 30) : underwater ? 1 : 0;
       for (let col = 0; col <= columns; col++) {
         const x = (col - columns / 2) * 4;
-        const verge = smooth((Math.abs(x) - 4) / 7);
-        const relief = underwater
-          ? (Math.sin(x * 0.27 + d * 0.07) * 0.65 + Math.cos(x * 0.5 - d * 0.04) * 0.3) * verge
-          : (Math.exp(-Math.pow((Math.abs(x) - 11) / 5, 2)) * 1.2 - smooth((Math.abs(x) - 18) / 18) * 5) * edgeBlend;
-        positions.push(x, floor + relief, z); uvs.push(x / 6, d / 6);
+        const height = this.coastHeight(x, d);
+        positions.push(x, height, z); uvs.push(x / 6, d / 6);
         const shade = 0.87 + Math.sin(x * 0.4 + d * 0.16) * 0.06;
         const start = shore.biome === "beach" ? 1 - smooth((d - shore.start) / 24) : 0;
         const end = shore.biome === "shore" ? smooth((d - shore.end + 20) / 20) : 0;
@@ -334,28 +337,27 @@ export class TerrainScene {
         }
       }
     }
-    this.surface("rippled-coastal-contours", positions, indices, uvs, colors, root, this.sand);
-    // The water never covers the dry centre of the approach beach.
-    if (this.coastFloor(world + 5) < -0.2)
-      this.ground(180, 10, 0, -0.15, 5, root, this.water, world);
-    else for (const side of [-1, 1])
-      this.ground(65, 10, side * 55, -0.15, 5, root, this.water, world);
+    const seabed = this.surface("rippled-coastal-contours", positions, indices, uvs, colors, root, this.sand);
+    if (underwater) this.water.caustics(root, seabed);
+    // Dry land occludes the full-width sea; shoreline depth controls surf and transparency.
+    this.water.cell(root, world, (x, d) => this.coastHeight(x, d));
     for (const side of [-1, 1]) {
       for (let cluster = 0; cluster < 2; cluster++) {
         const x = side * (7 + cluster * 7 + Math.sin(world * 0.13 + side) * 0.8);
         const z = 2 + cluster * 5;
-        const y = this.coastFloor(world + z);
-        const rock = this.props.sandstone("coastal-reef-outcrop", [2.8 + cluster, 1.4 + cluster, 3.6], world + side + cluster, root);
-        rock.position.set(x, y + 0.35, z);
-        rock.material = this.ocean.material("basalt", underwater ? "#6b8990" : "#b4aa91");
+        const y = this.coastHeight(x, world + z);
+        const rock = this.ocean.rock(root, [2.3 + cluster * 0.7, 1.4 + (Math.sin(world + side) + 1) * 0.8, 2.7 + cluster],
+          world * 0.37 + side + cluster, underwater ? "#6b8990" : "#b4aa91");
+        rock.position.set(x + Math.sin(world * 0.21) * 0.7, y + 0.35, z);
+        rock.rotation.y = Math.sin(world * 0.17 + side) * 1.2;
         if (underwater) {
           const coral = this.ocean.coral(root, index + cluster, 1.5 + cluster * 0.8,
             ["#c78198", "#cdac71", "#819dca"][Math.abs(index + cluster) % 3]);
-          coral.position.set(x - side * 0.7, y + 1.4, z); coral.scaling.setAll(1.25);
+          coral.position.set(x - side * 0.7, this.coastHeight(x - side * 0.7, world + z) - 0.12, z);
           const kelp = this.ocean.kelp(root, 2.5 + cluster * 1.8, index + cluster);
-          kelp.position.set(x + side * 1.7, y, z + 1.5);
+          kelp.position.set(x + side * 1.7, this.coastHeight(x + side * 1.7, world + z + 1.5) - 0.08, z + 1.5);
           const fan = this.ocean.coral(root, 2, 2.5, "#bb899c");
-          fan.position.set(x + side * 3.6, y + 1.6, z + 2); fan.scaling.set(1.7, 1, 0.35);
+          fan.position.set(x + side * 3.6, this.coastHeight(x + side * 3.6, world + z + 2) - 0.12, z + 2); fan.scaling.set(1.7, 1, 0.35);
         } else {
           // Rock pools, scattered shells and low vegetation bridge canyon and forest shores.
           for (let i = 0; i < 4; i++) {
@@ -376,7 +378,7 @@ export class TerrainScene {
         const arch = CreateTube("ancient-eroded-reef-arch", {path: archPath, radius: 1.3, tessellation: 10, cap: 3}, this.scene);
         arch.parent = root; arch.material = this.ocean.material("basalt", "#66838b");
         for (let tower = 0; tower < 3; tower++) {
-          const mesa = this.props.sandstone("distant-ocean-pinnacle", [7, 10 + tower * 3, 12], world + tower, root);
+          const mesa = this.ocean.rock(root, [7, 10 + tower * 3, 12], world * 0.37 + tower, "#66838b");
           mesa.position.set(side * (35 + tower * 9), -9, 5); mesa.material = arch.material;
         }
         for (let fish = 0; fish < 8; fish++) {
@@ -400,12 +402,13 @@ export class TerrainScene {
       }
       for (let i = 0; i < 3; i++) {
         const bubble = CreateSphere("tiny-decorative-bubble", {diameter: 0.06, segments: 6}, this.scene);
-        bubble.parent = root; bubble.material = this.water; bubble.position.set(-5 + i * 5, -5 + i * 2, 5);
+        bubble.parent = root; bubble.material = this.ocean.material("decorative-bubble", "#c4f4ee");
+        bubble.material.alpha = 0.35; bubble.position.set(-5 + i * 5, -5 + i * 2, 5);
         for (const side of [-1, 1])
           this.ground(0.025, 7, side * 3.8, CONFIG.waterHeights[i] - 0.1, 5, root, this.guide, world);
       }
     }
-    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && mesh.material?.alpha === 1) as Mesh[];
+    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && mesh.material instanceof StandardMaterial && mesh.material.alpha === 1) as Mesh[];
     if (opaque.length) { const batch = mergeSceneryMeshes(opaque); batch.parent = root; batch.name = "batched-coastal-reef"; }
   }
 
@@ -644,10 +647,7 @@ export class TerrainScene {
     return root;
   }
   update(distance: number, time = 0) {
-    if (this.water.diffuseTexture instanceof Texture) {
-      this.water.diffuseTexture.uOffset = (time * 0.012) % 1;
-      this.water.diffuseTexture.vOffset = (time * 0.007) % 1;
-    }
+    this.water.update(distance, time);
     const first = Math.floor((distance - 50) / 10),
       last = Math.ceil((distance + 180) / 10);
     for (const [index, root] of this.cells)

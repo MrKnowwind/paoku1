@@ -512,9 +512,7 @@ function updateFeatureUi() {
       ? t("rewinding")
       : game.mode === "running" && game.wallSide
         ? t((["wallLow", "wallMid", "wallHigh"] as const)[game.wallLevel])
-        : game.mode === "running" && game.gapWarning && !game.boosting
-          ? t("chasmAhead")
-          : "";
+        : "";
   notice.hidden = !message || !!tutorial.active;
   if (notice.textContent !== message) notice.textContent = message;
   if (lastPickupSerial !== game.pickupSerial) {
@@ -845,11 +843,9 @@ try {
     const simulationDt = dt * tutorial.timeScale(game);
     const transitionBefore = game.transitioning;
     const swimBefore = game.swimming;
-    const shoreBefore = game.swimming && game.distance >= game.terrain.end - 80;
     game.update(simulationDt);
     if (transitionBefore || game.transitioning) gesture = null;
     if (swimBefore !== game.swimming) beep("splash");
-    if (!shoreBefore && game.swimming && game.distance >= game.terrain.end - 80) showToast(t("waterExit"));
     if (game.mode !== previousMode) syncView();
     const countdown = document.querySelector<HTMLElement>("#countdown")!;
     const count = game.mode === "intro" && !activeDialog ? game.countdown : "";
