@@ -237,7 +237,9 @@ function renderDialog() {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
     const hint =
-      game.lastHit === "wall-rock"
+      ["bubble", "coral", "volcano", "fish"].includes(game.lastHit ?? "")
+        ? "lessonSwim"
+        : game.lastHit === "wall-rock"
         ? "wallHint"
         : game.lastHit === "gap"
           ? "fallHint"
@@ -843,9 +845,11 @@ try {
     const simulationDt = dt * tutorial.timeScale(game);
     const transitionBefore = game.transitioning;
     const swimBefore = game.swimming;
+    const shoreBefore = game.swimming && game.distance >= game.terrain.end - 80;
     game.update(simulationDt);
     if (transitionBefore || game.transitioning) gesture = null;
     if (swimBefore !== game.swimming) beep("splash");
+    if (!shoreBefore && game.swimming && game.distance >= game.terrain.end - 80) showToast(t("waterExit"));
     if (game.mode !== previousMode) syncView();
     const countdown = document.querySelector<HTMLElement>("#countdown")!;
     const count = game.mode === "intro" && !activeDialog ? game.countdown : "";
