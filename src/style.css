@@ -112,14 +112,16 @@ button:active {
   letter-spacing: 2px;
 }
 .brand-mark {
+  position: relative;
+  flex: none;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid #5d725b;
-  border-radius: 9px;
-  color: #ece9d5;
-  background: #344e3c;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #c8d1bd;
+  border-radius: 50%;
+  color: #4e6650;
+  background: #f5f4e7df;
 }
 .brand-mark .icon {
   width: 26px;
@@ -980,11 +982,6 @@ html[lang="ko-KR"] .intro h1 {
     font-size: 14px;
     letter-spacing: 1px;
   }
-  .brand-mark {
-    width: 44px;
-    height: 44px;
-    border-radius: 7px;
-  }
   .brand-mark .icon {
     width: 23px;
     height: 23px;
@@ -1495,7 +1492,8 @@ html[lang="ko-KR"] .intro h1 {
   user-select: none;
   filter: drop-shadow(0 1px 1px #4a34241c);
 }
-.icon-button .art-icon {
+.icon-button .art-icon,
+.brand-mark .art-icon {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -1507,10 +1505,6 @@ html[lang="ko-KR"] .intro h1 {
 .help-button .art-icon {
   width: 26px;
   height: 26px;
-}
-.brand-mark .art-icon {
-  width: 44px;
-  height: 44px;
 }
 .supply-card {
   grid-template-columns: 76px minmax(0, 1fr);
