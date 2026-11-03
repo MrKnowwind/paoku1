@@ -490,8 +490,8 @@ test("parallel water coins collect locally, then individually with magnet", () =
   const game = new RunnerGame({autoSpawn: false});
   game.start(); game.distance = 1500;
   const local = game.addItem("coin", 0, 1, -2.05);
-  const side = game.addItem("coin", 1, 1, -2.05);
-  const upper = game.addItem("coin", 0, 1, -0.05);
+  const side = game.addItem("coin", 1, 5, -2.05);
+  const upper = game.addItem("coin", 0, 5, -0.05);
   assert.equal(new Set([local.id, side.id, upper.id]).size, 3);
   game.update(0.07); assert.equal(game.coins, 1);
   game.magnetTime = 10; game.update(0.6);
