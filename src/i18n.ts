@@ -57,9 +57,6 @@ export const messages = {
     tunnel: "穿山隧道",
     gapHint: "断谷临近：到最外道，再向外滑动走壁",
     wallHint: "岩壁奔跑：上／下滑切换高度",
-    wallLow: "低处",
-    wallMid: "中层",
-    wallHigh: "高处",
     fallHint: "断谷不能跳过；提前靠边，再向外滑动进入岩壁。",
     boostHint: "推进中：无敌飞行，自动收集沿途金币",
     powersGuide:
@@ -205,9 +202,6 @@ export const messages = {
     tunnel: "Mountain tunnel",
     gapHint: "Chasm ahead: reach an outer lane, then swipe outward again",
     wallHint: "Wall run: swipe up or down to change height",
-    wallLow: "Low",
-    wallMid: "Middle",
-    wallHigh: "High",
     fallHint:
       "You can’t jump this chasm. Reach an outer lane, then swipe outward onto the wall.",
     boostHint:
@@ -354,9 +348,6 @@ export const messages = {
     tunnel: "山のトンネル",
     gapHint: "大きな谷が接近：端のレーンで、さらに外へスワイプ",
     wallHint: "壁走り：上下スワイプで高さを切り替え",
-    wallLow: "下段",
-    wallMid: "中段",
-    wallHigh: "上段",
     fallHint:
       "この谷は飛び越えられません。端のレーンから外へスワイプして壁を走ろう。",
     boostHint: "ブースト中：無敵で飛行し、コインを自動回収",
@@ -502,9 +493,6 @@ export const messages = {
     tunnel: "산악 터널",
     gapHint: "절벽 앞! 바깥 레인에서 바깥쪽으로 한 번 더 스와이프",
     wallHint: "벽 달리기: 위아래 스와이프로 높이 변경",
-    wallLow: "아래",
-    wallMid: "중간",
-    wallHigh: "위",
     fallHint:
       "이 협곡은 점프로 건널 수 없어요. 바깥 레인에서 바깥쪽으로 스와이프해 벽을 달려요.",
     boostHint: "부스터 작동 중: 무적 비행으로 코인을 자동 수집해요",

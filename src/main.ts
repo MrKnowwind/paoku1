@@ -507,12 +507,7 @@ function updateFeatureUi() {
           ? `${Math.ceil(game.boostCooldown)}s`
           : `${t("stock")} · ${n(state.boosters)}`;
   const notice = document.querySelector<HTMLElement>("#route-notice")!;
-  const message =
-    game.mode === "rewinding"
-      ? t("rewinding")
-      : game.mode === "running" && game.wallSide
-        ? t((["wallLow", "wallMid", "wallHigh"] as const)[game.wallLevel])
-        : "";
+  const message = game.mode === "rewinding" ? t("rewinding") : "";
   notice.hidden = !message || !!tutorial.active;
   if (notice.textContent !== message) notice.textContent = message;
   if (lastPickupSerial !== game.pickupSerial) {
@@ -858,7 +853,7 @@ try {
       countdown.classList.add("beat");
       if (count) beep(count === "GO!" ? "start" : "tick");
     }
-    world!.update(game, simulationDt);
+    world!.update(game, simulationDt, tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"));
     updateTutorialUi();
     if (game.coins > lastCoins) {
       beep("coin");

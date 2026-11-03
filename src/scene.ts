@@ -1522,7 +1522,7 @@ export class ForestScene {
       this.entries.push(entry);
     }
   }
-  private updateRunEffects(game: RunnerGame, dt: number) {
+  private updateRunEffects(game: RunnerGame, dt: number, showWallEntryMarkers: boolean) {
     const animated = game.mode === "running" || game.mode === "rewinding";
     const effectDt = animated ? dt : 0;
     if (game.mode === "ready" || game.introducing) {
@@ -1603,7 +1603,7 @@ export class ForestScene {
     this.entries.forEach((entry, i) => {
       const gap = game.gapWarning;
       entry.setEnabled(
-        !!gap && !game.boosting && !game.wallSide && game.mode === "running",
+        showWallEntryMarkers && !!gap && !game.boosting && !game.wallSide && game.mode === "running",
       );
       if (gap)
         entry.position.set(
@@ -1698,7 +1698,7 @@ export class ForestScene {
     };
   }
 
-  update(game: RunnerGame, dt: number) {
+  update(game: RunnerGame, dt: number, showWallEntryMarkers = false) {
     const running = game.mode === "running",
       ready = game.mode === "ready",
       paused = game.mode === "paused",
@@ -1975,7 +1975,7 @@ export class ForestScene {
     for (const arm of this.arms)
       arm.upper.rotation.z +=
         arm.side * (game.wallBlend * 0.35 + game.boostBlend * 0.25);
-    this.updateRunEffects(game, dt);
+    this.updateRunEffects(game, dt, showWallEntryMarkers);
     this.contact.setEnabled(
       immersed < 0.01 && game.wallBlend < 0.1 && game.boostBlend < 0.1 && game.lastHit !== "gap",
     );
