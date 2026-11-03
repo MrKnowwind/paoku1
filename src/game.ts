@@ -932,7 +932,7 @@ export class RunnerGame {
           if (
             (flying && item.z <= 0.65 && item.z >= -travel - 0.65) ||
             (this.magnetTime > 0 &&
-              item.z >= -0.65 &&
+              item.z >= -CONFIG.magnetRange &&
               item.z <= CONFIG.magnetRange)
           ) {
             item.attraction = 0;

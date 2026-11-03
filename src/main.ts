@@ -757,12 +757,15 @@ let gesture: {
   x: number;
   y: number;
   id: number;
+  threshold: number;
   direction: "left" | "right" | "jump" | "slide" | null;
 } | null = null;
 window.addEventListener("pointerdown", (event) => {
   if (
     game.mode !== "running" ||
     game.transitioning ||
+    gesture ||
+    (event.pointerType === "mouse" && event.button !== 0) ||
     activeDialog ||
     (event.target as HTMLElement).closest("button,a,dialog")
   )
@@ -771,6 +774,7 @@ window.addEventListener("pointerdown", (event) => {
     x: event.clientX,
     y: event.clientY,
     id: event.pointerId,
+    threshold: event.pointerType === "mouse" ? 56 : Math.max(40, Math.min(64, Math.min(innerWidth, innerHeight) * 0.1)),
     direction: null,
   };
 });
@@ -787,7 +791,9 @@ window.addEventListener("pointermove", (event) => {
     gesture.y = Math.max(gesture.y, event.clientY);
   const dx = event.clientX - gesture.x,
     dy = event.clientY - gesture.y;
-  if (Math.max(Math.abs(dx), Math.abs(dy)) < 28) return;
+  const major = Math.max(Math.abs(dx), Math.abs(dy));
+  const minor = Math.min(Math.abs(dx), Math.abs(dy));
+  if (major < gesture.threshold || major < minor * 1.35) return;
   const direction =
     Math.abs(dx) > Math.abs(dy)
       ? dx > 0
@@ -801,17 +807,18 @@ window.addEventListener("pointermove", (event) => {
   gesture.x = event.clientX;
   gesture.y = event.clientY;
 });
-window.addEventListener("pointerup", () => {
-  gesture = null;
+window.addEventListener("pointerup", (event) => {
+  if (gesture?.id === event.pointerId) gesture = null;
 });
-window.addEventListener("pointercancel", () => {
-  gesture = null;
+window.addEventListener("pointercancel", (event) => {
+  if (gesture?.id === event.pointerId) gesture = null;
 });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && (game.mode === "running" || game.mode === "intro"))
     openDialog("pause");
 });
 window.addEventListener("blur", () => {
+  gesture = null;
   if (game.mode === "running" || game.mode === "intro") openDialog("pause");
 });
 

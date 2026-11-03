@@ -5,7 +5,7 @@ import { Tutorial } from "./tutorial.ts";
 
 const activeLesson = (tutorial: Tutorial) => tutorial.active?.id;
 
-test("slide guidance covers the second lane beneath a wall-grown shelf", () => {
+test("ordinary shelves do not interrupt play with first-encounter guidance", () => {
   const game = new RunnerGame({ autoSpawn: false });
   game.start();
   game.distance = 700;
@@ -16,8 +16,7 @@ test("slide guidance covers the second lane beneath a wall-grown shelf", () => {
   const tutorial = new Tutorial([], () => {});
   tutorial.resetRun(game);
   tutorial.update(game, 0.1, false);
-  assert.equal(activeLesson(tutorial), "slide");
-  assert.equal(tutorial.active?.target, item.id);
+  assert.equal(tutorial.active, null);
 });
 
 test("opening lesson keeps slow motion until the matching accepted gesture", () => {
@@ -44,7 +43,7 @@ test("opening lesson keeps slow motion until the matching accepted gesture", () 
   tutorial.action("left", game, game.move(-1));
   assert.equal(tutorial.active, null);
   assert.equal(tutorial.timeScale(game), 1);
-  assert.equal(stored.includes("basics"), false);
+  assert.equal(stored.includes("basics"), true);
 });
 
 test("new obstacle lessons trigger only nearby and completed lessons persist across runs", () => {
@@ -100,5 +99,20 @@ test("pickups and unlocked powers do not interrupt play with tutorials", () => {
       tutorial.update(game, 120, true);
       assert.equal(tutorial.active, null);
     }
+  }
+});
+
+
+test("first encounters with ordinary obstacles never start lessons", () => {
+  for (const type of ["log", "arch", "rock"] as const) {
+    const game = new RunnerGame({ autoSpawn: false });
+    game.start();
+    game.distance = 30;
+    game.addItem(type, 0, 5);
+    const tutorial = new Tutorial([], () => {});
+    tutorial.resetRun(game);
+    tutorial.update(game, 0.1, false);
+    assert.equal(tutorial.active, null);
+    assert.equal(tutorial.timeScale(game), 1);
   }
 });

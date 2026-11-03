@@ -26,7 +26,7 @@ export interface Lesson {
   target?: number;
   encounter?: string;
 }
-const basics: LessonId[] = ["move", "jump", "slide", "dodge"];
+const basics: LessonId[] = ["move"];
 
 export class Tutorial {
   active: Lesson | null = null;
@@ -76,6 +76,7 @@ export class Tutorial {
     this.active = lesson;
   }
   private canTeach(id: LessonId, encounter: string) {
+    if (["jump", "slide", "dodge"].includes(id) && !this.testMode) return false;
     return !this.knows(id) || (this.testMode && !this.handled.has(encounter));
   }
   action(direction: Direction, game: RunnerGame, accepted: boolean) {

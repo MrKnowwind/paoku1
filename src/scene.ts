@@ -1206,6 +1206,17 @@ export class ForestScene {
           shine.scaling.set(0.6, 1.5, 0.35); shine.rotation.z = -0.5;
         }
       } else if (item.type === "fish") {
+        // A lane-wide band makes the school's height readable before it crosses.
+        const level = CONFIG.waterHeights.reduce((best, height, index) =>
+          Math.abs(height + 0.95 - item.y) < Math.abs(CONFIG.waterHeights[best] + 0.95 - item.y) ? index : best, 0);
+        const guide = CreatePlane("fish-height-guide", {width: 7.5, height: 0.16}, this.scene);
+        guide.parent = root;
+        const guideMat = new StandardMaterial("fish-height-guide", this.scene);
+        guideMat.disableLighting = true;
+        guideMat.emissiveColor = Color3.FromHexString(["#ffbb70", "#ffe791", "#a7f5ee"][level]);
+        guideMat.alpha = 0.45;
+        guideMat.backFaceCulling = false;
+        guide.material = guideMat;
         for (let i = 0; i < 6; i++) {
           const fish = this.ocean.fish(root, i % 2 ? "#efba69" : "#e6a177");
           fish.position.set((i % 3 - 1) * 0.5, (Math.floor(i / 3) - 0.5) * 0.4, (i % 2) * 0.18);
@@ -1789,13 +1800,13 @@ export class ForestScene {
       : section.biome === "canyon" ? smooth((cameraDistance - section.end + 80) / 80) : 0;
     const outside = Color3.Lerp(inlandSky, Color3.FromHexString("#b8dce7"), coastalSky);
     const immersed = game.waterBlend;
-    const fog = Color3.Lerp(outside.scale(1 - darkness * 0.96), Color3.FromHexString("#247f98"), immersed);
+    const fog = Color3.Lerp(outside.scale(1 - darkness * 0.78), Color3.FromHexString("#247f98"), immersed);
 
     this.scene.fogColor = fog;
     this.scene.clearColor = new Color4(fog.r, fog.g, fog.b, 1);
     this.scene.fogDensity = 0.009 + darkness * 0.012 + immersed * 0.008;
-    this.sky.intensity = 0.75 * (1 - darkness);
-    this.sun.intensity = 0.85 * (1 - darkness);
+    this.sky.intensity = 0.75 - darkness * 0.3;
+    this.sun.intensity = 0.85 - darkness * 0.65;
     this.sky.groundColor = Color3.Lerp(
       Color3.FromHexString("#698463"),
       Color3.FromHexString("#a88a67"),
@@ -2103,6 +2114,12 @@ export class ForestScene {
           mesh.rotation.y = b.direction * Math.PI / 2;
           mesh.rotation.x = 0;
           mesh.setEnabled(b.active);
+          const guide = mesh.getChildMeshes().find(m => m.name === "fish-height-guide");
+          if (guide) {
+            guide.rotation.y = -b.direction * Math.PI / 2;
+            guide.position.z = -b.x * b.direction;
+            guide.visibility = Math.max(0, 1 - Math.max(0, Math.abs(item.z) - 35) / 30);
+          }
           for (const tail of mesh.getChildMeshes().filter(m => m.name === "fish-fan-tail"))
             tail.rotation.y = Math.sin(game.worldTime * 7 + item.id) * 0.3;
         }

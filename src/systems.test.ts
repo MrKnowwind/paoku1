@@ -687,3 +687,17 @@ test("ocean rows add extra schools across all heights with distinct IDs and a ro
   assert.ok(extras > rows * 0.3, "extra schools increase obstacle density");
   assert.ok(schools > (rows + extras) * 0.5, "fish account for most ocean encounters");
 });
+
+
+test("magnet attracts nearby coins behind the runner across routes", () => {
+  const game = new RunnerGame({ autoSpawn: false });
+  game.start();
+  game.magnetTime = 10;
+  for (const lane of [-1, 0, 1]) game.addItem("coin", lane, -6);
+  const distant = game.addItem("coin", 1, -18);
+  game.update(0.01);
+  assert.equal(game.items.filter(item => item.attraction !== undefined).length, 3);
+  assert.equal(distant.attraction, undefined);
+  game.update(0.5);
+  assert.equal(game.coins, 3);
+});

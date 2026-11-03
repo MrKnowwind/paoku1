@@ -42,7 +42,7 @@ export const messages = {
     magnet: "磁铁",
     shield: "护盾",
     shieldReady: "护盾已就绪",
-    magnetHint: "磁铁生效：自动吸收前方各路线金币，持续 10 秒。",
+    magnetHint: "磁铁生效：自动吸收前后各路线附近的金币，持续 10 秒。",
     shieldHint:
       "护盾持续 12 秒，可抵挡一次碰撞；再次拾取刷新时限，不能防止坠谷。",
     reviveTitle: "让时间倒流？",
@@ -187,7 +187,7 @@ export const messages = {
     shield: "Shield",
     shieldReady: "Shield ready",
     magnetHint:
-      "Magnet active: collect coins on every route ahead for 10 seconds.",
+      "Magnet active: collect nearby coins ahead and behind on every route for 10 seconds.",
     shieldHint:
       "A shield lasts 12 seconds and blocks one hit. Picking it up again refreshes the timer. It cannot prevent a fall.",
     reviveTitle: "Turn back time?",
@@ -333,7 +333,7 @@ export const messages = {
     shield: "シールド",
     shieldReady: "シールド装備中",
     magnetHint:
-      "マグネット発動！10秒間、前方の全ルートからコインを引き寄せます。",
+      "マグネット発動！10秒間、前後の全ルートから近くのコインを引き寄せます。",
     shieldHint:
       "12秒間、衝突を1回防ぎます。再取得で時間が更新されます。谷への落下は防げません。",
     reviveTitle: "時間を巻き戻しますか？",
@@ -478,7 +478,7 @@ export const messages = {
     magnet: "자석",
     shield: "보호막",
     shieldReady: "보호막 적용 중",
-    magnetHint: "자석 발동! 10초 동안 앞쪽 모든 경로의 코인을 끌어당겨요.",
+    magnetHint: "자석 발동! 10초 동안 앞뒤 모든 경로의 가까운 코인을 끌어당겨요.",
     shieldHint:
       "12초 동안 충돌을 한 번 막아요. 다시 획득하면 시간이 초기화돼요. 추락은 막을 수 없어요.",
     reviveTitle: "시간을 되돌릴까요?",
