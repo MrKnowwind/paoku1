@@ -1,3 +1,4 @@
+import { coastGridIndices } from "./ocean-geometry.ts";
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
@@ -318,7 +319,7 @@ export class TerrainScene {
   private coastCell(world: number, index: number, root: TransformNode) {
     const section = sectionAt(world + 5);
     const underwater = section.biome === "water";
-    const positions: number[] = [], indices: number[] = [], uvs: number[] = [], colors: number[] = [];
+    const positions: number[] = [], uvs: number[] = [], colors: number[] = [];
     const columns = 40, rows = 5;
     for (let row = 0; row <= rows; row++) {
       const z = row * 2, d = world + z;
@@ -331,13 +332,10 @@ export class TerrainScene {
         const start = shore.biome === "beach" ? 1 - smooth((d - shore.start) / 24) : 0;
         const end = shore.biome === "shore" ? smooth((d - shore.end + 20) / 20) : 0;
         colors.push(shade * (1 - end * 0.12), shade * (1 - start * 0.11), shade * (1 - start * 0.2 - end * 0.12), 1);
-        if (row < rows && col < columns) {
-          const a = row * (columns + 1) + col;
-          indices.push(a, a + columns + 1, a + 1, a + 1, a + columns + 1, a + columns + 2);
-        }
+
       }
     }
-    const seabed = this.surface("rippled-coastal-contours", positions, indices, uvs, colors, root, this.sand);
+    const seabed = this.surface("rippled-coastal-contours", positions, coastGridIndices(columns, rows), uvs, colors, root, this.sand);
     if (underwater) this.water.caustics(root, seabed);
     // Dry land occludes the full-width sea; shoreline depth controls surf and transparency.
     this.water.cell(root, world, (x, d) => this.coastHeight(x, d));
@@ -427,7 +425,7 @@ export class TerrainScene {
         : (1 - smooth((d - section.start) / 30)) * 4.3;
       const a = widthAt(world), b = widthAt(world + 10);
       this.surface("sand-feathered-into-trail", [-a, 0.075, 0, a, 0.075, 0, -b, 0.075, 10, b, 0.075, 10],
-        [0, 2, 1, 1, 2, 3], [-a / 6, world / 6, a / 6, world / 6, -b / 6, (world + 10) / 6, b / 6, (world + 10) / 6],
+        coastGridIndices(1, 1), [-a / 6, world / 6, a / 6, world / 6, -b / 6, (world + 10) / 6, b / 6, (world + 10) / 6],
         new Array(16).fill(1), root, this.sand);
     }
     const gap = gapsNear(world).find(

@@ -1,3 +1,4 @@
+import { reefRockGeometry } from "./ocean-geometry.ts";
 import { Scene } from "@babylonjs/core/scene";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
@@ -132,29 +133,7 @@ export class OceanProps {
 
   rock(parent: TransformNode, size: [number, number, number], seed: number, color = "#6b8990") {
     const mesh = new Mesh("fractured-reef-rock", this.scene);
-    const positions: number[] = [], indices: number[] = [], colors: number[] = [];
-    const rings = [0.02, 0.65, 0.94, 0.86, 0.63, 0.06], sides = 14;
-    for (let row = 0; row < rings.length; row++) {
-      const t = row / (rings.length - 1);
-      for (let j = 0; j < sides; j++) {
-        const a = j * Math.PI * 2 / sides;
-        const wear = 1 + Math.sin(a * 3 + seed) * 0.16 + Math.cos(a * 5 - row * 1.8 + seed) * 0.1;
-        positions.push(Math.cos(a) * rings[row] * wear * size[0] / 2 + t * size[0] * Math.sin(seed) * 0.12,
-          (t - 0.5 + Math.sin(a * 3 + seed) * Math.sin(t * Math.PI) * 0.045) * size[1],
-          Math.sin(a) * rings[row] * wear * size[2] / 2);
-        const shade = 0.72 + t * 0.25 + Math.cos(a * 3 + seed) * 0.04;
-        colors.push(shade, shade, shade * 0.97, 1);
-        if (row < rings.length - 1) {
-          const a0 = row * sides + j, a1 = row * sides + (j + 1) % sides;
-          indices.push(a0, a0 + sides, a1, a1, a0 + sides, a1 + sides);
-        }
-      }
-    }
-    // Close the small end rings, avoiding gaps when seen from above or below.
-    for (let j = 1; j < sides - 1; j++) {
-      indices.push(0, j, j + 1);
-      const end = (rings.length - 1) * sides; indices.push(end, end + j + 1, end + j);
-    }
+    const {positions, indices, colors} = reefRockGeometry(size, seed);
     const normals: number[] = []; VertexData.ComputeNormals(positions, indices, normals);
     const data = new VertexData(); data.positions = positions; data.indices = indices; data.normals = normals; data.colors = colors;
     data.applyToMesh(mesh); this.naturalUV(mesh, 1.3);
