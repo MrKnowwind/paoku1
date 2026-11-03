@@ -39,7 +39,8 @@ test("wall-attached shelves block every covered lane and keep the opposite lane 
 test("booster landing respects a stone shelf extending across the centre lane", () => {
   const game = new RunnerGame({ autoSpawn: false });
   game.start();
-  game.distance = 700;
+  // Isolate the shelf from the first chasm's five-second landing safety buffer.
+  game.distance = 1180;
   const item = game.addItem("arch", 1, 4);
   item.shelf = { side: 1, laneCount: 2 };
   game.activateBooster(true);
