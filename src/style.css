@@ -129,6 +129,7 @@ button:active {
   margin-left: auto;
 }
 .icon-button {
+  position: relative;
   padding: 0;
   width: 38px;
   height: 38px;
@@ -1548,13 +1549,19 @@ html[lang="ko-KR"] h1 {
   border-color: #d5b77c;
 }
 .art-icon {
-  display: block;  object-fit: contain;
+  display: block;
+  object-fit: contain;
   flex: 0 0 auto;
   vertical-align: middle;
   user-select: none;
   filter: drop-shadow(0 1px 1px #4a34241c);
 }
 .icon-button .art-icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
   width: 34px;
   height: 34px;
 }
