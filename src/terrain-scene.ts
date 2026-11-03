@@ -302,9 +302,11 @@ export class TerrainScene {
           : adjacent.biome === "forest"
             ? this.tunnelTrail
             : this.tunnelStone;
+    // Extend the canyon floor into the wall so the verge has no exposed slit.
+    const roadWidth = section.biome === "canyon" ? 11.4 : 8.6;
     for (const span of spans) {
       this.ground(
-        8.6,
+        roadWidth,
         span.end - span.start,
         0,
         0.06,
@@ -316,7 +318,7 @@ export class TerrainScene {
       if (section.biome === "canyon") {
         // A solid, square-ended rock bed meets the road, including at chasm lips.
         const slab = CreateBox("solid-road-foundation", {
-          width: 8.6, height: 5, depth: span.end - span.start,
+          width: roadWidth, height: 5, depth: span.end - span.start,
         }, this.scene);
         slab.parent = root;
         slab.material = this.cliff;
@@ -346,6 +348,26 @@ export class TerrainScene {
       this.ground(90, 10, 0, -18, 5, root, this.stone, world);
       for (const side of [-1, 1]) {
         this.cliffWall(side, world, root);
+        // Solid land behind each wall supports the ridge and distant mesas.
+        // Its inner edge stays behind the playable wall, including across chasms.
+        const plateau = CreateBox("canyon-outer-rock-mass", {
+          width: 38, height: 26.5, depth: 10,
+        }, this.scene);
+        const plateauPositions = plateau.getVerticesData(VertexBuffer.PositionKind)!;
+        const plateauNormals = plateau.getVerticesData(VertexBuffer.NormalKind)!;
+        const plateauUvs: number[] = [];
+        for (let v = 0; v < plateauPositions.length; v += 3) {
+          const [x, y, z] = plateauPositions.slice(v, v + 3);
+          plateauUvs.push(
+            (Math.abs(plateauNormals[v]) > 0.5 ? z : x) / 5.5,
+            (Math.abs(plateauNormals[v + 1]) > 0.5 ? z : y) / 5.5,
+          );
+        }
+        plateau.setVerticesData(VertexBuffer.UVKind, plateauUvs);
+        plateau.parent = root;
+        plateau.material = this.cliff;
+        plateau.position.set(side * 24.7, -4.75, 5);
+        plateau.receiveShadows = true;
         const shoulder = this.props.sandstone(
           "eroded-ridge-crown",
           [5.5, 3.2, 10.8],
@@ -354,17 +376,18 @@ export class TerrainScene {
         );
         shoulder.position.set(
           side * 9.7,
-          12 + Math.sin(world * 0.037 + side) * 2.4,
+          9.6 + Math.sin(world * 0.037 + side) * 0.4,
           5,
         );
         if (index % 3 === 0) {
+          const mesaHeight = 17 + (index % 5);
           const mesa = this.props.sandstone(
             "distant-layered-mesa",
-            [13, 17 + (index % 5), 24],
+            [13, mesaHeight, 24],
             world * side,
             root,
           );
-          mesa.position.set(side * 24, 6, 5);
+          mesa.position.set(side * 24, 8 + mesaHeight / 2, 5);
         }
         if (!gap) {
           for (let n = 0; n < 3; n++) {
@@ -374,7 +397,7 @@ export class TerrainScene {
               world + n,
               root,
             );
-            scree.position.set(side * (4.7 + n * 0.16), 0.12, 1.5 + n * 3.1);
+            scree.position.set(side * (4.7 + n * 0.16), 0.06 + (0.2 + n * 0.1) * 0.35, 1.5 + n * 3.1);
           }
           if (index % 2 === 0) {
             const outcrop = this.props.sandstone("canyon-verge-outcrop",
@@ -404,7 +427,7 @@ export class TerrainScene {
         for (const edge of [nearbyGap.start, nearbyGap.end]) {
           if (edge >= world && edge < world + 10) {
             const face = CreateBox("chasm-rock-cross-section", {
-              width: 8.6, height: 18, depth: 1.2,
+              width: roadWidth, height: 18, depth: 1.2,
             }, this.scene);
             face.parent = root;
             face.material = this.cliff;

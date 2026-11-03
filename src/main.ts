@@ -186,7 +186,7 @@ function localize() {
 const dialog = document.querySelector<HTMLDialogElement>("#dialog")!;
 function renderDialog() {
   dialog.dataset.view = activeDialog ?? "";
-  const close = `<button class="icon-button dialog-close" data-action="close" aria-label="${t("close")}">${icon("close")}</button>`;
+  const close = activeDialog === "pause" || activeDialog === "revive" ? "" : `<button class="icon-button dialog-close" data-action="close" aria-label="${t("close")}">${icon("close")}</button>`;
   if (activeDialog === "shop") {
     const state = economy.state;
     const product = (
@@ -197,7 +197,7 @@ function renderDialog() {
       const unavailable = state.wallet < price;
       return `<article class="supply-card"><span class="supply-icon">${icon(glyph)}</span><div><h3>${t(kind)}</h3><p>${t(kind === "booster" ? "boosterDesc" : "hourglassDesc")}</p><small>${t("stock")} · ${n(kind === "booster" ? state.boosters : state.hourglasses)}</small></div><div class="purchase-row"><span>${icon("coin")}${n(price)}</span><button class="secondary-button" data-action="buy-${kind}" ${unavailable ? "disabled" : ""}>${t(unavailable ? "insufficient" : "buy")}</button></div></article>`;
     };
-    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("shop")}</span><h2 id="dialog-title">${t("shop")}</h2></div><div class="shop-wallet">${t("wallet")}<strong>${icon("coin")}<span class="wallet-count">${n(state.wallet)}</span></strong></div>${product("booster", "rocket", CONFIG.boosterPrice)}${product("hourglass", "hourglass", CONFIG.hourglassPrice)}<button class="secondary-button full-width" data-action="close">${t("closeShop")}</button>`;
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("shop")}</span><h2 id="dialog-title">${t("shop")}</h2></div><div class="shop-wallet">${t("wallet")}<strong>${icon("coin")}<span class="wallet-count">${n(state.wallet)}</span></strong></div>${product("booster", "rocket", CONFIG.boosterPrice)}${product("hourglass", "hourglass", CONFIG.hourglassPrice)}`;
   } else if (activeDialog === "revive") {
     const usable = game.canRewind && economy.state.hourglasses > 0;
     const hint = game.hourglassUsed
@@ -231,7 +231,7 @@ function renderDialog() {
         )
         .join(
           "",
-        )}</div><button class="primary-button full-width" data-action="close">${t("gotIt")}${icon("check")}</button>`;
+        )}</div>`;
   } else if (activeDialog === "pause") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
