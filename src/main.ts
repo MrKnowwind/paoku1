@@ -643,6 +643,10 @@ document.addEventListener("click", (event) => {
   } else if (target.dataset.quality) {
     quality = target.dataset.quality === "high";
     save("quality", quality ? "high" : "low");
+    try {
+      const url = new URL(location.href); url.searchParams.delete("quality");
+      history.replaceState(null, "", url);
+    } catch {}
     world?.setQuality(quality);
     renderDialog();
     dialog
