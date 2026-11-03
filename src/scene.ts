@@ -1734,7 +1734,7 @@ export class ForestScene {
     const waterBefore = this.runner.position.y;
     const pose = this.motion.update(game, dt);
     const scroll = ready || introducing ? 0 : game.distance;
-    this.terrainView.update(scroll);
+    this.terrainView.update(scroll, game.worldTime);
     // Exposure follows the lens crossing the mouth, not the runner seven metres ahead.
     const cameraDistance = Math.max(0, scroll + this.camera.position.z);
     const darkness = tunnelDarkness(cameraDistance);

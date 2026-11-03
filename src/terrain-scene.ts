@@ -387,6 +387,17 @@ export class TerrainScene {
       }
     }
     if (underwater) {
+      if (index % 3 === 0) {
+        const light = this.ocean.material("light", "#b9ebe0");
+        light.alpha = 0.045; light.disableLighting = true;
+        light.emissiveColor = Color3.FromHexString("#b9ebe0");
+        light.backFaceCulling = false;
+        for (const side of [-1, 1]) {
+          const shaft = CreateCylinder("slanted-underwater-sunbeam", {height: 6.5, diameterTop: 0.6, diameterBottom: 2.4, tessellation: 12}, this.scene);
+          shaft.parent = root; shaft.material = light;
+          shaft.position.set(side * 9.5, -3.4, 4); shaft.rotation.z = side * 0.23;
+        }
+      }
       for (let i = 0; i < 3; i++) {
         const bubble = CreateSphere("tiny-decorative-bubble", {diameter: 0.06, segments: 6}, this.scene);
         bubble.parent = root; bubble.material = this.water; bubble.position.set(-5 + i * 5, -5 + i * 2, 5);
@@ -394,7 +405,7 @@ export class TerrainScene {
           this.ground(0.025, 7, side * 3.8, CONFIG.waterHeights[i] - 0.1, 5, root, this.guide, world);
       }
     }
-    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && mesh.material !== this.water) as Mesh[];
+    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && mesh.material?.alpha === 1) as Mesh[];
     if (opaque.length) { const batch = mergeSceneryMeshes(opaque); batch.parent = root; batch.name = "batched-coastal-reef"; }
   }
 
@@ -632,7 +643,11 @@ export class TerrainScene {
     }
     return root;
   }
-  update(distance: number) {
+  update(distance: number, time = 0) {
+    if (this.water.diffuseTexture instanceof Texture) {
+      this.water.diffuseTexture.uOffset = (time * 0.012) % 1;
+      this.water.diffuseTexture.vOffset = (time * 0.007) % 1;
+    }
     const first = Math.floor((distance - 50) / 10),
       last = Math.ceil((distance + 180) / 10);
     for (const [index, root] of this.cells)
