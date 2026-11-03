@@ -54,6 +54,14 @@ test("new obstacle lessons trigger only nearby and completed lessons persist acr
   assert.equal(activeLesson(replay), "jump");
   replay.action("jump", game, game.jump());
   assert.equal(replay.active, null);
+  game.items = [];
+  game.addItem("log", 0, 6);
+  replay.update(game, 0.8, false);
+  assert.equal(
+    activeLesson(replay),
+    "jump",
+    "test mode repeats for a new obstacle encounter",
+  );
   replay.resetRun(game);
   replay.update(game, 0.1, false);
   assert.equal(activeLesson(replay), "jump");

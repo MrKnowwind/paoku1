@@ -17,6 +17,7 @@ export interface Lesson {
   id: LessonId;
   gesture: "left" | "right" | "up" | "down" | "collect" | "tap";
   target?: number;
+  encounter?: string;
 }
 const basics: LessonId[] = ["move", "jump", "slide", "dodge"];
 
@@ -28,6 +29,7 @@ export class Tutorial {
   private pickupSerial = 0;
   private coins = 0;
   private pending: LessonId[] = [];
+  private handled = new Set<string>();
   private persist: (seen: string[]) => void;
   testMode: boolean;
   constructor(
@@ -54,8 +56,11 @@ export class Tutorial {
     this.pickupSerial = game.pickupSerial;
     this.coins = game.coins;
     this.pending = [];
+    this.handled.clear();
   }
   complete(id: LessonId) {
+    if (this.active?.id === id && this.active.encounter)
+      this.handled.add(this.active.encounter);
     this.runSeen.add(id);
     if (!basics.includes(id) && !this.testMode) this.seen.add(id);
     if (basics.every((key) => this.runSeen.has(key)) && !this.testMode) {
@@ -68,6 +73,9 @@ export class Tutorial {
   }
   private show(lesson: Lesson) {
     this.active = lesson;
+  }
+  private canTeach(id: LessonId, encounter: string) {
+    return !this.knows(id) || (this.testMode && !this.handled.has(encounter));
   }
   action(direction: Direction, game: RunnerGame, accepted: boolean) {
     if (!this.active) return;
@@ -121,11 +129,12 @@ export class Tutorial {
     this.cooldown = Math.max(0, this.cooldown - dt);
     if (game.pickupSerial !== this.pickupSerial) {
       this.pickupSerial = game.pickupSerial;
-      if (!this.knows(game.lastPickup)) this.pending.push(game.lastPickup);
+      if (!this.knows(game.lastPickup) || this.testMode)
+        this.pending.push(game.lastPickup);
     }
     if (
       game.coins > this.coins &&
-      !this.knows("coin") &&
+      (!this.knows("coin") || this.testMode) &&
       !this.pending.includes("coin")
     )
       this.pending.push("coin");
@@ -141,20 +150,26 @@ export class Tutorial {
       this.show({ id: "move", gesture: "left" });
       return;
     }
-    if (game.wallSide && !this.knows("wallHeight")) {
+    const gapKey = String(game.gapWarning?.id ?? game.distance);
+    if (game.wallSide && this.canTeach("wallHeight", `height/${gapKey}`)) {
       this.show({
         id: "wallHeight",
         gesture: game.wallLevel < 2 ? "up" : "down",
+        encounter: `height/${gapKey}`,
       });
       return;
     }
     if (
       !game.wallSide &&
-      !this.knows("wallEntry") &&
+      this.canTeach("wallEntry", `entry/${gapKey}`) &&
       game.gapWarning &&
       game.distance >= game.gapWarning.start - 13
     ) {
-      this.show({ id: "wallEntry", gesture: game.lane > 0 ? "right" : "left" });
+      this.show({
+        id: "wallEntry",
+        gesture: game.lane > 0 ? "right" : "left",
+        encounter: `entry/${gapKey}`,
+      });
       return;
     }
     const obstacle = game.items
@@ -173,7 +188,7 @@ export class Tutorial {
           : obstacle.type === "arch"
             ? "slide"
             : "dodge";
-      if (!this.knows(id)) {
+      if (this.canTeach(id, `obstacle/${obstacle.id}`)) {
         this.show({
           id,
           gesture:
@@ -185,6 +200,7 @@ export class Tutorial {
                   ? "right"
                   : "left",
           target: obstacle.id,
+          encounter: `obstacle/${obstacle.id}`,
         });
         return;
       }
@@ -200,11 +216,12 @@ export class Tutorial {
     );
     if (!imminent && this.pending.length) {
       const id = this.pending.shift()!;
-      if (!this.knows(id)) this.show({ id, gesture: "collect" });
+      if (!this.knows(id) || this.testMode)
+        this.show({ id, gesture: "collect" });
     } else if (
       !imminent &&
       boosterUnlocked &&
-      !this.knows("booster") &&
+      (!this.knows("booster") || this.testMode) &&
       basics.every((id) => this.knows(id)) &&
       !game.wallSide &&
       game.boostCooldown <= 0
