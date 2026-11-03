@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { RunnerGame } from "./game.ts";
 import { Tutorial } from "./tutorial.ts";
 
+const activeLesson = (tutorial: Tutorial) => tutorial.active?.id;
+
 test("opening lesson keeps slow motion until the matching accepted gesture", () => {
   const game = new RunnerGame({ autoSpawn: false });
   game.start();
@@ -45,16 +47,16 @@ test("new obstacle lessons trigger only nearby and completed lessons persist acr
   log.z = 5;
   replay.resetRun(game);
   replay.update(game, 0.1, false);
-  assert.equal(replay.active?.id, "jump");
+  assert.equal(activeLesson(replay), "jump");
   replay.update(game, 120, false);
-  assert.equal(replay.active?.id, "jump");
+  assert.equal(activeLesson(replay), "jump");
   replay.action("jump", game, false);
-  assert.equal(replay.active?.id, "jump");
+  assert.equal(activeLesson(replay), "jump");
   replay.action("jump", game, game.jump());
   assert.equal(replay.active, null);
   replay.resetRun(game);
   replay.update(game, 0.1, false);
-  assert.equal(replay.active?.id, "jump");
+  assert.equal(activeLesson(replay), "jump");
 });
 
 test("automatic powers still wait for player input before restoring speed", () => {
