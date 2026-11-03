@@ -8,6 +8,7 @@ export const artIcons = new Set([
   "trophy",
   "settings",
   "sound",
+  "music",
   "mute",
   "pause",
   "play",

@@ -1,3 +1,5 @@
+import { GameAudio } from "./audio.ts";
+import type { Sound } from "./audio.ts";
 import { reportLoading } from "./loading.ts";
 import "./style.css";
 import { RunnerGame } from "./game.ts";
@@ -31,6 +33,12 @@ const save = (key: string, value: string) => {
 let language = resolveLanguage(read("language"));
 let numberFormatter = new Intl.NumberFormat(languageTags[language]);
 let sound = read("sound") !== "false";
+let music = read("music") !== "false";
+const audio = new GameAudio();
+audio.soundEnabled = sound;
+audio.musicEnabled = music;
+window.addEventListener("pointerdown", () => audio.unlock(), {capture: true});
+window.addEventListener("keydown", () => audio.unlock(), {capture: true});
 let quality = new URLSearchParams(location.search).get("quality") !== "low" && read("quality") !== "low";
 let best = Math.max(0, Number(read("best")) || 0);
 let newBest = false;
@@ -53,7 +61,6 @@ let resumeOnClose = false;
 let focusBeforeDialog: HTMLElement | null = null;
 let world: ForestScene | null = null;
 let loaded = false;
-let audio: AudioContext | null = null;
 const languages = [
   { code: "zh", name: "简体中文", mark: "中" },
   { code: "en", name: "English", mark: "EN" },
@@ -131,38 +138,8 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <div id="countdown" class="countdown" hidden aria-live="polite" aria-atomic="true"></div>
 `;
 
-function beep(kind: "coin" | "jump" | "slide" | "hit" | "start" | "tick" | "splash") {
-  if (!sound) return;
-  try {
-    audio ??= new AudioContext();
-    void audio.resume();
-    const osc = audio.createOscillator();
-    const gain = audio.createGain();
-    const now = audio.currentTime;
-    const frequencies = {
-      splash: 150,
-      coin: 1046,
-      jump: 330,
-      slide: 210,
-      hit: 110,
-      start: 523,
-      tick: 440,
-    };
-    osc.type = kind === "hit" ? "triangle" : "sine";
-    osc.frequency.setValueAtTime(frequencies[kind], now);
-    osc.frequency.exponentialRampToValueAtTime(
-      kind === "coin" ? 1568 : frequencies[kind] * 0.5,
-      now + 0.14,
-    );
-    gain.gain.setValueAtTime(0.055, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-    osc.connect(gain);
-    gain.connect(audio.destination);
-    osc.start();
-    osc.stop(now + 0.2);
-  } catch {
-    /* The game can run when audio is unavailable. */
-  }
+function beep(kind: Sound) {
+  audio.play(kind);
 }
 
 function localize() {
@@ -213,6 +190,7 @@ function renderDialog() {
       <div class="setting-row language-row"><span class="setting-label" id="language-label">${icon("language")}${t("language")}</span>
       <div class="language-picker"><button id="language-trigger" class="language-trigger" data-action="language-menu" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="language-label language-current"><span class="language-mark">${selected.mark}</span><span id="language-current">${selected.name}</span>${icon("chevron")}</button>
       <div class="language-menu" id="language-menu" role="listbox" aria-labelledby="language-label" hidden>${languages.map((item) => `<button class="language-choice ${item.code === language ? "selected" : ""}" role="option" aria-selected="${item.code === language}" tabindex="-1" data-language="${item.code}"><span class="language-mark">${item.mark}</span><span>${item.name}</span>${item.code === language ? icon("check") : ""}</button>`).join("")}</div></div></div>
+      <div class="setting-row"><span class="setting-label">${icon("music")}${t("music")}</span><button class="toggle ${music ? "is-on" : ""}" data-action="music" role="switch" aria-checked="${music}" aria-label="${t("music")}"><span></span></button></div>
       <div class="setting-row"><span class="setting-label">${icon("sound")}${t("sound")}</span><button class="toggle ${sound ? "is-on" : ""}" data-action="sound" role="switch" aria-checked="${sound}" aria-label="${t("sound")}"><span></span></button></div>
       <div class="setting-row"><span class="setting-label">${icon("quality")}${t("quality")}</span><div class="segmented"><button class="${quality ? "selected" : ""}" data-quality="high" aria-pressed="${quality}">${t("high")}</button><button class="${!quality ? "selected" : ""}" data-quality="low" aria-pressed="${!quality}">${t("low")}</button></div></div>
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span><small>${t("tutorialTestHint")}</small></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>`;
@@ -552,7 +530,7 @@ function act(action: string) {
       return consumed;
     })) {
       tutorial.complete("booster");
-      beep("start");
+      beep("boost");
       showToast(t("boostHint"));
     }
     return;
@@ -566,7 +544,7 @@ function act(action: string) {
       resultDelay = 0;
       document.body.classList.remove("crashed");
       syncView();
-      beep("tick");
+      beep("rewind");
     } else if (economy.state.hourglasses > 0 && game.canRewind)
       showToast(t("storageError"));
     return;
@@ -596,6 +574,8 @@ function act(action: string) {
   } else if (action === "close" || action === "resume") closeDialog();
   else if (action === "sound") {
     sound = !sound;
+    audio.soundEnabled = sound;
+    audio.update(game, !!activeDialog);
     save("sound", String(sound));
     document.querySelector("#sound-toggle")!.innerHTML = icon(
       sound ? "sound" : "mute",
@@ -608,6 +588,13 @@ function act(action: string) {
       dialog.querySelector<HTMLButtonElement>('[data-action="sound"]')?.focus();
     }
     if (sound) beep("coin");
+  } else if (action === "music") {
+    music = !music;
+    audio.musicEnabled = music;
+    save("music", String(music));
+    audio.update(game, !!activeDialog);
+    renderDialog();
+    dialog.querySelector<HTMLButtonElement>('[data-action="music"]')?.focus();
   } else if (action === "tutorial-test") {
     testTutorials = !testTutorials;
     save("test-tutorials", String(testTutorials));
@@ -709,16 +696,20 @@ dialog.addEventListener("click", (event) => {
 function control(direction: "left" | "right" | "jump" | "slide") {
   if (game.mode !== "running" || activeDialog) return;
   let accepted = false;
+  const wallBefore = game.wallSide;
+  const laneBefore = game.lane;
   if (direction === "left") accepted = game.move(-1);
   if (direction === "right") accepted = game.move(1);
   if (direction === "jump") {
     accepted = game.jump();
-    if (accepted) beep("jump");
+    if (accepted) beep(game.swimming ? "swim" : "jump");
   }
   if (direction === "slide") {
     accepted = game.slide();
-    if (accepted) beep("slide");
+    if (accepted) beep(game.swimming ? "swim" : "slide");
   }
+  if (accepted && !wallBefore && game.wallSide) beep("wall");
+  else if (accepted && game.lane !== laneBefore) beep(game.swimming ? "swim" : "move");
   tutorial.action(direction, game, accepted);
 }
 window.addEventListener("keydown", (event) => {
@@ -814,10 +805,12 @@ window.addEventListener("pointercancel", (event) => {
   if (gesture?.id === event.pointerId) gesture = null;
 });
 document.addEventListener("visibilitychange", () => {
+  if (document.hidden) audio.silence();
   if (document.hidden && (game.mode === "running" || game.mode === "intro"))
     openDialog("pause");
 });
 window.addEventListener("blur", () => {
+  audio.silence();
   gesture = null;
   if (game.mode === "running" || game.mode === "intro") openDialog("pause");
 });
@@ -853,7 +846,14 @@ try {
       const simulationDt = dt * tutorial.timeScale(game);
       const transitionBefore = game.transitioning;
       const swimBefore = game.swimming;
+      const pickupBefore = game.pickupSerial;
+      const shieldBreakBefore = game.shieldBreakSerial;
+      const clearBefore = game.clearSerial;
       game.update(simulationDt);
+      audio.update(game, !!activeDialog);
+      if (game.pickupSerial !== pickupBefore) beep(game.lastPickup);
+      if (game.shieldBreakSerial !== shieldBreakBefore) beep("break");
+      if (game.clearSerial !== clearBefore) beep("clear");
       if (transitionBefore || game.transitioning) gesture = null;
       if (swimBefore !== game.swimming) beep("splash");
       if (game.mode !== previousMode) syncView();
@@ -931,6 +931,7 @@ try {
 }
 
 window.addEventListener("pagehide", () => {
+  audio.silence();
   if (game.mode === "over") finishRun();
   economy.flush();
 });
