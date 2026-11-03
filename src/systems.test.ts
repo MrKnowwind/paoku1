@@ -522,3 +522,18 @@ test("water rewind restores dynamic time and clears aquatic hazards", () => {
   assert.ok(game.worldTime < clock);
   assert.ok(!game.items.some(i => i.type === "bubble"));
 });
+
+test("volcano warns for two seconds before its visible thermal column is dangerous", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.start(); game.distance = 1500;
+  const volcano = game.addItem("volcano", 1, 20, -6.35);
+  game.worldTime = 2 - volcano.worldZ * 0.017 + 100;
+  assert.equal(game.waterBounds(volcano).warning, true);
+  assert.equal(game.waterBounds(volcano).eruption, false);
+  game.worldTime += 1.99;
+  assert.equal(game.waterBounds(volcano).warning, true);
+  game.worldTime += 0.02;
+  assert.equal(game.waterBounds(volcano).eruption, true);
+  game.worldTime += 2;
+  assert.equal(game.waterBounds(volcano).eruption, false);
+});

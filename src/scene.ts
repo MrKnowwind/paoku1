@@ -1183,8 +1183,8 @@ export class ForestScene {
       } else if (item.type === "volcano") {
         const body = CreateCylinder("volcano-body", {height: 1.3, diameterTop: 0.5, diameterBottom: 1.3, tessellation: 10}, this.scene);
         body.parent = root; body.material = this.mat("#655365");
-        const plume = CreateCylinder("thermal-plume", {height: 5.1, diameter: 1.3, tessellation: 12}, this.scene);
-        plume.parent = root; plume.position.y = 1.85; plume.material = this.mat("#ffbb65", true);
+        const plume = CreateCylinder("thermal-plume", {height: 6.0, diameter: 1.3, tessellation: 12}, this.scene);
+        plume.parent = root; plume.position.y = 3.65; plume.material = this.mat("#ffbb65", true);
         plume.setEnabled(false);
       } else {
         const height = 1.3 + (item.shape ?? 0) * 0.6;

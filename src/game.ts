@@ -543,7 +543,7 @@ export class RunnerGame {
     const types: ItemType[] = ["bubble", "coral", "volcano", "fish"];
     const type = types[Math.floor(this.hash(row, 11) * 4)];
     const level = type === "volcano" ? 0 : Math.floor(this.hash(row, 12) * 3);
-    this.emit(type, side, z, CONFIG.waterHeights[level] + 0.95, base);
+    this.emit(type, side, z, type === "volcano" ? -6.35 : CONFIG.waterHeights[level] + 0.95, base);
     const hazard = this.items.find(i => i.id === this.idBase + base);
     if (hazard) hazard.shape = row % 3;
     const roll = this.hash(row, 8);
@@ -565,9 +565,9 @@ export class RunnerGame {
     const fish = item.type === "fish";
     return {
       x: item.lane * 2.5,
-      y: fish ? -2.05 + Math.sin(this.worldTime * 0.65 + item.worldZ) * 1.8 : eruption ? -2.2 : item.y,
+      y: fish ? -2.05 + Math.sin(this.worldTime * 0.65 + item.worldZ) * 1.8 : eruption ? -2.7 : item.y,
       rx: fish ? 0.8 : 0.65,
-      ry: eruption ? 2.55 : item.type === "coral" ? 0.65 + (item.shape ?? 0) * 0.3 : 0.65,
+      ry: eruption ? 3.0 : item.type === "coral" ? 0.65 + (item.shape ?? 0) * 0.3 : 0.65,
       phase, eruption, warning,
     };
   }
