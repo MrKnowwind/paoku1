@@ -589,6 +589,7 @@ export class RunnerGame {
     const lane = Math.abs(item.lane * 2.5 - this.x) < 1.05;
     const crossed = item.z <= 0 && item.z > -travel - 0.05;
     if (item.type === "ice") {
+      if (lane && Math.abs(item.z) < 3 && this.y <= 0.05 && this.icy) this.triggeredIce.add(item.id);
       if (lane && Math.abs(item.z) < 3 && this.y <= 0.05 && !this.icy && !this.triggeredIce.has(item.id)) {
         this.triggeredIce.add(item.id); this.iceRemaining = CONFIG.iceDistance;
         this.iceX = this.x; this.lane = Math.round(this.x / 2.5);

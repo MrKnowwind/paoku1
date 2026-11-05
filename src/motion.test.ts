@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONFIG } from "./config.ts";
 import { RunnerGame } from "./game.ts";
+import { TrackPlan } from "./track.ts";
 import { RunnerMotion } from "./motion.ts";
 
 test("slide pose releases quickly for a jump and crouches again after a fast fall", () => {
