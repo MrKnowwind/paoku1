@@ -479,51 +479,33 @@ export class RunnerGame {
       this.generatedWalls.add(gap.id);
       if (gap.tutorial || !this.completedWallTutorial)
         this.tutorialGaps.add(gap.id);
-      const tutorial = this.tutorialGaps.has(gap.id);
       for (const side of [-1, 1]) {
         const base = 100000000000 + gap.id * 1000 + (side > 0 ? 400 : 0);
-        for (
-          let offset = 8, slot = 0;
-          offset < gap.end - gap.start - 5;
-          offset += 6, slot++
-        ) {
-          const level = tutorial
-            ? 1
-            : [1, 2, 1, 0][(Math.floor((offset - 8) / 22) + Math.floor(this.hash(gap.id, 31) * 4)) % 4];
-          this.emit(
-            "coin",
-            side,
-            gap.start + offset,
-            CONFIG.wallHeights[level] + 0.95,
-            base + slot,
-            "wall",
-            level,
-          );
+        const columns: {offset: number; safe: number; blocked: number[]}[] = [];
+        let safe = 1;
+        // Each wall has its own random stream. Adjacent safe heights always remain reachable.
+        for (let offset = 28 + this.hash(base, 32) * 8, column = 0;
+          offset < gap.end - gap.start - 12; column++) {
+          const choices = [0, 1, 2].filter(level => Math.abs(level - safe) <= 1);
+          safe = choices[Math.floor(this.hash(base + column, 33) * choices.length)];
+          const blocked = [0, 1, 2].filter(level => level !== safe);
+          if (this.hash(base + column, 34) < 0.45)
+            blocked.splice(Math.floor(this.hash(base + column, 35) * blocked.length), 1);
+          columns.push({offset, safe, blocked});
+          offset += 24 + this.hash(base + column, 36) * 8;
         }
-        // A second height is offered only in obstacle-free wall sections.
-        if (tutorial)
-          for (let offset = 8, slot = 0; offset < gap.end - gap.start - 5; offset += 6, slot++)
-            this.emit("coin", side, gap.start + offset, CONFIG.wallHeights[2] + 0.95,
-              base + 250 + slot, "wall", 2);
-        if (!tutorial)
-          for (
-            let offset = 22, column = 0;
-            offset < gap.end - gap.start - 12;
-            offset += 22, column++
-          ) {
-            const safe = [1, 2, 1, 0][(column + Math.floor(this.hash(gap.id, 31) * 4)) % 4];
-            for (let level = 0; level < 3; level++)
-              if (level !== safe)
-                this.emit(
-                  "wall-rock",
-                  side,
-                  gap.start + offset,
-                  CONFIG.wallHeights[level] + 0.95,
-                  base + 100 + column * 3 + level,
-                  "wall",
-                  level,
-                );
-          }
+        // Coin trails point to the safe height of the next obstacle column.
+        for (let offset = 8, slot = 0; offset < gap.end - gap.start - 5; offset += 6, slot++) {
+          const next = columns.find(column => column.offset >= offset) ?? columns.at(-1);
+          const level = next?.safe ?? 1;
+          this.emit("coin", side, gap.start + offset, CONFIG.wallHeights[level] + 0.95,
+            base + slot, "wall", level);
+        }
+        columns.forEach((column, index) => {
+          for (const level of column.blocked)
+            this.emit("wall-rock", side, gap.start + column.offset,
+              CONFIG.wallHeights[level] + 0.95, base + 100 + index * 3 + level, "wall", level);
+        });
       }
     }
   }

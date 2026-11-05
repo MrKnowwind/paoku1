@@ -295,7 +295,7 @@ test("wall entry needs an extra outward gesture, height has limits and exit retu
   assert.ok(game.distance >= gap.end);
 });
 
-test("wall generation leaves a reachable height and the first wall section is obstacle-free", () => {
+test("both wall sections generate obstacles while leaving open heights", () => {
   const game = new RunnerGame({ random: () => 0.5 });
   game.start();
   const [firstGap, secondGap] = gapsNear(800, game.trackSeed);
@@ -304,13 +304,8 @@ test("wall generation leaves a reachable height and the first wall section is ob
   assert.ok(game.items.some((i) => i.route === "wall" && i.type === "coin"));
   assert.equal(
     game.items.some((i) => i.type === "wall-rock" && i.worldZ < firstGap.end),
-    false,
+    true,
   );
-  game.distance = firstGap.start - 10;
-  game.lane = -1;
-  game.x = -2.5;
-  game.move(-1);
-  for (let n = 0; n < 400 && game.wallSide; n++) game.update(0.02);
   game.distance = secondGap.start - 12;
   game.update(0.001);
   const rows = new Map<string, Set<number>>();
@@ -320,7 +315,7 @@ test("wall generation leaves a reachable height and the first wall section is ob
     rows.get(key)!.add(item.level!);
   }
   assert.ok(rows.size > 0);
-  assert.ok([...rows.values()].every((levels) => levels.size === 2));
+  assert.ok([...rows.values()].every((levels) => levels.size >= 1 && levels.size <= 2));
 });
 
 test("rewind spends once, keeps unique coin income and clears obstacles without resetting cooldowns", () => {
@@ -716,4 +711,35 @@ test("seeded canyon gaps vary per run, remain stable for rewind and leave approa
     }
   }
   assert.ok(layouts.size > 25);
+});
+
+
+test("wall layouts vary across seeds and sides, including the first gap", () => {
+  const layouts = new Set<string>();
+  let differentSides = 0;
+  for (let seed = 1; seed <= 24; seed++) {
+    const game = new RunnerGame({random: () => seed / 25});
+    game.start();
+    const gap = gapsNear(800, game.trackSeed)[0];
+    game.distance = gap.start - 20; game.update(0.001);
+    const signature = (side: number) => game.items.filter(item => item.type === "wall-rock" &&
+      item.side === side && item.worldZ < gap.end).map(item => [item.worldZ - gap.start, item.level]);
+    const left = signature(-1), right = signature(1);
+    assert.ok(left.length > 0 && right.length > 0);
+    layouts.add(JSON.stringify([left, right]));
+    if (JSON.stringify(left) !== JSON.stringify(right)) differentSides++;
+    for (const side of [-1, 1]) {
+      const rocks = game.items.filter(item => item.type === "wall-rock" && item.side === side && item.worldZ < gap.end);
+      const columns = [...new Set(rocks.map(item => item.worldZ))].sort((a,b) => a-b);
+      let reachable = [1];
+      for (const z of columns) {
+        const blocked = rocks.filter(item => item.worldZ === z).map(item => item.level);
+        reachable = [0,1,2].filter(level => !blocked.includes(level) && reachable.some(previous => Math.abs(previous-level) <= 1));
+        assert.ok(reachable.length > 0);
+        assert.ok(z - gap.start >= 28);
+      }
+    }
+  }
+  assert.equal(layouts.size, 24);
+  assert.ok(differentSides >= 22);
 });
