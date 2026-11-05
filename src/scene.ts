@@ -1289,7 +1289,7 @@ export class ForestScene {
     if (cached) return cached;
     if (!this.fishSignTexture) {
       const texture = new DynamicTexture("fish-warning-triangle", 128, this.scene, true);
-      const ctx = texture.getContext();
+      const ctx = texture.getContext() as CanvasRenderingContext2D;
       ctx.beginPath();
       ctx.moveTo(64, 8); ctx.lineTo(120, 110); ctx.lineTo(8, 110); ctx.closePath();
       ctx.lineJoin = "round";
