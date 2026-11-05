@@ -29,7 +29,9 @@ export function connection(from: CoreBiome, to: CoreBiome): {biome: Biome; lengt
 // Queries only append. Rewinds never discard committed future choices.
 export class TrackPlan {
   readonly sections: TrackSection[] = [{biome: "forest", start: 0, end: CONFIG.forestLength, cycle: 0}];
-  constructor(readonly seed = 1, readonly forced: CoreBiome | null = null) {}
+  readonly seed: number;
+  readonly forced: CoreBiome | null;
+  constructor(seed = 1, forced: CoreBiome | null = null) { this.seed = seed; this.forced = forced; }
   at(distance: number): TrackSection {
     const d = Math.max(0, distance);
     while (d >= this.sections[this.sections.length - 1].end) {
