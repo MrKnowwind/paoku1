@@ -25,6 +25,7 @@ export class SnowPreview {
   private thighs: TransformNode[];
   private knees: TransformNode[];
   private fire?: TransformNode;
+  private liquorPickup?: TransformNode;
   private time = 0;
   constructor(private scene: Scene, source: TransformNode, private props: SnowProps, readonly step: number) {
     this.root = new TransformNode("snow-lesson-stage", scene);
@@ -56,7 +57,7 @@ export class SnowPreview {
       });
     } else if (step === 3) {
       this.fire = props.create("fire"); this.fire.parent = this.root; this.fire.position.x = -2;
-      const liquor = props.create("liquor"); liquor.parent = this.root; liquor.position.set(2, 0.95, 1);
+      this.liquorPickup = props.create("liquor"); this.liquorPickup.parent = this.root; this.liquorPickup.position.set(2, 0.95, 1);
     }
     for (const m of this.root.getChildMeshes()) m.layerMask = 0x10000000;
   }
@@ -71,12 +72,13 @@ export class SnowPreview {
     } else if (this.step === 3) {
       const cycle = t % 7;
       const jump = Math.min(1, cycle / 3);
-      this.runner.position.set(cycle < 3 ? -2 : 2, cycle < 3 ? Math.sin(jump * Math.PI) * 2 : 0, cycle < 3 ? -2 + jump * 4 : 0);
+      this.runner.position.set(cycle < 3 ? -2 : 2, cycle < 3 ? Math.sin(jump * Math.PI) * 2 : 0, cycle < 3 ? -2 + jump * 4 : cycle < 4 ? -1 + (cycle - 3) * 2 : 1);
+      this.liquorPickup?.setEnabled(cycle < 4);
       for (const shoulder of this.shoulders) shoulder.rotation.x = cycle < 3 ? -0.7 : 0;
       for (const elbow of this.elbows) elbow.rotation.x = cycle < 3 ? -0.9 : 0;
       for (const thigh of this.thighs) thigh.rotation.x = cycle < 3 ? -0.35 - Math.sin(jump * Math.PI) * 0.5 : 0;
       for (const knee of this.knees) knee.rotation.x = cycle < 3 ? 0.55 + Math.sin(jump * Math.PI) : 0;
-      const weight = cycle < 3 ? 0 : Math.sin(Math.min(1, (cycle - 3) / 4) * Math.PI);
+      const weight = cycle < 4 ? 0 : Math.sin(Math.min(1, (cycle - 4) / 3) * Math.PI);
       if (this.shoulders[0] && this.elbows[0]) drinkingPose(this.shoulders[0], this.elbows[0], this.bottle, weight);
     }
     if (this.hips) this.hips.position.y = 0.95;
