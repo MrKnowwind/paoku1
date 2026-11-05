@@ -1,4 +1,7 @@
 export const CONFIG = {
+  openingFogDensity: 0.095,
+  openingFogHold: 0.6,
+  openingFogFade: 4.2,
   snowLength: 600,
   snowTransition: 60,
   terrainUnlock: { forest: 0, canyon: 600, water: 1600, snow: 2600 },

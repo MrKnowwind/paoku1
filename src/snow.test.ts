@@ -174,3 +174,15 @@ test("rewind restores historical cold without replaying liquor or fire warmth an
   const cold = game.cold; game.update(1); assert.equal(game.cold, cold);
   assert.equal(game.hourglassUsed, true);
 });
+
+
+test("closing the snow review preserves the interrupted lesson without marking snow as learned", () => {
+  const game = new RunnerGame({autoSpawn: false}); game.start();
+  let saved: string[] = [];
+  const tutorial = new Tutorial([], seen => {saved = seen;});
+  tutorial.update(game, 0, false); assert.equal(tutorial.active?.id, "move");
+  tutorial.reviewSnow(); tutorial.advanceSnow(); assert.equal(tutorial.snowStep, 2);
+  tutorial.closeSnowReview();
+  assert.equal(tutorial.active?.id, "move"); assert.equal(tutorial.snowStep, 0);
+  assert.equal(tutorial.knows("snow"), false); assert.deepEqual(saved, []);
+});

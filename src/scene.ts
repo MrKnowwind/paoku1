@@ -1,4 +1,6 @@
+import { openingFog } from "./opening.ts";
 import { CONFIG } from "./config.ts";
+import "@babylonjs/core/Engines/thinEngine.scissor";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
@@ -124,11 +126,12 @@ export class ForestScene {
   private mode = "";
   private high = true;
   private track = defaultTrack;
+  private openingMistTime = 0;
   private snow?: SnowProps;
   private snowPreview?: SnowPreview;
   private drinkBottle?: TransformNode;
   private lastSnowHit = 0;
-  private get snowProps() { return this.snow ??= new SnowProps(this.scene); }
+  private get snowProps() { return this.snow ??= new SnowProps(this.scene, this.props); }
   private snowPose(game: RunnerGame) {
     if (game.icy) {
       const recovery = game.iceRemaining > 0 ? 1 : game.iceRecover / CONFIG.iceRecovery;
@@ -143,7 +146,7 @@ export class ForestScene {
       this.head.rotation.z = Math.sin(game.worldTime * 35 + 1) * 0.035;
     }
     if (game.drinkTime > 0 && !this.drinkBottle) {
-      this.drinkBottle = this.snowProps.create("liquor"); this.drinkBottle.parent = this.arms[0].lower;
+      this.drinkBottle = this.snowProps.create("liquor", false); this.drinkBottle.parent = this.arms[0].lower;
       this.drinkBottle.position.set(0, -0.34, 0); this.drinkBottle.scaling.setAll(0.55);
     }
     if (this.drinkBottle) drinkingPose(this.arms[0].upper, this.arms[0].lower, this.drinkBottle, Math.sin(Math.min(1, game.drinkTime / 1.1) * Math.PI));
@@ -1773,6 +1776,7 @@ export class ForestScene {
   }
 
   update(game: RunnerGame, dt: number, showWallEntryMarkers = false, snowLesson = 0, previewDt = dt) {
+    if (this.track !== game.track) this.openingMistTime = 0;
     this.track = game.track;
     const running = game.mode === "running",
       ready = game.mode === "ready",
@@ -1849,7 +1853,14 @@ export class ForestScene {
 
     this.scene.fogColor = fog;
     this.scene.clearColor = new Color4(fog.r, fog.g, fog.b, 1);
-    this.scene.fogDensity = 0.009 + darkness * 0.012 + immersed * 0.008;
+    const openingReady = game.openingPrepared && game.items.every(item => {
+      const model = this.itemMeshes.get(item.id);
+      return model && model.getChildMeshes().every(mesh => mesh.isReady());
+    });
+    if (running && openingReady) this.openingMistTime += dt;
+    const mist = ready || introducing ? 1 : openingFog(this.openingMistTime);
+    const terrainFog = 0.009 + darkness * 0.012 + immersed * 0.008;
+    this.scene.fogDensity = terrainFog + (CONFIG.openingFogDensity - terrainFog) * mist;
     this.sky.intensity = 0.75 - darkness * 0.3;
     this.sun.intensity = 0.85 - darkness * 0.65;
     this.sky.groundColor = Color3.Lerp(
@@ -2352,12 +2363,23 @@ export class ForestScene {
     const viewport = document.querySelector<HTMLElement>("#snow-viewport");
     if (this.snowPreview && viewport) {
       this.snowPreview.update(previewDt, viewport.getBoundingClientRect());
-      this.scene.activeCamera = this.snowPreview.camera;
-      this.scene.autoClear = false;
-      this.engine.clear(this.scene.clearColor, false, true, true);
-      this.scene.render();
-      this.scene.autoClear = true;
-      this.scene.activeCamera = this.camera;
+      const rect = viewport.getBoundingClientRect();
+      const canvasRect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
+      const sx = this.engine.getRenderWidth() / canvasRect.width, sy = this.engine.getRenderHeight() / canvasRect.height;
+      const fogEnabled = this.scene.fogEnabled, shadowsEnabled = this.scene.shadowsEnabled;
+      const autoClearDepth = this.scene.autoClearDepthAndStencil;
+      try {
+        this.engine.enableScissor(Math.round((rect.left - canvasRect.left) * sx), Math.round((canvasRect.bottom - rect.bottom) * sy), Math.round(rect.width * sx), Math.round(rect.height * sy));
+        this.scene.activeCamera = this.snowPreview.camera;
+        this.scene.autoClear = false; this.scene.autoClearDepthAndStencil = false;
+        this.scene.fogEnabled = false; this.scene.shadowsEnabled = false;
+        this.engine.clear(Color4.FromHexString("#dce7ecff"), true, true, true);
+        this.scene.render();
+      } finally {
+        this.engine.disableScissor(); this.scene.autoClear = true; this.scene.autoClearDepthAndStencil = autoClearDepth;
+        this.scene.fogEnabled = fogEnabled; this.scene.shadowsEnabled = shadowsEnabled;
+        this.scene.activeCamera = this.camera;
+      }
     }
   }
 }

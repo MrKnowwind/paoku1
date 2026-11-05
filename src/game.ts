@@ -123,6 +123,7 @@ export class RunnerGame {
   fastFalling = false;
   distance = 0;
   introTime = 0;
+  openingPrepared = false;
   coins = 0;
   lastHit: ItemType | "gap" | "cold" | null = null;
   items: TrackItem[] = [];
@@ -271,6 +272,7 @@ export class RunnerGame {
     this.introTime = INTRO_DURATION;
     this.resumeMode = "running";
     this.items = [];
+    this.openingPrepared = false;
     this.coins = 0;
     this.lastHit = null;
     this.magnetTime = 0;
@@ -443,7 +445,6 @@ export class RunnerGame {
   }
   get trackSeed() { return this.seed; }
   private fillTrack() {
-    if (this.distance < 8) return;
     while (this.nextRow <= this.distance + CONFIG.trackLookahead) {
       const row = Math.round((this.nextRow - 65) / CONFIG.rowSpacing);
       const biome = sectionAt(this.nextRow, this.track).biome;
@@ -890,6 +891,11 @@ export class RunnerGame {
     this.mode = "running";
     this.capture();
   }
+  private prepareOpening() {
+    if (this.openingPrepared) return;
+    if (this.autoSpawn) this.fillTrack();
+    this.openingPrepared = true;
+  }
   update(dt: number) {
     if (this.mode === "rewinding") {
       this.updateRewind(dt);
@@ -897,9 +903,13 @@ export class RunnerGame {
     }
     if (this.mode === "intro") {
       this.introTime = Math.min(INTRO_DURATION, this.introTime + dt);
-      if (this.introTime >= INTRO_DURATION) this.mode = "running";
+      if (this.introTime >= INTRO_DURATION) {
+        this.mode = "running";
+        this.prepareOpening();
+      }
       return;
     }
+    if (this.mode === "running") this.prepareOpening();
     while (dt > 0 && this.mode === "running") {
       const step = Math.min(dt, 1 / 120);
       this.runClock += step;

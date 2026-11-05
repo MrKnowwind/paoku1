@@ -1,10 +1,12 @@
+import { snowMaterial } from "./snow-materials.ts";
+import type { ForestProps } from "./props.ts";
 import { Scene } from "@babylonjs/core/scene";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
 export class CoastSurface {
   readonly material: ShaderMaterial;
-  constructor(scene: Scene) {
+  constructor(scene: Scene, forest: ForestProps) {
     this.material = new ShaderMaterial("world-scale-coastal-surface", scene, {
       vertexSource: `precision highp float;
         attribute vec3 position; attribute vec3 normal; attribute vec2 uv; attribute vec4 color;
@@ -16,7 +18,7 @@ export class CoastSurface {
           vWorldUV = vec2(p.x, p.z + scroll); gl_Position = viewProjection * p;
         }`,
       fragmentSource: `precision highp float;
-        uniform sampler2D sand; uniform sampler2D trail; uniform sampler2D stone; uniform sampler2D grass;
+        uniform sampler2D sand; uniform sampler2D trail; uniform sampler2D stone; uniform sampler2D grass; uniform sampler2D packedSnow;
         uniform vec3 eye; uniform vec3 fogColor; uniform float fogDensity;
         varying vec3 vPosition; varying vec3 vNormal; varying vec2 vSandUV; varying vec4 vWeights; varying vec2 vWorldUV;
         void main() {
@@ -27,20 +29,22 @@ export class CoastSurface {
           vec3 forestColor = mix(grassColor, pathColor, road);
           vec3 color = forestColor * vWeights.r + texture2D(stone, vWorldUV / 6.0).rgb * vWeights.g + sandColor * vWeights.b;
           float grain = sin(vWorldUV.x * 13.0 + sin(vWorldUV.y * 5.0)) * sin(vWorldUV.y * 19.0) * 0.018;
-          vec3 snow = mix(vec3(0.78, 0.87, 0.93), vec3(0.94, 0.97, 1.0), smoothstep(3.8, 5.5, abs(vWorldUV.x))) + grain;
+          vec3 snowGrain = texture2D(packedSnow, vWorldUV / 2.5).rgb;
+          vec3 snow = snowGrain * mix(vec3(0.88, 0.94, 1.0), vec3(1.0), smoothstep(3.8, 5.5, abs(vWorldUV.x))) + grain;
           color += snow * vWeights.a;
           float light = 0.68 + max(0.0, dot(normalize(vNormal), normalize(vec3(-0.4, 1.0, -0.3)))) * 0.32;
           float haze = 1.0 - exp(-pow(length(eye - vPosition) * fogDensity, 2.0));
           gl_FragColor = vec4(mix(color * light, fogColor, haze), 1.0);
         }`,
     }, {attributes: ["position", "normal", "uv", "color"],
-      uniforms: ["world", "viewProjection", "scroll", "eye", "fogColor", "fogDensity"], samplers: ["sand", "trail", "stone", "grass"]});
+      uniforms: ["world", "viewProjection", "scroll", "eye", "fogColor", "fogDensity"], samplers: ["sand", "trail", "stone", "grass", "packedSnow"]});
     for (const [name, file] of Object.entries({sand: "beach-sand-v2.webp", trail: "woodland-trail.webp", stone: "canyon-trail.webp", grass: "woodland-grass.webp"})) {
       const texture = new Texture(import.meta.env.BASE_URL + "art/" + file, scene);
       texture.anisotropicFilteringLevel = 8;
       if (name === "sand") texture.wrapU = texture.wrapV = Texture.MIRROR_ADDRESSMODE;
       this.material.setTexture(name, texture);
     }
+    this.material.setTexture("packedSnow", snowMaterial(scene, "snow", forest).diffuseTexture!);
     this.material.onBindObservable.add(() => {
       if (scene.activeCamera) this.material.setVector3("eye", scene.activeCamera.globalPosition);
       this.material.setColor3("fogColor", scene.fogColor).setFloat("fogDensity", scene.fogDensity);

@@ -34,6 +34,8 @@ export class ForestProps {
     this.scene = scene;
   }
 
+  surfaceMaterial(surface: Surface) { return this.material(surface); }
+
   private material(surface: Surface) {
     const cached = this.materials.get(surface);
     if (cached) return cached;

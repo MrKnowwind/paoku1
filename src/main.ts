@@ -97,7 +97,14 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <canvas id="world" aria-label="3D"></canvas>
   <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="100"><strong id="cold-label"></strong><b id="cold-value"></b><div class="cold-track"><i id="cold-fill"></i></div><small id="cold-feedback"></small></section>
   <div class="frost-edge" id="frost-edge" hidden></div>
-  <div class="snow-lesson" id="snow-lesson" hidden role="dialog" aria-modal="true" aria-labelledby="snow-title" tabindex="-1"><article><small id="snow-progress"></small><h2 id="snow-title"></h2><div id="snow-viewport" aria-label="3D"></div><p id="snow-copy"></p><p id="snow-detail"></p><small id="snow-exceptions"></small><strong id="snow-tap"></strong></article></div>
+  <div class="snow-lesson" id="snow-lesson" hidden role="dialog" aria-modal="true" aria-labelledby="snow-title" tabindex="-1">
+    <article class="snow-card">
+      <header class="snow-card-heading"><div><small id="snow-kicker"></small><h2 id="snow-title"></h2></div><div class="snow-stepper"><span id="snow-progress"></span><span class="snow-step-dots" aria-hidden="true"><i></i><i></i><i></i></span></div><button id="snow-review-close" class="icon-button" data-action="snow-review-close" hidden>${icon("close")}</button></header>
+      <div class="snow-stage"><div id="snow-viewport" aria-label="3D"></div></div>
+      <section class="snow-card-copy"><div id="snow-meter-slot"></div><p id="snow-copy"></p><p id="snow-detail"></p><small id="snow-exceptions"></small></section>
+      <footer class="snow-card-footer"><span id="snow-tap"></span><span class="snow-continue-mark" aria-hidden="true">→</span></footer>
+    </article>
+  </div>
   <div class="vignette"></div><div class="impact-flash"></div>
   <div class="shell">
     <header class="header">
@@ -376,9 +383,14 @@ function updateSnowUi() {
   const panel = document.querySelector<HTMLElement>("#snow-lesson")!;
   const newlyOpened = panel.hidden && teaching;
   panel.hidden = !teaching;
+  document.body.classList.toggle("snow-teaching", teaching);
   if (teaching) {
     gesture = null;
-    document.querySelector("#snow-progress")!.textContent = `${step}/3`;
+    document.querySelector("#snow-kicker")!.textContent = t("snowGuide");
+    document.querySelector("#snow-progress")!.textContent = `${step} / 3`;
+    panel.querySelectorAll<HTMLElement>(".snow-step-dots i").forEach((dot, i) => dot.classList.toggle("current", i + 1 === step));
+    document.querySelector<HTMLElement>("#snow-review-close")!.hidden = !tutorial.reviewingSnow;
+    document.querySelector("#snow-review-close")!.setAttribute("aria-label", t("close"));
     document.querySelector("#snow-title")!.textContent = t(step === 1 ? "cold" : step === 2 ? "threats" : "warmth");
     document.querySelector("#snow-copy")!.textContent = snowText(step === 1 ? "snowLessonCold" : step === 2 ? "snowLessonThreats" : "snowLessonWarmth");
     document.querySelector("#snow-detail")!.textContent = step === 2 ? t("snowLessonFatal") : "";
@@ -389,6 +401,9 @@ function updateSnowUi() {
   const cold = document.querySelector<HTMLElement>("#cold-hud")!;
   cold.hidden = !game.inSnow || game.mode === "ready";
   if (tutorial.reviewingSnow && step === 1) cold.hidden = false;
+  const meterSlot = document.querySelector<HTMLElement>("#snow-meter-slot")!;
+  if (teaching && step === 1) { if (cold.parentElement !== meterSlot) meterSlot.append(cold); }
+  else if (cold.parentElement === meterSlot) document.querySelector("#app")!.append(cold);
   cold.classList.toggle("teaching", teaching && step === 1);
   cold.classList.toggle("critical", game.cold >= 75);
   const value = teaching && step === 1 ? (performance.now() / 80) % CONFIG.coldMax : game.cold;
@@ -400,6 +415,11 @@ function updateSnowUi() {
   feedback.textContent = game.icy ? t("iceSlip") : game.coldFeedback > 0 ? `${game.coldDelta > 0 ? "+" : ""}${game.coldDelta}` : "";
   feedback.classList.toggle("warming", game.coldDelta < 0 && !game.icy);
   document.querySelector<HTMLElement>("#frost-edge")!.hidden = !game.inSnow || game.cold < 75;
+}
+function closeSnowReview() {
+  if (!tutorial.reviewingSnow) return;
+  tutorial.closeSnowReview(); gesture = null;
+  activeDialog = "guide"; renderDialog(); dialog.showModal(); updateSnowUi();
 }
 function advanceSnow() {
   const review = tutorial.reviewingSnow;
@@ -548,6 +568,7 @@ function updateFeatureUi() {
   }
 }
 function act(action: string) {
+  if (action === "snow-review-close") { closeSnowReview(); return; }
   if (tutorial.active?.id === "snow") return;
   if (action === "terrain-override") {
     terrainOverride = !terrainOverride; save("terrain-override", String(terrainOverride)); renderDialog(); return;
@@ -774,7 +795,8 @@ function control(direction: "left" | "right" | "jump" | "slide") {
 window.addEventListener("keydown", (event) => {
   if (tutorial.active?.id === "snow" && !activeDialog) {
     event.preventDefault();
-    if (!event.repeat && ["Enter", "Space"].includes(event.code)) advanceSnow();
+    if (tutorial.reviewingSnow && (event.code === "Escape" || ["Enter", "Space"].includes(event.code) && (event.target as HTMLElement).closest("#snow-review-close"))) closeSnowReview();
+    else if (!event.repeat && ["Enter", "Space"].includes(event.code)) advanceSnow();
     return;
   }
   if (activeDialog) return;
@@ -815,7 +837,12 @@ let gesture: {
   threshold: number;
   direction: "left" | "right" | "jump" | "slide" | null;
 } | null = null;
+let snowTapPointer: {id: number; x: number; y: number; moved: boolean} | null = null;
 window.addEventListener("pointerdown", (event) => {
+  if (tutorial.active?.id === "snow" && !activeDialog) {
+    if (event.button === 0) snowTapPointer = {id: event.pointerId, x: event.clientX, y: event.clientY, moved: false};
+    return;
+  }
   if (
     game.mode !== "running" ||
     game.transitioning || game.icy || tutorial.active?.id === "snow" ||
@@ -834,6 +861,7 @@ window.addEventListener("pointerdown", (event) => {
   };
 });
 window.addEventListener("pointermove", (event) => {
+  if (snowTapPointer?.id === event.pointerId && Math.hypot(event.clientX - snowTapPointer.x, event.clientY - snowTapPointer.y) > 12) snowTapPointer.moved = true;
   if (game.icy || tutorial.active?.id === "snow") { gesture = null; return; }
   if (!gesture || gesture.id !== event.pointerId) return;
   // Track the swipe's furthest point so a reversal works without lifting.
@@ -864,10 +892,16 @@ window.addEventListener("pointermove", (event) => {
   gesture.y = event.clientY;
 });
 window.addEventListener("pointerup", (event) => {
-  if ((event.target as HTMLElement).closest("#snow-lesson") && tutorial.active?.id === "snow" && !activeDialog) { event.preventDefault(); advanceSnow(); return; }
+  if ((event.target as HTMLElement).closest("#snow-lesson") && tutorial.active?.id === "snow" && !activeDialog) {
+    const tapped = snowTapPointer?.id === event.pointerId && !snowTapPointer.moved;
+    snowTapPointer = null;
+    if (tapped && !(event.target as HTMLElement).closest("button") && event.button === 0) { event.preventDefault(); advanceSnow(); }
+    return;
+  }
   if (gesture?.id === event.pointerId) gesture = null;
 });
 window.addEventListener("pointercancel", (event) => {
+  if (snowTapPointer?.id === event.pointerId) snowTapPointer = null;
   if (gesture?.id === event.pointerId) gesture = null;
 });
 document.addEventListener("visibilitychange", () => {

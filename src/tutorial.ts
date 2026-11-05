@@ -38,11 +38,15 @@ export class Tutorial {
     this.previousLesson = this.active; this.reviewingSnow = true;
     this.snowStep = 1; this.active = {id: "snow", gesture: "tap"};
   }
+  closeSnowReview() {
+    if (!this.reviewingSnow) return;
+    this.active = this.previousLesson; this.previousLesson = null; this.reviewingSnow = false; this.snowStep = 0;
+  }
   advanceSnow() {
     if (this.active?.id !== "snow") return;
     if (this.snowStep < 3) { this.snowStep++; return; }
     this.snowStep = 0;
-    if (this.reviewingSnow) { this.active = this.previousLesson; this.previousLesson = null; this.reviewingSnow = false; }
+    if (this.reviewingSnow) this.closeSnowReview();
     else this.complete("snow");
   }
   private seen: Set<string>;

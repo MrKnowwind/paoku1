@@ -1944,26 +1944,59 @@ html[lang="ko-KR"] .intro h1 {
 .cold-hud small.warming { color: #b77826; }
 .cold-hud.critical { border-color: #c36c79; }
 .cold-hud.critical .cold-track i { background: #c36c79; }
-.cold-hud.teaching { z-index: 9; box-shadow: 0 0 0 4px #fce2a8, 0 0 24px #fce2a8; }
-.cold-hud.teaching::after { content: ''; position: absolute; top: 100%; left: 50%; border: 9px solid transparent; border-top-color: #fce2a8; }
+.cold-hud.teaching { position: relative; z-index: auto; inset: auto; left: auto; top: auto; transform: none; width: 100%; margin: 0 0 22px; padding: 14px; background: #e6f0f4; border: 1px solid #aac6d2; box-shadow: 0 0 0 4px #d5e5eb66; }
+.cold-hud.teaching::after { content: ''; position: absolute; left: 22px; top: 100%; border: 7px solid transparent; border-top-color: #aac6d2; }
 .frost-edge { position: fixed; z-index: 3; inset: 0; pointer-events: none; box-shadow: inset 0 0 35px 9px #c5e5ff94; }
 .terrain-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .terrain-selector button { border: 1px solid #b8c8bb; border-radius: 8px; padding: 9px 4px; background: #e5eade; }
 .terrain-selector .selected { background: #526e5b; color: white; }
 .terrain-hint { font-size: 12px; color: #52604e; }
-.snow-lesson { position: fixed; z-index: 8; inset: 0; display: flex; align-items: center; justify-content: center; touch-action: none; outline: none; background: #e6eef233; }
-.snow-lesson article { width: min(610px, calc(100vw - 28px)); max-height: calc(100dvh - 155px); margin-top: 125px; overflow-y: auto; text-align: center; color: #254254; border-radius: 18px; box-shadow: 0 0 0 100vmax #1c334952; padding: 10px 16px 14px; background: linear-gradient(#edf5ff 0 60px, transparent 60px calc(60px + min(28dvh, 220px)), #edf5ff calc(60px + min(28dvh, 220px))); }
-.snow-lesson h2 { font-size: 20px; margin: 0; height: 30px; }
-#snow-progress { display: block; height: 20px; }
-#snow-viewport { height: min(28dvh, 220px); margin: 0 -16px; pointer-events: none; }
-.snow-lesson p { margin: 8px 0; font-size: 14px; font-weight: 600; }
-#snow-detail:empty, #snow-exceptions:empty { display: none; }
-#snow-exceptions { display: block; font-size: 12px; text-align: left; }
-#snow-tap { display: block; font-size: 12px; margin-top: 10px; color: #97652f; }
+.snow-teaching .shell, .snow-teaching .run-status, .snow-teaching .active-tool,
+.snow-teaching .notice-toast, .snow-teaching .coin-pop, .snow-teaching .vignette,
+.snow-teaching .frost-edge, .snow-teaching .impact-flash,
+.snow-teaching .cold-hud:not(.teaching) { visibility: hidden; }
+.snow-lesson { position: fixed; z-index: 8; inset: 0; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); outline: none; touch-action: none; }
+.snow-card { width: min(820px, 100%); max-height: 100%; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-areas: "heading heading" "stage copy" "footer footer"; border: 1px solid #d7dfd9; border-radius: 20px; overflow: hidden; color: #2b403c; box-shadow: 0 24px 90px #142c3444, 0 0 0 100vmax #162c3bb8; }
+.snow-card-heading { grid-area: heading; display: flex; align-items: center; gap: 18px; padding: 22px 26px 18px; background: #f7f6ef; border-bottom: 1px solid #dbe3df; }
+#snow-kicker { display: block; color: #748476; font-size: 11px; letter-spacing: 0.08em; margin-bottom: 4px; }
+.snow-card h2 { margin: 0; font-size: clamp(22px, 3vw, 28px); font-weight: 650; letter-spacing: 0.04em; line-height: 1.25; }
+.snow-stepper { display: flex; flex-direction: column; gap: 8px; margin-left: auto; text-align: right; font-size: 12px; color: #6c8175; font-variant-numeric: tabular-nums; }
+.snow-step-dots { display: flex; gap: 5px; }
+.snow-step-dots i { display: block; width: 18px; height: 3px; border-radius: 3px; background: #d8e0d7; }
+.snow-step-dots i.current { background: #b7834f; }
+#snow-review-close { width: 36px; height: 36px; flex: none; }
+.snow-stage { grid-area: stage; min-width: 0; overflow: hidden; border-right: 1px solid #c9d8dc; }
+#snow-viewport { height: 330px; width: 100%; pointer-events: none; }
+.snow-card-copy { grid-area: copy; display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 26px; background: #f7f6ef; overflow-y: auto; touch-action: pan-y; }
+.snow-card-copy p { margin: 0; font-size: 16px; line-height: 1.85; text-wrap: pretty; }
+#snow-detail { margin-top: 16px; padding-top: 16px; border-top: 1px solid #dce2d8; color: #936544; font-size: 14px; }
+#snow-exceptions { display: block; margin-top: 20px; color: #748075; font-size: 12px; line-height: 1.8; }
+#snow-detail:empty, #snow-exceptions:empty, #snow-meter-slot:empty { display: none; }
+.snow-card-footer { grid-area: footer; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 26px; background: #edf0e7; border-top: 1px solid #d7dfd4; color: #657360; font-size: 12px; }
+.snow-continue-mark { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: #b7814c; color: #fff8eb; font-size: 21px; }
+@media (max-width: 620px) and (min-height: 521px) {
+  .snow-card { width: min(440px, 100%); grid-template-columns: 1fr; grid-template-areas: "heading" "stage" "copy" "footer"; }
+  .snow-card-heading { padding: 16px 20px; }
+  .snow-stage { border-right: 0; border-bottom: 1px solid #c9d8dc; }
+  #snow-viewport { height: min(32dvh, 245px); }
+  .snow-card-copy { padding: 20px; max-height: 30dvh; }
+  .snow-card-copy p { font-size: 14px; }
+  #snow-detail { margin-top: 10px; padding-top: 10px; font-size: 13px; }
+  #snow-exceptions { margin-top: 12px; font-size: 11px; }
+  .snow-card-footer { padding: 12px 20px; }
+  .cold-hud.teaching { margin-bottom: 16px; }
+}
 @media (max-height: 520px) {
-  .snow-lesson article { margin-top: 10px; max-height: calc(100dvh - 20px); width: min(670px, calc(100vw - 36px)); padding-top: 4px; background: linear-gradient(#edf5ff 0 60px, transparent 60px calc(60px + 24dvh), #edf5ff calc(60px + 24dvh)); }
-  #snow-viewport { height: 24dvh; margin-top: 6px; }
-  .cold-hud { left: 14px; top: 70px; transform: none; width: 145px; }
-  .snow-lesson p { margin: 3px 0; font-size: 12px; }
-  #snow-exceptions { font-size: 10px; }
+  .snow-lesson { padding: 10px; }
+  .snow-card { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .snow-card-heading { padding: 10px 18px; }
+  .snow-card h2 { font-size: 20px; }
+  #snow-kicker { font-size: 10px; margin-bottom: 0; }
+  #snow-viewport { height: max(120px, calc(100dvh - 145px)); }
+  .snow-card-copy { padding: 14px 18px; max-height: calc(100dvh - 145px); }
+  .snow-card-copy p { font-size: 13px; line-height: 1.65; }
+  #snow-detail, #snow-exceptions { margin-top: 8px; padding-top: 6px; font-size: 11px; line-height: 1.6; }
+  .snow-card-footer { padding: 8px 18px; }
+  .snow-continue-mark { width: 24px; height: 24px; font-size: 17px; }
+  .cold-hud.teaching { width: 100%; margin-bottom: 12px; padding: 8px 10px; }
 }

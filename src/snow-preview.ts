@@ -3,6 +3,9 @@ import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { Viewport } from "@babylonjs/core/Maths/math.viewport";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { SnowProps } from "./snow-props.ts";
 
 export function drinkingPose(upper: TransformNode, lower: TransformNode, bottle: TransformNode, weight: number) {
@@ -34,7 +37,7 @@ export class SnowPreview {
     this.camera.setTarget(new Vector3(1000, 1, 0)); this.camera.layerMask = 0x10000000;
     this.camera.minZ = 0.1; this.camera.maxZ = 30; this.camera.fov = 0.8;
     this.runner = source.clone("lesson-explorer", this.root)!;
-    this.runner.position.set(0, 0, 0); this.runner.rotation.set(0, 0, 0);
+    this.runner.position.set(0, 0, 0); this.runner.rotation.set(0, Math.PI + 0.18, 0);
     const joints = this.runner.getDescendants().filter(n => n instanceof TransformNode) as TransformNode[];
     this.shoulders = joints.filter(n => n.name.endsWith("shoulder"));
     this.elbows = joints.filter(n => n.name.endsWith("elbow"));
@@ -44,7 +47,7 @@ export class SnowPreview {
     for (const j of joints) if (["shoulder", "elbow", "hip-joint", "knee", "ankle", "torso", "head-joint"].some(name => j.name.endsWith(name))) j.rotation.set(0, 0, 0);
     // Power effects are scene effects, not part of the lesson's character.
     for (const n of joints) if (/aura|jet|pulse|booster-pod|snow-liquor/.test(n.name)) n.setEnabled(false);
-    this.bottle = props.create("liquor"); this.bottle.parent = this.elbows[0] ?? this.runner;
+    this.bottle = props.create("liquor", false); this.bottle.parent = this.elbows[0] ?? this.runner;
     this.bottle.position.set(0, -0.34, 0); this.bottle.scaling.setAll(0.55);
     if (step === 2) {
       this.runner.setEnabled(false);
@@ -59,6 +62,11 @@ export class SnowPreview {
       this.fire = props.create("fire"); this.fire.parent = this.root; this.fire.position.x = -2;
       this.liquorPickup = props.create("liquor"); this.liquorPickup.parent = this.root; this.liquorPickup.position.set(2, 0.95, 1);
     }
+    const stage = CreateCylinder("lesson-display-plinth", {diameter: step === 1 ? 4.2 : 11, height: 0.12, tessellation: 64}, scene);
+    stage.parent = this.root; stage.position.y = -0.1;
+    const stageMaterial = new StandardMaterial("lesson-plinth", scene);
+    stageMaterial.diffuseColor = Color3.FromHexString("#b9ccd4"); stageMaterial.specularColor.setAll(0.03);
+    stage.material = stageMaterial;
     for (const m of this.root.getChildMeshes()) m.layerMask = 0x10000000;
   }
   update(dt: number, rect: DOMRect) {
@@ -85,8 +93,15 @@ export class SnowPreview {
     const canvas = this.scene.getEngine().getRenderingCanvas()!;
     const bounds = canvas.getBoundingClientRect();
     this.camera.viewport = new Viewport((rect.left - bounds.left) / bounds.width, (bounds.bottom - rect.bottom) / bounds.height, rect.width / bounds.width, rect.height / bounds.height);
-    // Narrow displays keep all six threat models in frame.
-    this.camera.fov = Math.min(1.15, Math.max(0.8, 0.8 / Math.max(0.7, rect.width / rect.height)));
+    const aspect = Math.max(0.5, rect.width / Math.max(1, rect.height));
+    this.camera.fov = 0.68;
+    const width = this.step === 1 ? 3.8 : 10.5, height = this.step === 1 ? 3.8 : 5.8;
+    const distance = Math.max(height, width / aspect) / (2 * Math.tan(this.camera.fov / 2)) * 1.08;
+    this.camera.position.set(1000 + distance * 0.12, 1 + distance * 0.48, -distance * 0.87);
+    this.camera.setTarget(new Vector3(1000, 1, 0));
   }
-  dispose() { this.root.dispose(); this.camera.dispose(); }
+  dispose() {
+    const stage = this.root.getChildMeshes().find(m => m.name === "lesson-display-plinth");
+    stage?.material?.dispose(); this.root.dispose(); this.camera.dispose();
+  }
 }

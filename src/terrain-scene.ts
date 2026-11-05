@@ -38,7 +38,7 @@ export class TerrainScene {
   private cells = new Map<number, TransformNode>();
   private coastSurface?: CoastSurface;
   private get sand(): ShaderMaterial {
-    this.coastSurface ??= new CoastSurface(this.scene);
+    this.coastSurface ??= new CoastSurface(this.scene, this.props);
     return this.coastSurface.material;
   }
   private water: OceanWater;
@@ -409,7 +409,7 @@ export class TerrainScene {
           shoulder.position.set(side * 13, 4 * rockBlend, 5);
         }
         if (snow > 0) {
-          this.snow ??= new SnowProps(this.scene);
+          this.snow ??= new SnowProps(this.scene, this.props);
           const pine = this.snow.pine(root, snow); pine.position.set(side * 10, 0.06, 5);
         }
       }
@@ -454,7 +454,7 @@ export class TerrainScene {
         colors.push(...coastWeights(world + z, this.plan));
       }
       this.surface("snow-and-inland-blend", positions, coastGridIndices(20, 5), uvs, colors, root, this.sand);
-      this.snow ??= new SnowProps(this.scene);
+      this.snow ??= new SnowProps(this.scene, this.props);
       const t = (world + 5 - section.start) / (section.end - section.start);
       const snow = section.biome === "snow" ? 1 : section.to === "snow" ? smooth(t) : 1 - smooth(t);
       for (const side of [-1, 1]) {

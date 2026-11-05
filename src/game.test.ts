@@ -1,8 +1,10 @@
+import { openingFog } from "./opening.ts";
+import { CONFIG } from "./config.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RunnerGame, INTRO_TIMING } from "./game.ts";
 
-test("home and countdown stay empty; generation starts after the launch run", () => {
+test("home and countdown stay empty; opening obstacles are ready before the first running frame", () => {
   const game = new RunnerGame({ random: () => 0.5 });
   assert.equal(game.mode, "ready");
   assert.equal(game.items.length, 0);
@@ -12,11 +14,15 @@ test("home and countdown stay empty; generation starts after the launch run", ()
     Object.values(INTRO_TIMING).reduce((sum, value) => sum + value, 0),
   );
   assert.equal(game.mode, "running");
-  assert.equal(game.items.length, 0);
+  assert.ok(game.items.length > 0);
+  assert.equal(game.openingPrepared, true);
+  const openingIds = game.items.map(item => item.id);
+  assert.equal(new Set(openingIds).size, openingIds.length);
   assert.equal(game.distance, 0);
   assert.equal(game.speed, 0);
   game.update(0.2);
   assert.ok(game.speed > 0 && game.speed < 12);
+  assert.deepEqual(game.items.map(item => item.id), openingIds);
   assert.ok(game.distance > 0);
   const speed = game.speed;
   game.pause();
@@ -209,4 +215,21 @@ test("separate runs generate different obstacle and coin layouts", () => {
   const first = layout();
   assert.ok(first.length > 0);
   assert.notDeepEqual(layout(), first);
+});
+
+
+test("direct starts prepare obstacles before any travel and preserve the prepared row through pause", () => {
+  const game = new RunnerGame({random: () => 0.5}); game.start();
+  game.update(0);
+  assert.equal(game.distance, 0); assert.ok(game.items.some(i => ["log", "arch", "rock"].includes(i.type)));
+  const items = structuredClone(game.items);
+  game.pause(); game.update(10); assert.deepEqual(game.items, items);
+  game.returnHome(); assert.equal(game.openingPrepared, false); assert.equal(game.items.length, 0);
+});
+
+test("opening fog holds for model preparation and fades smoothly to the ordinary terrain fog", () => {
+  assert.equal(openingFog(0), 1); assert.equal(openingFog(CONFIG.openingFogHold), 1);
+  assert.ok(openingFog(CONFIG.openingFogHold + 1) > openingFog(CONFIG.openingFogHold + 2));
+  assert.equal(openingFog(CONFIG.openingFogHold + CONFIG.openingFogFade), 0);
+  assert.equal(openingFog(20), 0);
 });
