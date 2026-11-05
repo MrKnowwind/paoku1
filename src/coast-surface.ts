@@ -9,16 +9,16 @@ export class CoastSurface {
       vertexSource: `precision highp float;
         attribute vec3 position; attribute vec3 normal; attribute vec2 uv; attribute vec4 color;
         uniform mat4 world; uniform mat4 viewProjection; uniform float scroll;
-        varying vec3 vPosition; varying vec3 vNormal; varying vec2 vSandUV; varying vec3 vWeights; varying vec2 vWorldUV;
+        varying vec3 vPosition; varying vec3 vNormal; varying vec2 vSandUV; varying vec4 vWeights; varying vec2 vWorldUV;
         void main() {
           vec4 p = world * vec4(position, 1.0); vPosition = p.xyz;
-          vNormal = normalize(mat3(world) * normal); vSandUV = uv; vWeights = color.rgb;
+          vNormal = normalize(mat3(world) * normal); vSandUV = uv; vWeights = color;
           vWorldUV = vec2(p.x, p.z + scroll); gl_Position = viewProjection * p;
         }`,
       fragmentSource: `precision highp float;
         uniform sampler2D sand; uniform sampler2D trail; uniform sampler2D stone; uniform sampler2D grass;
         uniform vec3 eye; uniform vec3 fogColor; uniform float fogDensity;
-        varying vec3 vPosition; varying vec3 vNormal; varying vec2 vSandUV; varying vec3 vWeights; varying vec2 vWorldUV;
+        varying vec3 vPosition; varying vec3 vNormal; varying vec2 vSandUV; varying vec4 vWeights; varying vec2 vWorldUV;
         void main() {
           vec3 sandColor = texture2D(sand, vSandUV).rgb;
           vec3 pathColor = texture2D(trail, vWorldUV / 8.0).rgb * vec3(0.89, 0.86, 0.8);
@@ -26,6 +26,9 @@ export class CoastSurface {
           float road = 1.0 - smoothstep(4.25, 4.4, abs(vWorldUV.x));
           vec3 forestColor = mix(grassColor, pathColor, road);
           vec3 color = forestColor * vWeights.r + texture2D(stone, vWorldUV / 6.0).rgb * vWeights.g + sandColor * vWeights.b;
+          float grain = sin(vWorldUV.x * 13.0 + sin(vWorldUV.y * 5.0)) * sin(vWorldUV.y * 19.0) * 0.018;
+          vec3 snow = mix(vec3(0.78, 0.87, 0.93), vec3(0.94, 0.97, 1.0), smoothstep(3.8, 5.5, abs(vWorldUV.x))) + grain;
+          color += snow * vWeights.a;
           float light = 0.68 + max(0.0, dot(normalize(vNormal), normalize(vec3(-0.4, 1.0, -0.3)))) * 0.32;
           float haze = 1.0 - exp(-pow(length(eye - vPosition) * fogDensity, 2.0));
           gl_FragColor = vec4(mix(color * light, fogColor, haze), 1.0);

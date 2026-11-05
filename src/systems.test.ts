@@ -1,6 +1,6 @@
 import { fishPosition, fishSafeLevel } from "./fish.ts";
 import { coastFloor, coastWeights, coastSandUV } from "./coast-layout.ts";
-import { CYCLE_LENGTH } from "./track.ts";
+import { TrackPlan } from "./track.ts";
 import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,6 +15,13 @@ import {
   obstacleAllowed,
   tunnelDarkness,
 } from "./track.ts";
+
+// Ocean rules are tested in a directed ocean run rather than assuming the old
+// fixed forest/canyon/ocean cycle. Preserve the original offset inside water.
+function waterDistance(game: RunnerGame, oldDistance: number) {
+  game.track = new TrackPlan(game.trackSeed, "water");
+  return CONFIG.forestLength + CONFIG.beachLength + oldDistance - 1540;
+}
 
 test("wall-attached shelves block every covered lane and keep the opposite lane clear", () => {
   for (const laneCount of [1, 2, 3] as const) {
@@ -112,8 +119,8 @@ test("route boundaries, dark tunnel interiors and gap approach buffers use one p
   assert.equal(sectionAt(599.9).biome, "forest");
   assert.equal(sectionAt(600).biome, "tunnel");
   assert.equal(sectionAt(660).biome, "canyon");
-  assert.equal(sectionAt(1460).biome, "beach");
-  assert.equal(sectionAt(1520).biome, "beach");
+  assert.equal(sectionAt(1460).biome, "tunnel");
+  assert.equal(sectionAt(1520).biome, "forest");
   assert.equal(tunnelDarkness(630), 1);
   assert.equal(tunnelDarkness(600), 0);
   assert.ok(tunnelDarkness(605) > 0 && tunnelDarkness(605) < 1);
@@ -467,7 +474,7 @@ test("failed consumption leaves the booster and game state intact", () => {
 
 test("water grid clamps heights and freezes dynamic hazards while paused", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1700;
+  game.start(); game.distance = waterDistance(game, 1700);
   assert.equal(game.swimming, true);
   game.jump(); game.jump(); game.jump();
   assert.equal(game.waterLevel, 2);
@@ -486,7 +493,7 @@ test("water grid clamps heights and freezes dynamic hazards while paused", () =>
 
 test("parallel water coins collect locally, then individually with magnet", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1700;
+  game.start(); game.distance = waterDistance(game, 1700);
   const local = game.addItem("coin", 0, 1, CONFIG.waterHeights[1] + 0.95);
   const side = game.addItem("coin", 1, 5, CONFIG.waterHeights[1] + 0.95);
   const upper = game.addItem("coin", 0, 5, CONFIG.waterHeights[2] + 0.95);
@@ -498,8 +505,8 @@ test("parallel water coins collect locally, then individually with magnet", () =
 
 test("water generation leaves connected safe columns with unique IDs", () => {
   const game = new RunnerGame({random: () => 0.4});
-  game.start(); game.distance = 1650; game.update(0.01);
-  const waterItems = game.items.filter(i => sectionAt(i.worldZ).biome === "water");
+  game.start(); game.distance = waterDistance(game, 1650); game.update(0.01);
+  const waterItems = game.items.filter(i => sectionAt(i.worldZ, game.track).biome === "water");
   assert.ok(waterItems.some(i => i.type === "coin"));
   assert.equal(new Set(game.items.map(i => i.id)).size, game.items.length);
   for (const item of waterItems.filter(i => ["bubble", "coral", "volcano", "fish"].includes(i.type))) {
@@ -520,7 +527,7 @@ test("water generation leaves connected safe columns with unique IDs", () => {
 
 test("water rewind restores dynamic time and clears aquatic hazards", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1700; game.update(3.2);
+  game.start(); game.distance = waterDistance(game, 1700); game.update(3.2);
   const clock = game.worldTime;
   game.addItem("bubble", 0, 1, CONFIG.waterHeights[1] + 0.95); game.update(0.1);
   assert.equal(game.mode, "over");
@@ -533,7 +540,7 @@ test("water rewind restores dynamic time and clears aquatic hazards", () => {
 
 test("volcano warns for two seconds before its visible thermal column is dangerous", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1700;
+  game.start(); game.distance = waterDistance(game, 1700);
   const volcano = game.addItem("volcano", 1, 20, CONFIG.seabedHeight + 0.65);
   game.worldTime += 102.001 - game.waterBounds(volcano).phase;
   assert.equal(game.waterBounds(volcano).warning, true);
@@ -548,7 +555,7 @@ test("volcano warns for two seconds before its visible thermal column is dangero
 
 test("lowest swimming cell reaches a dormant seabed vent", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1700;
+  game.start(); game.distance = waterDistance(game, 1700);
   game.waterLevel = 0; game.waterY = CONFIG.waterHeights[0];
   game.lane = 1; game.x = 2.5;
   const vent = game.addItem("volcano", 1, 1, CONFIG.seabedHeight + 0.65);
@@ -566,7 +573,7 @@ test("corals grow from the bed and block only the heights their branches reach",
   for (const lane of [-1, 0, 1]) {
     for (let tiers = 1; tiers <= 3; tiers++) {
       const game = new RunnerGame({autoSpawn: false});
-      game.start(); game.distance = 1700;
+      game.start(); game.distance = waterDistance(game, 1700);
       const coral = game.addItem("coral", lane, 1);
       coral.coral = makeCoral(lane, tiers);
       assert.ok(coral.coral.rootY <= CONFIG.seabedHeight);
@@ -591,7 +598,7 @@ test("side-grown reefs reach two columns and preserve the opposite column", () =
 
 test("coral collision follows swimming between cells rather than only target lanes", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1700;
+  game.start(); game.distance = waterDistance(game, 1700);
   game.lane = -1; game.x = -2.5;
   game.addItem("coral", 0, 2);
   game.move(1); game.move(1);
@@ -602,18 +609,23 @@ test("coral collision follows swimming between cells rather than only target lan
 
 
 test("coastal texture coordinates keep world scale and remain continuous at both shorelines", () => {
-  const canyonEnd = CONFIG.forestLength + CONFIG.tunnelLength + CONFIG.canyonLength;
-  for (const distance of [canyonEnd, canyonEnd + CONFIG.beachLength, CYCLE_LENGTH - CONFIG.beachLength, CYCLE_LENGTH]) {
-    const before = coastSandUV(0, distance - 0.001), after = coastSandUV(0, distance + 0.001);
-    assert.ok(Math.abs(after[1] - before[1]) < 0.002);
-    const a = coastWeights(distance - 0.001), b = coastWeights(distance + 0.001);
-    a.forEach((weight, i) => assert.ok(Math.abs(weight - b[i]) < 0.001));
-    assert.ok(Math.abs(coastFloor(distance - 0.001) - coastFloor(distance + 0.001)) < 0.002);
-    assert.equal(coastSandUV(3, distance)[0] - coastSandUV(0, distance)[0], 1);
+  {
+    const plan = new TrackPlan(18, "water");
+    plan.at(12000);
+    // Include every committed shore boundary, regardless of its next biome.
+    for (const section of plan.sections.filter(s => ["beach", "water", "shore"].includes(s.biome))) {
+      for (const distance of [section.start, section.end]) {
+        const before = coastSandUV(0, distance - 0.001, plan), after = coastSandUV(0, distance + 0.001, plan);
+        assert.ok(Math.abs(after[1] - before[1]) < 0.002);
+        const a = coastWeights(distance - 0.001, plan), b = coastWeights(distance + 0.001, plan);
+        a.forEach((weight, i) => assert.ok(Math.abs(weight - b[i]) < 0.001));
+        assert.ok(Math.abs(coastFloor(distance - 0.001, plan) - coastFloor(distance + 0.001, plan)) < 0.002);
+        assert.equal(coastSandUV(3, distance, plan)[0] - coastSandUV(0, distance, plan)[0], 1);
+      }
+    }
+    const waterStart = CONFIG.forestLength + CONFIG.beachLength;
+    assert.ok(coastSandUV(0, waterStart, plan)[1] - coastSandUV(0, waterStart - 24, plan)[1] > 8);
   }
-  // The entry slope needs more texture length than its flat projection.
-  const waterStart = canyonEnd + CONFIG.beachLength;
-  assert.ok(coastSandUV(0, waterStart)[1] - coastSandUV(0, waterStart - 24)[1] > 8);
 });
 
 test("fish cross once from outside the left or right edge without reversing", () => {
@@ -635,7 +647,7 @@ test("fish cross once from outside the left or right edge without reversing", ()
 
 test("all swimming levels stay below the surface while the lowest level still meets the bed", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = 1700;
+  game.start(); game.distance = waterDistance(game, 1700);
   game.jump(); game.update(2);
   assert.equal(game.waterLevel, 2);
   assert.ok(game.waterY + 2.1 < CONFIG.waterSurface - 0.12);
@@ -650,8 +662,8 @@ test("ocean rows add extra schools across all heights with distinct IDs and a ro
   const fishHeights = new Set<number>();
   for (let seed = 1; seed <= 12; seed++) {
     const game = new RunnerGame({random: () => seed / 13});
-    game.start(); game.distance = 1700; game.update(0.001);
-    const hazards = game.items.filter(item => sectionAt(item.worldZ).biome === "water" &&
+    game.start(); game.distance = waterDistance(game, 1700); game.update(0.001);
+    const hazards = game.items.filter(item => sectionAt(item.worldZ, game.track).biome === "water" &&
       ["bubble", "coral", "volcano", "fish"].includes(item.type));
     assert.equal(new Set(game.items.map(item => item.id)).size, game.items.length);
     for (const item of hazards) {

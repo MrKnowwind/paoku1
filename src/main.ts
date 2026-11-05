@@ -5,6 +5,8 @@ import "./style.css";
 import { RunnerGame } from "./game.ts";
 import { ForestScene } from "./scene.ts";
 import { Economy } from "./economy.ts";
+import { coreBiomes } from "./track.ts";
+import type { CoreBiome } from "./track.ts";
 import { CONFIG } from "./config.ts";
 import { Tutorial } from "./tutorial.ts";
 import type { LessonId } from "./tutorial.ts";
@@ -40,6 +42,8 @@ audio.musicEnabled = music;
 window.addEventListener("pointerdown", () => audio.unlock(), {capture: true});
 window.addEventListener("keydown", () => audio.unlock(), {capture: true});
 let quality = new URLSearchParams(location.search).get("quality") !== "low" && read("quality") !== "low";
+let terrainOverride = read("terrain-override") === "true";
+let terrainTarget: CoreBiome = coreBiomes.find(b => b === read("terrain-target")) ?? "snow";
 let best = Math.max(0, Number(read("best")) || 0);
 let newBest = false;
 let resultDelay = 0;
@@ -91,6 +95,9 @@ const text = (key: MessageKey, tag = "span", cls = "") =>
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <canvas id="world" aria-label="3D"></canvas>
+  <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="100"><strong id="cold-label"></strong><b id="cold-value"></b><div class="cold-track"><i id="cold-fill"></i></div><small id="cold-feedback"></small></section>
+  <div class="frost-edge" id="frost-edge" hidden></div>
+  <div class="snow-lesson" id="snow-lesson" hidden role="dialog" aria-modal="true" aria-labelledby="snow-title" tabindex="-1"><article><small id="snow-progress"></small><h2 id="snow-title"></h2><div id="snow-viewport" aria-label="3D"></div><p id="snow-copy"></p><p id="snow-detail"></p><small id="snow-exceptions"></small><strong id="snow-tap"></strong></article></div>
   <div class="vignette"></div><div class="impact-flash"></div>
   <div class="shell">
     <header class="header">
@@ -190,6 +197,8 @@ function renderDialog() {
       <div class="setting-row"><span class="setting-label">${icon("music")}${t("music")}</span><button class="toggle ${music ? "is-on" : ""}" data-action="music" role="switch" aria-checked="${music}" aria-label="${t("music")}"><span></span></button></div>
       <div class="setting-row"><span class="setting-label">${icon("sound")}${t("sound")}</span><button class="toggle ${sound ? "is-on" : ""}" data-action="sound" role="switch" aria-checked="${sound}" aria-label="${t("sound")}"><span></span></button></div>
       <div class="setting-row"><span class="setting-label">${icon("quality")}${t("quality")}</span><div class="segmented"><button class="${quality ? "selected" : ""}" data-quality="high" aria-pressed="${quality}">${t("high")}</button><button class="${!quality ? "selected" : ""}" data-quality="low" aria-pressed="${!quality}">${t("low")}</button></div></div>
+      <div class="setting-row"><div class="setting-copy"><span class="setting-label">${t("terrainOverride")}</span><small>${t("terrainOverrideHint")}</small></div><button class="toggle ${terrainOverride ? "is-on" : ""}" data-action="terrain-override" role="switch" aria-checked="${terrainOverride}" aria-label="${t("terrainOverride")}"><span></span></button></div>
+      <div class="terrain-selector" role="radiogroup" aria-label="${t("terrainOverride")}">${coreBiomes.map(b => `<button role="radio" aria-checked="${terrainTarget === b}" data-terrain="${b}" ${terrainOverride ? "" : "disabled"} class="${terrainTarget === b ? "selected" : ""}">${t(b)}</button>`).join("")}</div><p class="terrain-hint">${t("terrainUnlockHint")}</p>
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span><small>${t("tutorialTestHint")}</small></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>`;
   } else if (activeDialog === "guide") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("help")}</span><h2 id="dialog-title">${t("howTo")}</h2></div><div class="guide-list">
@@ -207,18 +216,19 @@ function renderDialog() {
         )
         .join(
           "",
-        )}</div>`;
+        )}</div><button class="secondary-button full-width" data-action="snow-guide">${t("snowGuide")}</button><p class="terrain-hint">${t("snowExceptions")}</p>`;
   } else if (activeDialog === "pause") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
     const hint =
+      game.lastHit === "cold" ? "coldHint" : ["pool", "fire"].includes(game.lastHit ?? "") ? "snowDeathHint" :
       ["bubble", "coral", "volcano", "fish"].includes(game.lastHit ?? "")
         ? "lessonSwim"
         : game.lastHit === "wall-rock"
         ? "wallHint"
         : game.lastHit === "gap"
           ? "fallHint"
-          : game.lastHit === "log"
+          : ["log", "stump", "snow-log"].includes(game.lastHit ?? "")
             ? game.terrain.biome === "canyon"
               ? "canyonLogHint"
               : "hitLog"
@@ -304,7 +314,10 @@ function start() {
   newBest = false;
   resultDelay = 0;
   document.body.classList.remove("crashed");
+  game.nextTerrain = terrainOverride ? terrainTarget : null;
   game.begin();
+  // Commit the directed exit now; visuals still load only near that section.
+  game.track.at(CONFIG.forestLength);
   tutorial.resetRun(game);
   syncView();
   (document.activeElement as HTMLElement)?.blur();
@@ -340,6 +353,7 @@ function showToast(message: string) {
   }, 3200);
 }
 const lessonTitles: Record<LessonId, MessageKey> = {
+  snow: "snowGuide",
   swim: "lessonSwim",
   move: "lessonMove",
   jump: "lessonJump",
@@ -353,10 +367,50 @@ const lessonTitles: Record<LessonId, MessageKey> = {
   booster: "lessonBooster",
   hourglass: "lessonHourglass",
 };
+function snowText(key: MessageKey) {
+  return t(key).replace("{drift}", String(CONFIG.snowdriftCold)).replace("{man}", String(CONFIG.snowmanCold)).replace("{fire}", String(CONFIG.fireWarmth)).replace("{liquor}", String(CONFIG.liquorWarmth));
+}
+function updateSnowUi() {
+  const teaching = tutorial.active?.id === "snow" && !activeDialog;
+  const step = tutorial.snowStep;
+  const panel = document.querySelector<HTMLElement>("#snow-lesson")!;
+  const newlyOpened = panel.hidden && teaching;
+  panel.hidden = !teaching;
+  if (teaching) {
+    gesture = null;
+    document.querySelector("#snow-progress")!.textContent = `${step}/3`;
+    document.querySelector("#snow-title")!.textContent = t(step === 1 ? "cold" : step === 2 ? "threats" : "warmth");
+    document.querySelector("#snow-copy")!.textContent = snowText(step === 1 ? "snowLessonCold" : step === 2 ? "snowLessonThreats" : "snowLessonWarmth");
+    document.querySelector("#snow-detail")!.textContent = step === 2 ? t("snowLessonFatal") : "";
+    document.querySelector("#snow-exceptions")!.textContent = step === 3 ? t("snowExceptions") : "";
+    document.querySelector("#snow-tap")!.textContent = t("snowTap");
+    if (newlyOpened) panel.focus({preventScroll: true});
+  }
+  const cold = document.querySelector<HTMLElement>("#cold-hud")!;
+  cold.hidden = !game.inSnow || game.mode === "ready";
+  if (tutorial.reviewingSnow && step === 1) cold.hidden = false;
+  cold.classList.toggle("teaching", teaching && step === 1);
+  cold.classList.toggle("critical", game.cold >= 75);
+  const value = teaching && step === 1 ? (performance.now() / 80) % CONFIG.coldMax : game.cold;
+  document.querySelector("#cold-label")!.textContent = t(game.cold >= 75 ? "coldWarning" : "cold");
+  document.querySelector("#cold-value")!.textContent = `${Math.floor(value)}/${CONFIG.coldMax}`;
+  cold.setAttribute("aria-label", t("cold")); cold.setAttribute("aria-valuenow", String(Math.floor(value)));
+  document.querySelector<HTMLElement>("#cold-fill")!.style.width = `${value}%`;
+  const feedback = document.querySelector<HTMLElement>("#cold-feedback")!;
+  feedback.textContent = game.icy ? t("iceSlip") : game.coldFeedback > 0 ? `${game.coldDelta > 0 ? "+" : ""}${game.coldDelta}` : "";
+  feedback.classList.toggle("warming", game.coldDelta < 0 && !game.icy);
+  document.querySelector<HTMLElement>("#frost-edge")!.hidden = !game.inSnow || game.cold < 75;
+}
+function advanceSnow() {
+  const review = tutorial.reviewingSnow;
+  tutorial.advanceSnow(); gesture = null;
+  if (review && !tutorial.reviewingSnow) { activeDialog = "guide"; renderDialog(); dialog.showModal(); }
+  updateSnowUi();
+}
 function updateTutorialUi() {
   const overlay = document.querySelector<HTMLElement>("#tutorial-overlay")!;
   const lesson = tutorial.active;
-  overlay.hidden = !lesson || game.mode !== "running" || !!activeDialog;
+  overlay.hidden = !lesson || lesson.id === "snow" || game.mode !== "running" || !!activeDialog;
   if (lesson) document.querySelector("#tutorial-title")!.textContent = t(lessonTitles[lesson.id]);
 }
 function updateFeatureUi() {
@@ -469,7 +523,7 @@ function updateFeatureUi() {
   button.disabled =
     state.boosters <= 0 ||
     game.mode !== "running" ||
-    game.boosting ||
+    game.boosting || game.icy || tutorial.active?.id === "snow" ||
     game.boostCooldown > 0;
   button.classList.toggle("tool-live", game.boosting);
   document.querySelector("#booster-status")!.textContent =
@@ -494,6 +548,13 @@ function updateFeatureUi() {
   }
 }
 function act(action: string) {
+  if (tutorial.active?.id === "snow") return;
+  if (action === "terrain-override") {
+    terrainOverride = !terrainOverride; save("terrain-override", String(terrainOverride)); renderDialog(); return;
+  }
+  if (action === "snow-guide") {
+    dialog.close(); activeDialog = null; tutorial.reviewSnow(); updateSnowUi(); return;
+  }
   if (action === "shop") {
     if (game.mode === "ready" || (game.mode === "over" && runFinalized))
       openDialog("shop");
@@ -612,11 +673,14 @@ function act(action: string) {
 }
 document.addEventListener("click", (event) => {
   const target = (event.target as HTMLElement).closest<HTMLElement>(
-    "[data-action], [data-quality], [data-language]",
+    "[data-action], [data-quality], [data-language], [data-terrain]",
   );
   if (!target) return;
   event.preventDefault();
-  if (target.dataset.language) {
+  if (target.dataset.terrain) {
+    terrainTarget = coreBiomes.find(b => b === target.dataset.terrain) ?? "snow";
+    save("terrain-target", terrainTarget); renderDialog();
+  } else if (target.dataset.language) {
     language = resolveLanguage(target.dataset.language);
     save("language", language);
     localize();
@@ -689,7 +753,7 @@ dialog.addEventListener("click", (event) => {
 });
 
 function control(direction: "left" | "right" | "jump" | "slide") {
-  if (game.mode !== "running" || activeDialog) return;
+  if (game.mode !== "running" || activeDialog || game.icy || tutorial.active?.id === "snow") return;
   let accepted = false;
   const wallBefore = game.wallSide;
   const laneBefore = game.lane;
@@ -708,6 +772,11 @@ function control(direction: "left" | "right" | "jump" | "slide") {
   tutorial.action(direction, game, accepted);
 }
 window.addEventListener("keydown", (event) => {
+  if (tutorial.active?.id === "snow" && !activeDialog) {
+    event.preventDefault();
+    if (!event.repeat && ["Enter", "Space"].includes(event.code)) advanceSnow();
+    return;
+  }
   if (activeDialog) return;
   if (event.code === "KeyB") {
     if (!event.repeat) act("boost");
@@ -749,7 +818,7 @@ let gesture: {
 window.addEventListener("pointerdown", (event) => {
   if (
     game.mode !== "running" ||
-    game.transitioning ||
+    game.transitioning || game.icy || tutorial.active?.id === "snow" ||
     gesture ||
     (event.pointerType === "mouse" && event.button !== 0) ||
     activeDialog ||
@@ -765,6 +834,7 @@ window.addEventListener("pointerdown", (event) => {
   };
 });
 window.addEventListener("pointermove", (event) => {
+  if (game.icy || tutorial.active?.id === "snow") { gesture = null; return; }
   if (!gesture || gesture.id !== event.pointerId) return;
   // Track the swipe's furthest point so a reversal works without lifting.
   if (gesture.direction === "left")
@@ -794,6 +864,7 @@ window.addEventListener("pointermove", (event) => {
   gesture.y = event.clientY;
 });
 window.addEventListener("pointerup", (event) => {
+  if ((event.target as HTMLElement).closest("#snow-lesson") && tutorial.active?.id === "snow" && !activeDialog) { event.preventDefault(); advanceSnow(); return; }
   if (gesture?.id === event.pointerId) gesture = null;
 });
 window.addEventListener("pointercancel", (event) => {
@@ -849,7 +920,7 @@ try {
       if (game.pickupSerial !== pickupBefore) beep(game.lastPickup);
       if (game.shieldBreakSerial !== shieldBreakBefore) beep("break");
       if (game.clearSerial !== clearBefore) beep("clear");
-      if (transitionBefore || game.transitioning) gesture = null;
+      if (transitionBefore || game.transitioning || game.icy) gesture = null;
       if (swimBefore !== game.swimming) beep("splash");
       if (game.mode !== previousMode) syncView();
       const countdown = document.querySelector<HTMLElement>("#countdown")!;
@@ -863,7 +934,8 @@ try {
         countdown.classList.add("beat");
         if (count) beep(count === "GO!" ? "start" : "tick");
       }
-      world!.update(game, simulationDt, tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"));
+      updateSnowUi();
+      world!.update(game, game.mode === "over" ? dt : simulationDt, tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"), tutorial.active?.id === "snow" && !activeDialog ? tutorial.snowStep : 0, dt);
       if (!loaded) {
         const pending = world!.scene.getWaitingItemsCount();
         maximumPending = Math.max(maximumPending, pending);
@@ -907,7 +979,7 @@ try {
         .classList.toggle("faded", game.distance > 48);
       if (wasRunning && game.mode === "over") {
         beep("hit");
-        resultDelay = 0.65;
+        resultDelay = game.lastHit === "pool" ? 1.8 : game.lastHit === "cold" ? 1.2 : 0.65;
         document.body.classList.add("crashed");
       }
       if (game.mode === "over" && !activeDialog) {

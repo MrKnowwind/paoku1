@@ -7,6 +7,7 @@ const onPath = (item: TrackItem, x: number) =>
     : Math.abs(item.lane * 2.5 - x) < 1.1;
 
 export type LessonId =
+  | "snow"
   | "swim"
   | "move"
   | "jump"
@@ -30,6 +31,20 @@ const basics: LessonId[] = ["move"];
 
 export class Tutorial {
   active: Lesson | null = null;
+  snowStep = 0;
+  reviewingSnow = false;
+  private previousLesson: Lesson | null = null;
+  reviewSnow() {
+    this.previousLesson = this.active; this.reviewingSnow = true;
+    this.snowStep = 1; this.active = {id: "snow", gesture: "tap"};
+  }
+  advanceSnow() {
+    if (this.active?.id !== "snow") return;
+    if (this.snowStep < 3) { this.snowStep++; return; }
+    this.snowStep = 0;
+    if (this.reviewingSnow) { this.active = this.previousLesson; this.previousLesson = null; this.reviewingSnow = false; }
+    else this.complete("snow");
+  }
   private seen: Set<string>;
   private runSeen: Set<string>;
   private cooldown = 0;
@@ -56,6 +71,7 @@ export class Tutorial {
     this.runSeen = new Set(this.testMode ? [] : this.seen);
     if (this.needsBasics) basics.forEach((id) => this.runSeen.delete(id));
     this.active = null;
+    this.snowStep = 0; this.reviewingSnow = false; this.previousLesson = null;
     this.cooldown = 0;
     this.handled.clear();
   }
@@ -82,6 +98,7 @@ export class Tutorial {
   action(direction: Direction, game: RunnerGame, accepted: boolean) {
     if (!this.active) return;
     const id = this.active.id;
+    if (id === "snow") return;
     if (["swim", "coin", "magnet", "shield"].includes(id)) {
       this.complete(id);
       return;
@@ -104,6 +121,7 @@ export class Tutorial {
   }
   timeScale(game: RunnerGame) {
     if (!this.active || game.mode !== "running") return 1;
+    if (this.active.id === "snow") return 0;
     if (this.active.id === "wallHeight") return 0;
     if (this.active.id === "move" && game.distance >= 4) return 0;
     if (
@@ -136,6 +154,9 @@ export class Tutorial {
       return;
     }
     if (this.cooldown > 0 || game.boosting) return;
+    if (game.inSnow && !this.knows("snow")) {
+      this.snowStep = 1; this.show({id: "snow", gesture: "tap"}); return;
+    }
     if (this.needsBasics && !this.knows("move") && game.distance < 6) {
       this.show({ id: "move", gesture: "left" });
       return;

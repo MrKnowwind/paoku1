@@ -33,7 +33,9 @@ import { OceanProps } from "./ocean-props.ts";
 import { FresnelParameters } from "@babylonjs/core/Materials/fresnelParameters";
 import { ForestProps } from "./props.ts";
 import { TerrainScene } from "./terrain-scene.ts";
-import { sectionAt, tunnelDarkness } from "./track.ts";
+import { defaultTrack, sectionAt, tunnelDarkness, snowBlend } from "./track.ts";
+import { SnowProps } from "./snow-props.ts";
+import { SnowPreview, drinkingPose } from "./snow-preview.ts";
 import { iconAsset } from "./art.ts";
 
 type Triple = [number, number, number];
@@ -121,6 +123,41 @@ export class ForestScene {
   private shake = 0;
   private mode = "";
   private high = true;
+  private track = defaultTrack;
+  private snow?: SnowProps;
+  private snowPreview?: SnowPreview;
+  private drinkBottle?: TransformNode;
+  private lastSnowHit = 0;
+  private get snowProps() { return this.snow ??= new SnowProps(this.scene); }
+  private snowPose(game: RunnerGame) {
+    if (game.icy) {
+      const recovery = game.iceRemaining > 0 ? 1 : game.iceRecover / CONFIG.iceRecovery;
+      this.hips.position.y = 0.95 - 0.5 * recovery;
+      this.runner.rotation.z = -0.5 * recovery;
+      this.torso.rotation.x = -0.5 * recovery;
+      for (const leg of this.legs) { leg.upper.rotation.x = -1.3 * recovery; leg.lower.rotation.x = 0.3 * recovery; }
+      for (const arm of this.arms) arm.upper.rotation.z = arm.side * 0.8 * recovery;
+    }
+    if (game.inSnow && game.cold >= 75) {
+      this.torso.rotation.z += Math.sin(game.worldTime * 35) * 0.028;
+      this.head.rotation.z = Math.sin(game.worldTime * 35 + 1) * 0.035;
+    }
+    if (game.drinkTime > 0 && !this.drinkBottle) {
+      this.drinkBottle = this.snowProps.create("liquor"); this.drinkBottle.parent = this.arms[0].lower;
+      this.drinkBottle.position.set(0, -0.34, 0); this.drinkBottle.scaling.setAll(0.55);
+    }
+    if (this.drinkBottle) drinkingPose(this.arms[0].upper, this.arms[0].lower, this.drinkBottle, Math.sin(Math.min(1, game.drinkTime / 1.1) * Math.PI));
+    if (game.lastHit === "pool") {
+      this.runner.position.y -= this.motion.pose.death * 3.5;
+      this.runner.rotation.x = this.motion.pose.death * 0.35;
+      this.runner.rotation.z = Math.sin(this.time * 8) * 0.12;
+      for (const arm of this.arms) arm.upper.rotation.z = arm.side * 1.4;
+    } else if (game.lastHit === "cold") {
+      this.runner.rotation.x = 0.18; this.runner.rotation.z = 0;
+      this.hips.position.y = 0.65;
+      this.torso.rotation.z = Math.sin(this.time * 40) * 0.02;
+    }
+  }
 
   constructor(canvas: HTMLCanvasElement, highQuality: boolean, progress: (percent: number) => void = () => {}) {
     this.engine = new Engine(canvas, true, { stencil: false }, false);
@@ -1189,6 +1226,11 @@ export class ForestScene {
   }
 
   private createItem(item: TrackItem) {
+    if (["ice", "pool", "snowdrift", "snowman", "fire", "liquor", "stump", "snow-log"].includes(item.type)) {
+      const root = this.snowProps.create(item.type);
+      root.position.set(item.type === "snow-log" ? 0 : item.lane * 2.5, item.y, item.z);
+      return root;
+    }
     if (["bubble", "coral", "volcano", "fish"].includes(item.type)) {
       const root = new TransformNode(item.type, this.scene);
       if (item.type === "bubble") {
@@ -1267,7 +1309,7 @@ export class ForestScene {
       const root = this.props.create(
         item.type as "log" | "arch" | "rock",
         item.id,
-        sectionAt(item.worldZ).biome === "canyon",
+        sectionAt(item.worldZ, this.track).biome === "canyon",
         item.shelf,
       );
       root.position.set(item.shelf ? 0 : item.lane * 2.5, 0, item.z);
@@ -1730,7 +1772,8 @@ export class ForestScene {
     };
   }
 
-  update(game: RunnerGame, dt: number, showWallEntryMarkers = false) {
+  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, snowLesson = 0, previewDt = dt) {
+    this.track = game.track;
     const running = game.mode === "running",
       ready = game.mode === "ready",
       paused = game.mode === "paused",
@@ -1757,6 +1800,7 @@ export class ForestScene {
         this.particles = [];
       }
       if (game.mode === "over") {
+        if (game.lastHit === "pool") this.burst(new Vector3(game.x, 0.2, 0), "#bde7ff", 40, 5, 1.6, 0.2, 5);
         this.shake = 0.2;
         this.shockLife = 0.5;
         this.shock.position.set(game.x, 0.1, 0);
@@ -1768,18 +1812,18 @@ export class ForestScene {
     const waterBefore = this.runner.position.y;
     const pose = this.motion.update(game, dt);
     const scroll = ready || introducing ? 0 : game.distance;
-    this.terrainView.update(scroll, game.worldTime, game.trackSeed);
+    this.terrainView.update(scroll, game.worldTime, game.trackSeed, this.track);
     // Exposure follows the lens crossing the mouth, not the runner seven metres ahead.
     const cameraDistance = Math.max(0, scroll + this.camera.position.z);
-    const darkness = tunnelDarkness(cameraDistance);
-    const section = sectionAt(cameraDistance);
+    const darkness = tunnelDarkness(cameraDistance, this.track);
+    const section = sectionAt(cameraDistance, this.track);
     const from =
       section.biome === "tunnel"
-        ? sectionAt(section.start - 1).biome
+        ? sectionAt(section.start - 1, this.track).biome
         : section.biome;
     const to =
       section.biome === "tunnel"
-        ? sectionAt(section.end + 1).biome
+        ? sectionAt(section.end + 1, this.track).biome
         : section.biome;
     const progress =
       section.biome === "tunnel"
@@ -1798,7 +1842,8 @@ export class ForestScene {
     const coastalSky = section.biome === "beach" || section.biome === "water" ? 1
       : section.biome === "shore" ? 1 - smooth((cameraDistance - section.start - 50) / 30)
       : section.biome === "canyon" ? smooth((cameraDistance - section.end + 80) / 80) : 0;
-    const outside = Color3.Lerp(inlandSky, Color3.FromHexString("#b8dce7"), coastalSky);
+    const snowLight = snowBlend(cameraDistance, this.track);
+    const outside = Color3.Lerp(Color3.Lerp(inlandSky, Color3.FromHexString("#b8dce7"), coastalSky), Color3.FromHexString("#d6e7f4"), snowLight);
     const immersed = game.waterBlend;
     const fog = Color3.Lerp(outside.scale(1 - darkness * 0.78), Color3.FromHexString("#247f98"), immersed);
 
@@ -1813,7 +1858,7 @@ export class ForestScene {
       canyonBlend,
     );
     this.forestVisible = canyonBlend < 0.5;
-    this.forestBackdrop.setEnabled(canyonBlend < 0.999 && immersed < 0.01 && coastalSky < 0.15);
+    this.forestBackdrop.setEnabled(canyonBlend < 0.999 && immersed < 0.01 && coastalSky < 0.15 && snowLight < 0.2);
     for (const hill of this.forestBackdrop.getChildMeshes())
       hill.visibility = 1 - canyonBlend;
     this.chunks.forEach((root, i) => {
@@ -1822,7 +1867,7 @@ export class ForestScene {
       for (const child of root.getChildren()) {
         const node = child as TransformNode;
         const worldZ = root.position.z + scroll + node.position.z;
-        const road = sectionAt(worldZ);
+        const road = sectionAt(worldZ, this.track);
         const clearMouth =
           road.biome === "forest" &&
           road.end - worldZ > 7 &&
@@ -2037,6 +2082,15 @@ export class ForestScene {
         if (leg.foot) leg.foot.rotation.x = mix(leg.foot.rotation.x, 0.2 + Math.sin(kick - 0.9) * 0.08);
       }
     }
+    this.snowPose(game);
+    if (this.lastSnowHit !== game.snowHitSerial) {
+      this.lastSnowHit = game.snowHitSerial;
+      this.burst(new Vector3(game.snowHitX, 0.8, 0), "#eef8ff", 22, 4, 0.7, 0.18, 5);
+    }
+    if (game.lastHit === "pool") {
+      this.shock.position.set(game.x, 0.12, 0); this.shock.rotation.set(0, 0, 0);
+      this.shock.scaling.setAll(1 + this.motion.pose.death * 2.5);
+    }
     this.contact.position.x = this.runner.position.x;
     this.contact.position.z = this.runner.position.z;
     this.restStop.position.z = REST_Z - scroll;
@@ -2107,6 +2161,7 @@ export class ForestScene {
         this.itemMeshes.set(item.id, mesh);
       }
       mesh.position.z = item.z;
+      if (this.snow) this.snow.animate(mesh, game.worldTime);
       if (["bubble", "coral", "volcano", "fish"].includes(item.type)) {
         const b = game.waterBounds(item);
         mesh.position.set(b.x, item.type === "volcano" ? item.y : b.y, item.z);
@@ -2290,6 +2345,19 @@ export class ForestScene {
       3,
       dt,
     );
+    if (this.snowPreview && this.snowPreview.step !== snowLesson) { this.snowPreview.dispose(); this.snowPreview = undefined; }
+    if (snowLesson && !this.snowPreview) this.snowPreview = new SnowPreview(this.scene, this.runner, this.snowProps, snowLesson);
+    this.scene.activeCamera = this.camera;
     this.scene.render();
+    const viewport = document.querySelector<HTMLElement>("#snow-viewport");
+    if (this.snowPreview && viewport) {
+      this.snowPreview.update(previewDt, viewport.getBoundingClientRect());
+      this.scene.activeCamera = this.snowPreview.camera;
+      this.scene.autoClear = false;
+      this.engine.clear(this.scene.clearColor, false, true, true);
+      this.scene.render();
+      this.scene.autoClear = true;
+      this.scene.activeCamera = this.camera;
+    }
   }
 }

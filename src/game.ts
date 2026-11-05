@@ -15,6 +15,8 @@ import {
   waterBlend,
   waterTransition,
 } from "./track.ts";
+import { TrackPlan } from "./track.ts";
+import type { CoreBiome } from "./track.ts";
 import type { TrackGap } from "./track.ts";
 export type GameMode =
   | "ready"
@@ -38,6 +40,7 @@ export type ItemType =
   | "magnet"
   | "shield"
   | "wall-rock"
+  | "ice" | "pool" | "snowdrift" | "snowman" | "fire" | "liquor" | "stump" | "snow-log"
   | "bubble" | "coral" | "volcano" | "fish";
 export interface TrackItem {
   id: number;
@@ -57,6 +60,13 @@ export interface TrackItem {
   fish?: FishCrossing;
 }
 interface Snapshot {
+  cold: number;
+  iceRemaining: number;
+  iceRecover: number;
+  iceX: number;
+  triggeredIce: number[];
+  firePasses: number[];
+  drinkTime: number;
   waterLevel: number;
   waterY: number;
   worldTime: number;
@@ -84,9 +94,27 @@ export class RunnerGame {
   waterY: number = CONFIG.waterHeights[1];
   worldTime = 0;
   get swimming() { return this.terrain.biome === "water"; }
-  get waterBlend() { return waterBlend(this.distance); }
-  get transitioning() { return waterTransition(this.distance); }
+  get waterBlend() { return waterBlend(this.distance, this.track); }
+  get transitioning() { return waterTransition(this.distance, this.track); }
   get visualWaterY() { return this.waterY * this.waterBlend; }
+  track = new TrackPlan();
+  nextTerrain: CoreBiome | null = null;
+  cold = 0;
+  coldGrace = 0;
+  coldDelta = 0;
+  coldFeedback = 0;
+  iceRemaining = 0;
+  iceRecover = 0;
+  iceX = 0;
+  drinkTime = 0;
+  snowHitSerial = 0;
+  snowHitX = 0;
+  private triggeredIce = new Set<number>();
+  private firePasses = new Set<number>();
+  private warmedFires = new Set<number>();
+  private generatedSnow = new Set<number>();
+  get icy() { return this.iceRemaining > 0 || this.iceRecover > 0; }
+  get inSnow() { return this.terrain.biome === "snow"; }
   lane = 0;
   x = 0;
   y = 0;
@@ -96,7 +124,7 @@ export class RunnerGame {
   distance = 0;
   introTime = 0;
   coins = 0;
-  lastHit: ItemType | "gap" | null = null;
+  lastHit: ItemType | "gap" | "cold" | null = null;
   items: TrackItem[] = [];
   magnetTime = 0;
   shieldTime = 0;
@@ -161,7 +189,7 @@ export class RunnerGame {
   }
   get speed() {
     return (
-      this.baseSpeed * (this.boosting ? CONFIG.boostSpeed : this.launchProgress)
+      this.baseSpeed * (this.boosting ? CONFIG.boostSpeed : this.iceRemaining > 0 ? CONFIG.iceSpeed : this.launchProgress)
     );
   }
   get score() {
@@ -186,10 +214,10 @@ export class RunnerGame {
     return this.slideTime > 0;
   }
   get terrain() {
-    return sectionAt(this.distance);
+    return sectionAt(this.distance, this.track);
   }
   get gapWarning() {
-    const gap = nextGap(this.distance, this.seed);
+    const gap = nextGap(this.distance, this.seed, this.track);
     if (gap && (!this.completedWallTutorial || this.tutorialGaps.has(gap.id)))
       gap.tutorial = true;
     return gap &&
@@ -263,6 +291,10 @@ export class RunnerGame {
     this.completedWallTutorial = false;
     this.shattered = [];
     this.seed = 1 + Math.floor(this.random() * 2147483646);
+    this.track = new TrackPlan(this.seed, this.nextTerrain);
+    this.cold = this.coldGrace = this.coldFeedback = this.coldDelta = 0;
+    this.iceRemaining = this.iceRecover = this.iceX = this.drinkTime = 0;
+    this.triggeredIce.clear(); this.firePasses.clear(); this.warmedFires.clear(); this.generatedSnow.clear();
     this.nextRow = 65;
     this.runClock = 0;
     this.lastSnapshot = -1;
@@ -271,9 +303,9 @@ export class RunnerGame {
     this.capture();
   }
   move(direction: number) {
-    if (this.mode !== "running" || this.boosting || this.wallSide || this.transitioning) return false;
+    if (this.mode !== "running" || this.icy || this.boosting || this.wallSide || this.transitioning) return false;
     const side = Math.sign(direction);
-    const gap = entryAt(this.distance, this.seed);
+    const gap = entryAt(this.distance, this.seed, this.track);
     if (this.lane === side && gap && Math.abs(this.x - side * 2.5) < 0.8) {
       this.wallSide = this.wallVisualSide = side;
       this.wallGap = gap;
@@ -309,7 +341,7 @@ export class RunnerGame {
     return true;
   }
   jump() {
-    if (this.mode !== "running" || this.boosting) return false;
+    if (this.mode !== "running" || this.icy || this.boosting) return false;
     if (this.transitioning) return false;
     if (this.swimming) { this.waterLevel = Math.min(2, this.waterLevel + 1); return true; }
     if (this.wallSide) return this.wallHeight(1);
@@ -320,7 +352,7 @@ export class RunnerGame {
     return true;
   }
   slide() {
-    if (this.mode !== "running" || this.boosting) return false;
+    if (this.mode !== "running" || this.icy || this.boosting) return false;
     if (this.transitioning) return false;
     if (this.swimming) { this.waterLevel = Math.max(0, this.waterLevel - 1); return true; }
     if (this.wallSide) return this.wallHeight(-1);
@@ -347,7 +379,7 @@ export class RunnerGame {
     if (
       !available ||
       this.mode !== "running" ||
-      this.boosting ||
+      this.boosting || this.icy ||
       this.boostCooldown > 0 ||
       !consume()
     )
@@ -375,7 +407,7 @@ export class RunnerGame {
     worldZ: number,
     localId: number,
   ): RockShelf | undefined {
-    if (type !== "arch" || sectionAt(worldZ).biome !== "canyon") return;
+    if (type !== "arch" || sectionAt(worldZ, this.track).biome !== "canyon") return;
     const side =
       lane < 0 ? -1 : lane > 0 ? 1 : this.hash(localId, 5) < 0.5 ? -1 : 1;
     return { side, laneCount: lane === 0 ? 2 : 1 };
@@ -414,12 +446,17 @@ export class RunnerGame {
     if (this.distance < 8) return;
     while (this.nextRow <= this.distance + CONFIG.trackLookahead) {
       const row = Math.round((this.nextRow - 65) / CONFIG.rowSpacing);
-      const biome = sectionAt(this.nextRow).biome;
+      const biome = sectionAt(this.nextRow, this.track).biome;
       const shifted = this.nextRow + (this.hash(row, 30) - 0.5) * 12;
-      const z = biome !== "water" && sectionAt(shifted).biome === biome ? shifted : this.nextRow;
+      const z = biome !== "water" && sectionAt(shifted, this.track).biome === biome ? shifted : this.nextRow;
       const base = 1000 + row * 128;
-      if (obstacleAllowed(z, this.seed)) {
-        if (sectionAt(z).biome === "water") {
+      if (obstacleAllowed(z, this.seed, this.track)) {
+        if (biome === "snow") {
+          this.snowRow(z);
+          this.nextRow += CONFIG.rowSpacing;
+          continue;
+        }
+        if (sectionAt(z, this.track).biome === "water") {
           this.waterRow(z, row, base);
           this.nextRow += CONFIG.rowSpacing;
           continue;
@@ -444,7 +481,7 @@ export class RunnerGame {
         available.sort((a, b) => (a === safeLane ? -1 : b === safeLane ? 1 : a - b));
         for (const l of available.slice(0, count))
           for (let i = 0; i < 5; i++)
-            if (obstacleAllowed(z - 8 + i * 3.5, this.seed))
+            if (obstacleAllowed(z - 8 + i * 3.5, this.seed, this.track))
               this.emit("coin", l, z - 8 + i * 3.5, 0.95, base + 16 + (l + 1) * 5 + i);
         if (
           this.hash(row, 3) < CONFIG.pickupChance &&
@@ -469,7 +506,7 @@ export class RunnerGame {
       }
       this.nextRow += CONFIG.rowSpacing;
     }
-    for (const gap of gapsNear(this.distance, this.seed)) {
+    for (const gap of gapsNear(this.distance, this.seed, this.track)) {
       if (
         gap.start > this.distance + CONFIG.trackLookahead ||
         gap.end < this.distance - 24 ||
@@ -509,6 +546,83 @@ export class RunnerGame {
       }
     }
   }
+  // Whole 96m combinations reserve the same bypass lane, including the complete
+  // forced slide and pool footprint. No neighbouring row can fill that bypass.
+  private snowRow(z: number) {
+    const section = this.track.at(z);
+    const block = Math.floor((z - section.start - 64) / CONFIG.snowWarmSpacing);
+    if (block < 0) return;
+    const key = section.cycle * 100 + block;
+    if (this.generatedSnow.has(key)) return;
+    this.generatedSnow.add(key);
+    const start = section.start + 64 + block * CONFIG.snowWarmSpacing;
+    if (start + 60 > section.end - CONFIG.exitSafety) return;
+    const base = 500000000000 + key * 100;
+    const safe = Math.floor(this.hash(section.cycle, 70) * 3) - 1;
+    const others = [-1, 0, 1].filter(l => l !== safe);
+    const lane = others[block % 2];
+    this.emit("liquor", safe, start + 50, 0.95, base + 1);
+    // First encounter is always ice + soft snow, before any lethal combination.
+    const kind = block === 0 ? 0 : Math.floor(this.hash(key, 71) * 5);
+    if (kind < 3) {
+      this.emit("ice", lane, start, 0, base + 2);
+      this.emit(kind === 0 ? (block % 2 ? "snowman" : "snowdrift") : kind === 1 ? "pool" : "fire",
+        lane, start + 16, 0, base + 3);
+      if (block > 0) this.emit("fire", others.find(l => l !== lane)!, start + 60, 0, base + 4);
+    } else if (kind === 3) {
+      this.emit("snow-log", 0, start + 12, 0, base + 5);
+    } else {
+      this.emit("stump", lane, start + 12, 0, base + 6);
+      this.emit("snowman", others.find(l => l !== lane)!, start + 12, 0, base + 7);
+      this.emit("fire", lane, start + 60, 0, base + 4);
+    }
+    const count = this.hash(key, 72) < CONFIG.coinSingleRatio ? 1 : this.hash(key, 72) < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
+    for (const l of [safe, ...others].slice(0, count))
+      for (let i = 0; i < 5; i++) this.emit("coin", l, start + 42 + i * 3, 0.95, base + 16 + (l + 1) * 5 + i);
+  }
+  private changeCold(amount: number) {
+    this.cold = Math.max(0, this.cold + amount);
+    this.coldDelta = amount; this.coldFeedback = 0.8;
+  }
+  private snowCollision(item: TrackItem, flying: boolean, travel: number) {
+    if (flying) return;
+    const lane = Math.abs(item.lane * 2.5 - this.x) < 1.05;
+    const crossed = item.z <= 0 && item.z > -travel - 0.05;
+    if (item.type === "ice") {
+      if (lane && Math.abs(item.z) < 3 && this.y <= 0.05 && !this.icy && !this.triggeredIce.has(item.id)) {
+        this.triggeredIce.add(item.id); this.iceRemaining = CONFIG.iceDistance;
+        this.iceX = this.x; this.lane = Math.round(this.x / 2.5);
+        this.horizontalVelocity = this.y = this.velocity = this.slideTime = 0;
+        this.fastFalling = false;
+      }
+    } else if (item.type === "pool") {
+      // Long open water is a lane hazard: entering its footprint on foot or
+      // landing mid-pool is lethal. A normal jump cannot cross all 28 metres.
+      if (lane && Math.abs(item.z) < CONFIG.poolLength / 2 && this.y <= 0.12) {
+        this.mode = "over"; this.lastHit = "pool";
+      }
+    } else if (item.type === "fire") {
+      if (lane && Math.abs(item.z) < 0.9 && this.y < CONFIG.fireHeight) {
+        this.mode = "over"; this.lastHit = "fire";
+      } else if (crossed && lane && this.y >= CONFIG.fireHeight && !this.icy) {
+        this.firePasses.add(item.id);
+      }
+      // Confirm clearance of the far edge, not a jump key or a nearby pass.
+      if (item.z < -0.9 && this.firePasses.has(item.id)) {
+        this.firePasses.delete(item.id);
+        if (lane && this.y >= CONFIG.fireHeight && !this.warmedFires.has(item.id)) {
+          this.warmedFires.add(item.id); this.changeCold(-CONFIG.fireWarmth);
+        }
+      }
+    } else if (item.type === "liquor") {
+      if (lane && Math.abs(item.z) < 0.65 && Math.abs(this.y + 0.95 - item.y) < 0.9) {
+        this.collect(item); this.changeCold(-CONFIG.liquorWarmth); this.drinkTime = 1.1;
+      }
+    } else if (lane && Math.abs(item.z) < 0.8 && this.y < (item.type === "snowman" ? 1.7 : 0.65)) {
+      this.cleared.add(item.id); this.changeCold(item.type === "snowman" ? CONFIG.snowmanCold : CONFIG.snowdriftCold);
+      this.snowHitX = item.lane * 2.5; this.snowHitSerial++;
+    }
+  }
   // Reserve a reachable column, then place rooted reefs and coins around it.
   private waterRow(z: number, row: number, base: number) {
     const safeLane = waterSafeLane(row, this.seed);
@@ -540,7 +654,7 @@ export class RunnerGame {
     // Interleave an extra school between ordinary rows without adding coins or pickups.
     const extraZ = z + CONFIG.rowSpacing / 2;
     if (this.hash(row, 16) < CONFIG.waterExtraFishChance &&
-        sectionAt(extraZ).biome === "water" && obstacleAllowed(extraZ, this.seed)) {
+        sectionAt(extraZ, this.track).biome === "water" && obstacleAllowed(extraZ, this.seed, this.track)) {
       this.emit("fish", lane, extraZ, CONFIG.waterHeights[fishLevels[Math.floor(this.hash(row, 17) * fishLevels.length)]] + 0.95, base + 64);
       const school = this.items.find(item => item.id === this.idBase + base + 64);
       if (school) school.fish = this.fishCrossing(extraZ, row, base + 64, 18);
@@ -551,7 +665,7 @@ export class RunnerGame {
       .filter(cell => type === "fish" || (coral ? !touchesCoral(coral, cell.lane * 2.5, CONFIG.waterHeights[cell.level] + 0.95, 0, 0.7) : cell.lane !== lane));
     for (const [route, cell] of routes.slice(0, count).entries())
       for (let i = 0; i < 5; i++)
-        if (obstacleAllowed(z - 8 + i * 3.5, this.seed))
+        if (obstacleAllowed(z - 8 + i * 3.5, this.seed, this.track))
           this.emit("coin", cell.lane, z - 8 + i * 3.5, CONFIG.waterHeights[cell.level] + 0.95, base + 16 + route * 5 + i);
     if (this.hash(row, 3) < CONFIG.pickupChance &&
         Array.from({length: Math.ceil(CONFIG.pickupMinSpacing / CONFIG.rowSpacing) - 1}, (_, i) => row - i - 1)
@@ -595,6 +709,7 @@ export class RunnerGame {
     }
     this.items = [];
     this.generatedWalls.clear();
+    this.generatedSnow.clear();
     this.nextRow =
       65 +
       Math.max(0, Math.floor((this.distance - 30 - 65) / CONFIG.rowSpacing)) *
@@ -635,7 +750,7 @@ export class RunnerGame {
       return b.active && Math.abs(b.x) < b.rx + 0.5 + (item.fish ? CONFIG.fishSpeed * 0.6 : 0) && Math.abs(this.visualWaterY + 0.95 - b.y) < b.ry + 0.5;
     });
     return (
-      !gapsNear(this.distance, this.seed).some(
+      !gapsNear(this.distance, this.seed, this.track).some(
         (gap) =>
           this.distance >=
             gap.start -
@@ -650,14 +765,16 @@ export class RunnerGame {
       !this.items.some(
         (item) =>
           item.route !== "wall" &&
-          ["log", "arch", "rock"].includes(item.type) &&
-          (item.shelf ? underRockShelf(item.shelf, 0) : item.lane === 0) &&
-          Math.abs(item.worldZ - this.distance) < 12,
+          ["log", "arch", "rock", "stump", "snow-log", "ice", "pool", "fire"].includes(item.type) &&
+          (item.type === "snow-log" || (item.shelf ? underRockShelf(item.shelf, 0) : item.lane === 0)) &&
+          Math.abs(item.worldZ - this.distance) < (item.type === "pool" ? CONFIG.poolLength / 2 + 18 : 18),
       )
     );
   }
   private snapshot(): Snapshot {
     return {
+      cold: this.cold, iceRemaining: this.iceRemaining, iceRecover: this.iceRecover, iceX: this.iceX,
+      triggeredIce: [...this.triggeredIce], firePasses: [...this.firePasses], drinkTime: this.drinkTime,
       waterLevel: this.waterLevel, waterY: this.waterY, worldTime: this.worldTime,
       time: this.runClock,
       distance: this.distance,
@@ -688,8 +805,10 @@ export class RunnerGame {
   private revivalPoint() {
     const valid = this.history.filter(
       (s) =>
-        !gapAt(s.distance, this.seed) ||
-        (s.wallSide !== 0 && s.wallGap && s.distance < s.wallGap.end),
+        s.cold < CONFIG.coldMax - CONFIG.coldRate * CONFIG.coldGrace && s.iceRemaining === 0 && s.iceRecover === 0 &&
+        !s.items.some(i => (i.type === "pool" || i.type === "ice") && Math.abs(i.lane * 2.5 - s.x) < 1.1 && Math.abs(i.worldZ - s.distance) < (i.type === "pool" ? CONFIG.poolLength / 2 + 12 : 12)) &&
+        (!gapAt(s.distance, this.seed, this.track) ||
+        (s.wallSide !== 0 && s.wallGap && s.distance < s.wallGap.end)),
     );
     return (
       [...valid]
@@ -712,6 +831,8 @@ export class RunnerGame {
     return true;
   }
   private restoreMovement(s: Snapshot) {
+    this.cold = s.cold; this.iceRemaining = s.iceRemaining; this.iceRecover = s.iceRecover; this.iceX = s.iceX;
+    this.triggeredIce = new Set(s.triggeredIce); this.firePasses = new Set(s.firePasses); this.drinkTime = s.drinkTime;
     this.waterLevel = s.waterLevel; this.waterY = s.waterY; this.worldTime = s.worldTime;
     this.distance = s.distance;
     this.lane = s.lane;
@@ -753,13 +874,14 @@ export class RunnerGame {
     this.rebuildTrack(target);
     this.shattered = this.items.filter(
       (item) =>
-        ["log", "arch", "rock", "wall-rock", "bubble", "coral", "volcano", "fish"].includes(item.type) &&
+        ["log", "arch", "rock", "wall-rock", "bubble", "coral", "volcano", "fish", "snowdrift", "snowman", "stump", "snow-log", "fire"].includes(item.type) &&
         item.worldZ >= this.distance - 2 &&
         item.worldZ <= this.distance + CONFIG.rewindClearDistance,
     );
     this.shattered.forEach((item) => this.cleared.add(item.id));
     this.items = this.items.filter((item) => !this.cleared.has(item.id));
     this.clearSerial++;
+    this.coldGrace = CONFIG.coldGrace;
     this.protectionTime = CONFIG.rewindProtection;
     this.lastHit = null;
     this.history = [];
@@ -788,8 +910,19 @@ export class RunnerGame {
       this.boostCooldown = Math.max(0, this.boostCooldown - step);
       const flying = this.boosting;
       const travel = step * this.speed;
+      const wasSnow = this.inSnow;
       const wasSwimming = this.swimming;
       this.distance += travel;
+      if (wasSnow !== this.inSnow || !this.inSnow) this.cold = 0;
+      this.coldGrace = Math.max(0, this.coldGrace - step);
+      this.coldFeedback = Math.max(0, this.coldFeedback - step);
+      this.drinkTime = Math.max(0, this.drinkTime - step);
+      if (this.iceRemaining > 0) {
+        this.iceRemaining = Math.max(0, this.iceRemaining - travel);
+        if (this.iceRemaining === 0) this.iceRecover = CONFIG.iceRecovery;
+      } else this.iceRecover = Math.max(0, this.iceRecover - step);
+      if (!this.inSnow) this.iceRemaining = this.iceRecover = 0;
+      if (this.inSnow && !flying && this.coldGrace === 0) this.cold += step * CONFIG.coldRate;
       if (!wasSwimming && this.swimming) {
         this.waterLevel = 1; this.waterY = CONFIG.waterHeights[1]; this.lane = 0;
         this.y = this.velocity = this.slideTime = 0; this.fastFalling = false;
@@ -807,6 +940,7 @@ export class RunnerGame {
       );
       this.horizontalVelocity =
         (this.horizontalVelocity - 20 * impulse) * decay;
+      if (this.icy) { this.x = this.iceX; this.horizontalVelocity = 0; }
       this.wallBlend +=
         ((this.wallSide ? 1 : 0) - this.wallBlend) * (1 - Math.exp(-step * 12));
       this.boostBlend +=
@@ -846,7 +980,7 @@ export class RunnerGame {
           this.y = this.velocity = 0;
           this.protectionTime = CONFIG.boostProtection;
         }
-      } else if (gapAt(this.distance, this.seed) && !this.wallSide) {
+      } else if (gapAt(this.distance, this.seed, this.track) && !this.wallSide) {
         this.mode = "over";
         this.lastHit = "gap";
       }
@@ -857,6 +991,9 @@ export class RunnerGame {
           this.cleared.has(item.id)
         )
           continue;
+        if (["ice", "pool", "snowdrift", "snowman", "fire", "liquor"].includes(item.type)) {
+          this.snowCollision(item, flying, travel); continue;
+        }
         const aquatic = ["bubble", "coral", "volcano", "fish"].includes(item.type);
         if (aquatic) {
           if (item.coral) {
@@ -873,9 +1010,9 @@ export class RunnerGame {
           ? this.wallSide === item.side &&
             Math.abs(this.wallY + 0.95 - item.y) < 0.75
           : !this.wallSide &&
-            (item.shelf
+            (item.type === "snow-log" || (item.shelf
               ? underRockShelf(item.shelf, this.x)
-              : Math.abs(item.lane * 2.5 - this.x) < 0.95);
+              : Math.abs(item.lane * 2.5 - this.x) < 0.95));
         const closeHeight =
           wall ||
           Math.abs(
@@ -913,10 +1050,13 @@ export class RunnerGame {
           closeRoute &&
           (item.type === "wall-rock" ||
             item.type === "rock" ||
-            (item.type === "log" && this.y < 0.9) ||
+            (["log", "stump", "snow-log"].includes(item.type) && this.y < 0.9) ||
             (item.type === "arch" && !this.sliding))
         )
           this.collide(item);
+      }
+      if (this.mode === "running" && this.inSnow && this.cold >= CONFIG.coldMax) {
+        this.cold = CONFIG.coldMax; this.mode = "over"; this.lastHit = "cold";
       }
       this.items = this.items.filter(
         (item) =>
