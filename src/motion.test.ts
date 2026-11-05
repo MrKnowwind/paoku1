@@ -91,7 +91,8 @@ test("swimming blends out the running pose and freezes on pause", () => {
   const game = new RunnerGame({autoSpawn: false});
   const motion = new RunnerMotion();
   game.start();
-  game.distance = CONFIG.forestLength + CONFIG.tunnelLength + CONFIG.canyonLength + CONFIG.beachLength + 160;
+  game.track = new TrackPlan(game.trackSeed, "water");
+  game.distance = CONFIG.forestLength + CONFIG.beachLength + 160;
   for (let i = 0; i < 60; i++) { game.update(1 / 60); motion.update(game, 1 / 60); }
   assert.ok(motion.pose.swim > 0.99);
   assert.ok(motion.pose.run < 0.01);
