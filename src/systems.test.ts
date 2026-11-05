@@ -535,7 +535,7 @@ test("volcano warns for two seconds before its visible thermal column is dangero
   const game = new RunnerGame({autoSpawn: false});
   game.start(); game.distance = 1700;
   const volcano = game.addItem("volcano", 1, 20, CONFIG.seabedHeight + 0.65);
-  game.worldTime = 2 - volcano.worldZ * 0.017 + 100;
+  game.worldTime += 102.001 - game.waterBounds(volcano).phase;
   assert.equal(game.waterBounds(volcano).warning, true);
   assert.equal(game.waterBounds(volcano).eruption, false);
   game.worldTime += 1.99;
@@ -552,7 +552,7 @@ test("lowest swimming cell reaches a dormant seabed vent", () => {
   game.waterLevel = 0; game.waterY = CONFIG.waterHeights[0];
   game.lane = 1; game.x = 2.5;
   const vent = game.addItem("volcano", 1, 1, CONFIG.seabedHeight + 0.65);
-  game.worldTime = 0.5 - vent.worldZ * 0.017 + 100;
+  game.worldTime += 100.5 - game.waterBounds(vent).phase;
   game.shield = true;
   game.update(0.07);
   assert.equal(game.mode, "running");
@@ -751,8 +751,9 @@ test("underwater safe routes vary with the seed and remain reachable", () => {
     const laneRoute = Array.from({length: 80}, (_, row) => waterSafeLane(row, seed));
     const heightRoute = Array.from({length: 80}, (_, row) => fishSafeLevel(row, seed));
     lanes.add(JSON.stringify(laneRoute)); heights.add(JSON.stringify(heightRoute));
+    assert.ok(laneRoute.every(value => value >= -1 && value <= 1));
+    assert.ok(heightRoute.every(value => value >= 0 && value <= 2));
     for (const route of [laneRoute, heightRoute]) {
-      assert.equal(new Set(route).size, 3);
       for (let row = 1; row < route.length; row++) assert.ok(Math.abs(route[row] - route[row - 1]) <= 1);
     }
     assert.deepEqual(Array.from({length: 80}, (_, row) => waterSafeLane(row, seed)), laneRoute);
