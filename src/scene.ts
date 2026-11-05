@@ -4,7 +4,7 @@ import "@babylonjs/core/Engines/thinEngine.scissor";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -37,7 +37,8 @@ import { ForestProps } from "./props.ts";
 import { TerrainScene } from "./terrain-scene.ts";
 import { defaultTrack, sectionAt, tunnelDarkness, snowBlend } from "./track.ts";
 import { SnowProps } from "./snow-props.ts";
-import { SnowPreview, drinkingPose } from "./snow-preview.ts";
+import { ICE_IMPACT_METRES, iceFallPose, sipPose } from "./winter-motion.ts";
+import { SnowPreview } from "./snow-preview.ts";
 import { iconAsset } from "./art.ts";
 
 type Triple = [number, number, number];
@@ -114,6 +115,7 @@ export class ForestScene {
   private lastClear = 0;
   private lastEffectTick = -1;
   private forestVisible = true;
+  private forestScales = new WeakMap<TransformNode, Vector3>();
   private particleMaterials = new Map<string, StandardMaterial>();
   private pickupMaterials = new Map<string, StandardMaterial>();
   private time = 0;
@@ -131,25 +133,74 @@ export class ForestScene {
   private snowPreview?: SnowPreview;
   private drinkBottle?: TransformNode;
   private lastSnowHit = 0;
+  private lastIceRemaining = 0;
   private get snowProps() { return this.snow ??= new SnowProps(this.scene, this.props); }
+  private drinkPose(remaining: number, falling: boolean) {
+    if (!this.drinkBottle) return;
+    const {lift, swallow} = sipPose(remaining);
+    // Set the bottle down during the impact and keep the recovering arm free.
+    this.drinkBottle.setEnabled(lift > 0.025 && !falling);
+    if (lift <= 0.025 || falling) return;
+    const arm = this.arms[1];
+    this.head.rotation.x -= swallow * 0.19;
+    this.head.rotation.y += swallow * 0.09;
+    this.torso.rotation.y = -0.07 * lift;
+    const torsoWorld = this.torso.computeWorldMatrix(true);
+    const mouthWorld = Vector3.TransformCoordinates(new Vector3(0, 0.11, 0.285), this.head.computeWorldMatrix(true));
+    const mouth = Vector3.TransformCoordinates(mouthWorld, torsoWorld.clone().invert());
+    const bottleAxis = new Vector3(-0.22 * swallow, 1 - 0.29 * swallow, -0.66 * swallow).normalize();
+    const grip = mouth.subtract(bottleAxis.scale(0.3));
+    const reach = grip.subtract(arm.upper.position);
+    const distance = Math.min(0.645, Math.max(0.07, reach.length()));
+    const axis = reach.normalize();
+    const upperLength = 0.31, lowerLength = 0.34;
+    const projection = (upperLength ** 2 - lowerLength ** 2 + distance ** 2) / (2 * distance);
+    const elbowOut = new Vector3(0.8, -1, -0.1);
+    elbowOut.subtractInPlace(axis.scale(Vector3.Dot(elbowOut, axis))).normalize();
+    const upperDirection = axis.scale(projection).add(elbowOut.scale(Math.sqrt(Math.max(0, upperLength ** 2 - projection ** 2))));
+    const lowerDirection = axis.scale(distance).subtract(upperDirection);
+    const upper = Quaternion.Identity(), lower = Quaternion.Identity();
+    Quaternion.FromUnitVectorsToRef(Vector3.Down(), upperDirection.normalizeToNew(), upper);
+    Quaternion.FromUnitVectorsToRef(Vector3.Down(), lowerDirection.applyRotationQuaternion(upper.conjugate()).normalize(), lower);
+    Quaternion.Slerp(Quaternion.FromEulerVector(arm.upper.rotation), upper, lift).toEulerAnglesToRef(arm.upper.rotation);
+    Quaternion.Slerp(Quaternion.FromEulerVector(arm.lower.rotation), lower, lift).toEulerAnglesToRef(arm.lower.rotation);
+    const axisWorld = Vector3.TransformNormal(bottleAxis, torsoWorld);
+    const axisInHand = Vector3.TransformNormal(axisWorld, arm.lower.computeWorldMatrix(true).clone().invert()).normalize();
+    Quaternion.FromUnitVectorsToRef(Vector3.Up(), axisInHand, lower).toEulerAnglesToRef(this.drinkBottle.rotation);
+  }
+
   private snowPose(game: RunnerGame) {
     if (game.icy) {
-      const recovery = game.iceRemaining > 0 ? 1 : game.iceRecover / CONFIG.iceRecovery;
-      this.hips.position.y = 0.95 - 0.5 * recovery;
-      this.runner.rotation.z = -0.5 * recovery;
-      this.torso.rotation.x = -0.5 * recovery;
-      for (const leg of this.legs) { leg.upper.rotation.x = -1.3 * recovery; leg.lower.rotation.x = 0.3 * recovery; }
-      for (const arm of this.arms) arm.upper.rotation.z = arm.side * 0.8 * recovery;
+      const {brace, fall, rise} = iceFallPose(game.iceRemaining, game.iceRecover);
+      this.hips.position.y += (0.29 - this.hips.position.y) * fall + 0.08 * rise;
+      this.hips.position.z += 0.13 * fall;
+      this.runner.rotation.z = this.runner.rotation.z * (1 - fall) - 0.62 * fall + 0.16 * (brace - fall);
+      this.runner.rotation.x += -0.27 * (brace - fall) + 0.2 * rise;
+      this.torso.rotation.x += (-0.91 - this.torso.rotation.x) * fall + 0.51 * rise;
+      this.torso.rotation.y = 0.24 * fall;
+      this.head.rotation.x += 0.32 * fall - 0.19 * rise;
+      for (const leg of this.legs) {
+        leg.upper.rotation.x += ((leg.side > 0 ? -1.47 : -1.86) - leg.upper.rotation.x) * fall - (brace - fall) * 0.34;
+        leg.lower.rotation.x += ((leg.side > 0 ? 0.22 : 1.21) - leg.lower.rotation.x) * fall + 0.41 * rise;
+        leg.foot!.rotation.x += 0.28 * fall;
+      }
+      for (const arm of this.arms) {
+        arm.upper.rotation.z += arm.side * (0.79 * brace - 0.35 * fall);
+        arm.upper.rotation.x += (-0.72 - arm.upper.rotation.x) * brace + 1.16 * fall - 0.74 * rise;
+        arm.lower.rotation.x += (-0.72 - arm.lower.rotation.x) * brace;
+      }
     }
     if (game.inSnow && game.cold >= 75) {
       this.torso.rotation.z += Math.sin(game.worldTime * 35) * 0.028;
       this.head.rotation.z = Math.sin(game.worldTime * 35 + 1) * 0.035;
     }
     if (game.drinkTime > 0 && !this.drinkBottle) {
-      this.drinkBottle = this.snowProps.create("liquor", false); this.drinkBottle.parent = this.arms[0].lower;
-      this.drinkBottle.position.set(0, -0.34, 0); this.drinkBottle.scaling.setAll(0.55);
+      this.drinkBottle = this.snowProps.create("liquor", false);
+      this.drinkBottle.parent = this.arms[1].lower;
+      this.drinkBottle.position.set(0, -0.34, 0.018);
+      this.drinkBottle.scaling.setAll(0.55);
     }
-    if (this.drinkBottle) drinkingPose(this.arms[0].upper, this.arms[0].lower, this.drinkBottle, Math.sin(Math.min(1, game.drinkTime / 1.1) * Math.PI));
+    this.drinkPose(game.drinkTime, game.icy || game.mode === "over");
     if (game.lastHit === "pool") {
       this.runner.position.y -= this.motion.pose.death * 3.5;
       this.runner.rotation.x = this.motion.pose.death * 0.35;
@@ -1775,7 +1826,7 @@ export class ForestScene {
     };
   }
 
-  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, snowLesson = 0, previewDt = dt) {
+  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, snowLesson = 0) {
     if (this.track !== game.track) this.openingMistTime = 0;
     this.track = game.track;
     const running = game.mode === "running",
@@ -1821,16 +1872,11 @@ export class ForestScene {
     const cameraDistance = Math.max(0, scroll + this.camera.position.z);
     const darkness = tunnelDarkness(cameraDistance, this.track);
     const section = sectionAt(cameraDistance, this.track);
-    const from =
-      section.biome === "tunnel"
-        ? sectionAt(section.start - 1, this.track).biome
-        : section.biome;
-    const to =
-      section.biome === "tunnel"
-        ? sectionAt(section.end + 1, this.track).biome
-        : section.biome;
+    const inlandBridge = section.biome === "tunnel" || section.biome === "snow-transition";
+    const from = inlandBridge ? section.from : section.biome;
+    const to = inlandBridge ? section.to : section.biome;
     const progress =
-      section.biome === "tunnel"
+      inlandBridge
         ? smooth(
             (cameraDistance - section.start) / (section.end - section.start),
           )
@@ -1845,7 +1891,7 @@ export class ForestScene {
     );
     const coastalSky = section.biome === "beach" || section.biome === "water" ? 1
       : section.biome === "shore" ? 1 - smooth((cameraDistance - section.start - 50) / 30)
-      : section.biome === "canyon" ? smooth((cameraDistance - section.end + 80) / 80) : 0;
+      : section.biome === "canyon" && this.track.at(section.end).biome === "beach" ? smooth((cameraDistance - section.end + 80) / 80) : 0;
     const snowLight = snowBlend(cameraDistance, this.track);
     const outside = Color3.Lerp(Color3.Lerp(inlandSky, Color3.FromHexString("#b8dce7"), coastalSky), Color3.FromHexString("#d6e7f4"), snowLight);
     const immersed = game.waterBlend;
@@ -1863,15 +1909,12 @@ export class ForestScene {
     this.scene.fogDensity = terrainFog + (CONFIG.openingFogDensity - terrainFog) * mist;
     this.sky.intensity = 0.75 - darkness * 0.3;
     this.sun.intensity = 0.85 - darkness * 0.65;
-    this.sky.groundColor = Color3.Lerp(
-      Color3.FromHexString("#698463"),
-      Color3.FromHexString("#a88a67"),
-      canyonBlend,
-    );
-    this.forestVisible = canyonBlend < 0.5;
-    this.forestBackdrop.setEnabled(canyonBlend < 0.999 && immersed < 0.01 && coastalSky < 0.15 && snowLight < 0.2);
-    for (const hill of this.forestBackdrop.getChildMeshes())
-      hill.visibility = 1 - canyonBlend;
+    const inlandGround = Color3.Lerp(Color3.FromHexString("#698463"), Color3.FromHexString("#a88a67"), canyonBlend);
+    this.sky.groundColor = Color3.Lerp(inlandGround, Color3.FromHexString("#a8b9ce"), snowLight);
+    this.forestVisible = canyonBlend < 0.5 && snowLight < 0.55;
+    const forestHorizon = (1 - canyonBlend) * (1 - smooth(snowLight)) * (1 - coastalSky) * (1 - immersed);
+    this.forestBackdrop.setEnabled(forestHorizon > 0.005);
+    for (const hill of this.forestBackdrop.getChildMeshes()) hill.visibility = forestHorizon;
     this.chunks.forEach((root, i) => {
       root.position.z = ((((i * 40 - scroll + 40) % 200) + 200) % 200) - 60;
       // Clip individual roadside objects to their section; a 40m group must not pop at the portal.
@@ -1879,11 +1922,18 @@ export class ForestScene {
         const node = child as TransformNode;
         const worldZ = root.position.z + scroll + node.position.z;
         const road = sectionAt(worldZ, this.track);
-        const clearMouth =
-          road.biome === "forest" &&
-          road.end - worldZ > 7 &&
-          (road.start === 0 || worldZ - road.start > 5);
-        node.setEnabled(clearMouth);
+        const forestBridge = road.biome === "snow-transition" && (road.from === "forest" || road.to === "forest");
+        const forestAmount = forestBridge ? 1 - snowBlend(worldZ, this.track) : 1;
+        const clearMouth = road.biome === "forest" &&
+          (road.end - worldZ > 7 || this.track.at(road.end).biome === "snow-transition") &&
+          (road.start === 0 || worldZ - road.start > 5 || this.track.at(road.start - 1).biome === "snow-transition");
+        let scale = this.forestScales.get(node);
+        if (forestBridge && !scale) {
+          scale = node.scaling.clone();
+          this.forestScales.set(node, scale);
+        }
+        if (scale) node.scaling.copyFrom(scale).scaleInPlace(forestAmount);
+        node.setEnabled(clearMouth || (forestBridge && forestAmount > 0.035));
       }
     });
     const blend = 1 - pose.slide,
@@ -1969,6 +2019,7 @@ export class ForestScene {
         pose.dive * 0.35 +
         flightPitch * airWeight +
         0.08 * (1 - game.launchProgress) * (1 - airWeight) * blend;
+    this.torso.rotation.y = 0;
     this.torso.rotation.z =
       Math.sin(pose.phase) * 0.055 * runWeight - pose.slide * 0.07;
     this.torso.scaling.set(
@@ -2094,6 +2145,10 @@ export class ForestScene {
       }
     }
     this.snowPose(game);
+    const impactDistance = CONFIG.iceDistance - ICE_IMPACT_METRES;
+    if (running && game.iceRemaining > 0 && this.lastIceRemaining > impactDistance && game.iceRemaining <= impactDistance)
+      this.burst(new Vector3(game.x, 0.17, -0.2), "#e4f4ff", this.high ? 24 : 12, 3.1, 0.48, 0.18, 2);
+    this.lastIceRemaining = game.iceRemaining;
     if (this.lastSnowHit !== game.snowHitSerial) {
       this.lastSnowHit = game.snowHitSerial;
       this.burst(new Vector3(game.snowHitX, 0.8, 0), "#eef8ff", 22, 4, 0.7, 0.18, 5);
@@ -2146,10 +2201,10 @@ export class ForestScene {
         0,
       );
     const footfall = Math.floor(pose.phase / Math.PI);
-    if (running && game.y === 0 && footfall !== this.lastPhase)
+    if (running && !game.icy && game.y === 0 && footfall !== this.lastPhase)
       this.burst(
         new Vector3(game.x, 0.12, -0.13),
-        "#d7b98d",
+        game.inSnow ? "#e7f4ff" : "#d7b98d",
         game.sliding ? 4 : 2,
         0.7,
         0.4,
@@ -2362,9 +2417,10 @@ export class ForestScene {
     this.scene.render();
     const viewport = document.querySelector<HTMLElement>("#snow-viewport");
     if (this.snowPreview && viewport) {
-      this.snowPreview.update(previewDt, viewport.getBoundingClientRect());
       const rect = viewport.getBoundingClientRect();
       const canvasRect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return;
+      this.snowPreview.frame(rect, canvasRect);
       const sx = this.engine.getRenderWidth() / canvasRect.width, sy = this.engine.getRenderHeight() / canvasRect.height;
       const fogEnabled = this.scene.fogEnabled, shadowsEnabled = this.scene.shadowsEnabled;
       const autoClearDepth = this.scene.autoClearDepthAndStencil;

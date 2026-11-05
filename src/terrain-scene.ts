@@ -21,7 +21,10 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { defaultTrack, gapsNear, roadSpans, sectionAt } from "./track.ts";
+import { defaultTrack, gapsNear, roadSpans, sectionAt, snowBlend } from "./track.ts";
+import { snowMaterial } from "./snow-materials.ts";
+import { WINTER_VERTEX, withSnowLayer } from "./snow-layer.ts";
+import { winterGroundHeight, winterShoulder } from "./snow-layout.ts";
 import { SnowProps } from "./snow-props.ts";
 import { mergeSceneryMeshes } from "./scenery-mesh";
 import type { ForestProps } from "./props.ts";
@@ -173,6 +176,62 @@ export class TerrainScene {
     mesh.receiveShadows = true;
   }
 
+  private canyonProfile(world: number, distance: number) {
+    const section = this.plan.at(world + 0.1);
+    const exit = this.plan.at(section.end).biome;
+    const entry = this.plan.at(section.start - 1).biome;
+    const leave = exit === "beach" || exit === "snow-transition" ? smooth((section.end - distance) / 80) : 1;
+    const enter = entry === "snow-transition" || entry === "shore" ? smooth((distance - section.start) / 80) : 1;
+    return Math.max(0.004, leave * enter);
+  }
+
+  private winterCell(world: number, index: number, root: TransformNode) {
+    const section = this.plan.at(world + 5);
+    const canyonSide = section.biome === "snow-transition" && (section.from === "canyon" || section.to === "canyon");
+    const roadEdge = (snow: number) => canyonSide ? 4.3 + 1.4 * (1 - snow) : 4.3;
+    const snowTexture = snowMaterial(this.scene, "snow", this.props).diffuseTexture!;
+    const rows = 8, columns = 16;
+    for (const band of [-1, 0, 1]) {
+      const pos: number[] = [], uv: number[] = [], coverage: number[] = [], colors: number[] = [];
+      const base = band === 0 ? (canyonSide ? this.stone : this.trail) : (canyonSide ? this.stone : this.grass);
+      const tile = band === 0 ? (canyonSide ? 6 : 8) : (canyonSide ? 6 : 2.5);
+      for (let row = 0; row <= rows; row++) {
+        const z = row * 10 / rows, d = world + z;
+        const snow = snowBlend(d, this.plan), edge = roadEdge(snow);
+        for (let col = 0; col <= columns; col++) {
+          const t = col / columns;
+          const x = band === 0 ? (t * 2 - 1) * edge : band < 0 ? -74.3 + t * (74.3 - edge) : edge + t * (74.3 - edge);
+          pos.push(x, winterGroundHeight(x, d, snow, edge), z);
+          uv.push(x / tile, d / tile);
+          coverage.push(x / 2.8, d / 2.8, winterShoulder(x, d, this.plan));
+          colors.push(1, 1, 1, 1);
+        }
+      }
+      const mesh = this.surface("single-layer-winter-ground", pos, coastGridIndices(columns, rows), uv, colors, root, withSnowLayer(base, snowTexture));
+      mesh.setVerticesData(WINTER_VERTEX, coverage, false, 3);
+    }
+    this.snow ??= new SnowProps(this.scene, this.props);
+    for (const side of [-1, 1]) {
+      const d = world + 4, snow = snowBlend(d, this.plan);
+      const x = side * (8 + Math.sin(index * 1.7 + side) * 1.8 + 3 * (1 - snow));
+      const tree = this.snow.pine(root, snow);
+      tree.position.set(x, winterGroundHeight(x, d, snow, roadEdge(snow)), 4);
+      tree.scaling.setAll((0.8 + 0.24 * Math.sin(index * 2.3 + side)) * (0.32 + 0.68 * smooth(snow / 0.66)));
+      if (snow > 0.28) {
+        const z = 7, bankX = side * (6.4 + Math.cos(index * 1.9) * 0.75);
+        const bank = this.snow.drift(root);
+        bank.position.set(bankX, winterGroundHeight(bankX, world + z, snow, roadEdge(snow)), z);
+        bank.rotation.y = Math.sin(index + side) * 0.8;
+        bank.scaling.set(1.1 + snow * 0.7, 0.23 + snow * 0.24, 1.4 + Math.cos(index) * 0.35);
+      }
+      if ((index + (side > 0 ? 1 : 0)) % 3 === 0 && snow > 0.32) {
+        const rockX = side * (16 + Math.sin(index * 1.3) * 3);
+        const rock = this.snow.outcrop(root, index + side, snow);
+        rock.position.set(rockX, winterGroundHeight(rockX, world + 5, snow, roadEdge(snow)), 5);
+      }
+    }
+  }
+
   private cliffWall(side: number, world: number, parent: TransformNode) {
     const positions: number[] = [],
       indices: number[] = [],
@@ -186,10 +245,8 @@ export class TerrainScene {
         13 +
         Math.sin(absolute * 0.037 + side) * 2.4 +
         Math.sin(absolute * 0.11) * 0.6;
+      const taper = this.canyonProfile(world, absolute);
       for (let row = 0; row <= rows; row++) {
-        const coast = sectionAt(world + 0.1, this.plan);
-        const exitsToCoast = coast.biome === "canyon" && this.plan.at(coast.end).biome === "beach";
-        const taper = exitsToCoast ? smooth((coast.end - absolute) / 80) : 1;
         const y = (-18 + (row / rows) * (crest + 18)) * taper;
         // Keep the three playable wall heights close to the collision surface.
         const relief =
@@ -327,10 +384,13 @@ export class TerrainScene {
     const underwater = section.biome === "water";
     const edgeBlend = section.biome === "beach" ? smooth((d - section.start) / 24)
       : section.biome === "shore" ? 1 - smooth((d - section.start - 50) / 30) : underwater ? 1 : 0;
+    const snow = snowBlend(d, this.plan);
+    const edge = 4.3;
+    const winterRelief = snow * (winterGroundHeight(x, d, 1, edge) - 0.06);
     const relief = underwater
       ? (Math.sin(x * 0.27 + d * 0.07) * 0.65 + Math.cos(x * 0.5 - d * 0.04) * 0.3) * smooth((Math.abs(x) - 4) / 7)
       : (Math.exp(-Math.pow((Math.abs(x) - 11) / 5, 2)) * 1.2 - smooth((Math.abs(x) - 18) / 18) * 5) * edgeBlend;
-    return coastFloor(d, this.plan) + relief;
+    return coastFloor(d, this.plan) + relief * (1 - snow) + winterRelief;
   }
 
   private coastCell(world: number, index: number, root: TransformNode) {
@@ -408,9 +468,11 @@ export class TerrainScene {
           const shoulder = this.props.sandstone("coast-canyon-rise", [10, 14 * rockBlend, 11], world + side, root);
           shoulder.position.set(side * 13, 4 * rockBlend, 5);
         }
-        if (snow > 0) {
+        if (snow > 0.26) {
           this.snow ??= new SnowProps(this.scene, this.props);
-          const pine = this.snow.pine(root, snow); pine.position.set(side * 10, 0.06, 5);
+          const pine = this.snow.pine(root, snow);
+          pine.position.set(side * 10, this.coastHeight(side * 10, world + 5), 5);
+          pine.scaling.setAll(0.4 + snow * 0.6);
         }
       }
     }
@@ -434,7 +496,7 @@ export class TerrainScene {
           this.ground(0.025, 7, side * 3.8, CONFIG.waterHeights[i] - 0.1, 5, root, this.guide, world);
       }
     }
-    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && (mesh.material === this.sand || mesh.material instanceof StandardMaterial && mesh.material.alpha === 1)) as Mesh[];
+    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && !mesh.isVerticesDataPresent(WINTER_VERTEX) && (mesh.material === this.sand || mesh.material instanceof StandardMaterial && mesh.material.alpha === 1)) as Mesh[];
     if (opaque.length) { const batch = mergeSceneryMeshes(opaque); batch.parent = root; batch.name = "batched-coastal-reef"; }
   }
 
@@ -447,30 +509,7 @@ export class TerrainScene {
       return root;
     }
     if (section.biome === "snow" || section.biome === "snow-transition") {
-      const positions: number[] = [], colors: number[] = [], uvs: number[] = [];
-      for (let row = 0; row <= 5; row++) for (let col = 0; col <= 20; col++) {
-        const x = (col - 10) * 4, z = row * 2;
-        positions.push(x, 0.06, z); uvs.push(...coastSandUV(x, world + z, this.plan));
-        colors.push(...coastWeights(world + z, this.plan));
-      }
-      this.surface("snow-and-inland-blend", positions, coastGridIndices(20, 5), uvs, colors, root, this.sand);
-      this.snow ??= new SnowProps(this.scene, this.props);
-      const t = (world + 5 - section.start) / (section.end - section.start);
-      const snow = section.biome === "snow" ? 1 : section.to === "snow" ? smooth(t) : 1 - smooth(t);
-      for (const side of [-1, 1]) {
-        const pine = this.snow.pine(root, snow);
-        pine.position.set(side * (7 + Math.sin(index) * 0.8), 0.06, 5);
-        const canyon = section.from === "canyon" ? 1 - t : section.to === "canyon" ? t : 0;
-        if (canyon > 0) {
-          const rock = this.props.sandstone("snowy-rock-shoulder", [8, 14 * canyon + 1, 11], index + side, root);
-          rock.position.set(side * 11, 3 * canyon, 5);
-        }
-        if (index % 4 === 0) {
-          const hill = this.snow.drift(root);
-          hill.scaling.set(20, 12 + Math.sin(index) * 3, 25);
-          hill.position.set(side * 35, -1, 5);
-        }
-      }
+      this.winterCell(world, index, root);
       return root;
     }
     const gap = gapsNear(world, this.seed, this.plan).find(
@@ -640,8 +679,8 @@ export class TerrainScene {
         }
       }
     }
-    if (section.biome === "canyon" && this.plan.at(section.end).biome === "beach") {
-      const taper = smooth((section.end - world) / 80);
+    if (section.biome === "canyon") {
+      const taper = this.canyonProfile(world, world + 5);
       for (const mesh of root.getChildMeshes()) {
         if (mesh.name.includes("road") || mesh.name === "terrain-surface" || mesh.name === "eroded-continuous-cliff") continue;
         mesh.position.y *= taper; mesh.scaling.y *= Math.max(0.03, taper);

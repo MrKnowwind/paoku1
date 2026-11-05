@@ -4,6 +4,8 @@ import { CONFIG } from "./config.ts";
 import { RunnerGame } from "./game.ts";
 import { Tutorial } from "./tutorial.ts";
 import { TrackPlan, coreBiomes, connection, terrainChoices, snowBlend, waterBlend, obstacleAllowed } from "./track.ts";
+import { winterGroundHeight, winterShoulder } from "./snow-layout.ts";
+import { iceFallPose, sipPose } from "./winter-motion.ts";
 import { coastWeights, coastFloor } from "./coast-layout.ts";
 
 function snowGame(autoSpawn = false) {
@@ -185,4 +187,31 @@ test("closing the snow review preserves the interrupted lesson without marking s
   tutorial.closeSnowReview();
   assert.equal(tutorial.active?.id, "move"); assert.equal(tutorial.snowStep, 0);
   assert.equal(tutorial.knows("snow"), false); assert.deepEqual(saved, []);
+});
+
+
+test("snow accumulates at the verge while the forest join and runnable road stay level", () => {
+  const plan = new TrackPlan(4, "snow");
+  const entry = CONFIG.forestLength, exit = entry + CONFIG.snowTransition;
+  assert.equal(winterShoulder(11, entry, plan), 0);
+  assert.equal(winterShoulder(11, exit, plan), 1);
+  for (let distance = entry; distance <= exit; distance += 3) {
+    const cover = snowBlend(distance, plan);
+    assert.equal(winterGroundHeight(2.5, distance, cover, 4.3), 0.06);
+    assert.ok(winterShoulder(11, distance, plan) >= winterShoulder(0, distance, plan));
+  }
+  assert.equal(winterGroundHeight(11, entry, 0, 4.3), 0);
+  assert.ok(winterGroundHeight(40, exit, 1, 4.3) > 2);
+});
+
+test("ice and drink poses ease in and recover to the running pose", () => {
+  assert.deepEqual(iceFallPose(CONFIG.iceDistance, 0), {brace: 0, fall: 0, rise: 0});
+  const brace = iceFallPose(CONFIG.iceDistance - 2, 0);
+  assert.ok(brace.brace > brace.fall);
+  assert.deepEqual(iceFallPose(1, 0), iceFallPose(0, CONFIG.iceRecovery));
+  assert.ok(iceFallPose(0, CONFIG.iceRecovery / 2).rise > 0);
+  assert.deepEqual(iceFallPose(0, 0), {brace: 0, fall: 0, rise: 0});
+  assert.deepEqual(sipPose(CONFIG.drinkDuration), {lift: 0, swallow: 0});
+  assert.equal(sipPose(CONFIG.drinkDuration / 2).swallow, 1);
+  assert.deepEqual(sipPose(0), {lift: 0, swallow: 0});
 });

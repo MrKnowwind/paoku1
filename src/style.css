@@ -1944,8 +1944,9 @@ html[lang="ko-KR"] .intro h1 {
 .cold-hud small.warming { color: #b77826; }
 .cold-hud.critical { border-color: #c36c79; }
 .cold-hud.critical .cold-track i { background: #c36c79; }
-.cold-hud.teaching { position: relative; z-index: auto; inset: auto; left: auto; top: auto; transform: none; width: 100%; margin: 0 0 22px; padding: 14px; background: #e6f0f4; border: 1px solid #aac6d2; box-shadow: 0 0 0 4px #d5e5eb66; }
-.cold-hud.teaching::after { content: ''; position: absolute; left: 22px; top: 100%; border: 7px solid transparent; border-top-color: #aac6d2; }
+.cold-hud.teaching { position: relative; z-index: auto; inset: auto; transform: none; width: 100%; margin: 0 0 16px; padding: 12px 14px; background: #e8f2f6; border: 1px solid #abc8d4; }
+.cold-hud.teaching .cold-track i { transition: none; }
+.cold-hud.teaching #cold-feedback { display: none; }
 .frost-edge { position: fixed; z-index: 3; inset: 0; pointer-events: none; box-shadow: inset 0 0 35px 9px #c5e5ff94; }
 .terrain-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .terrain-selector button { border: 1px solid #b8c8bb; border-radius: 8px; padding: 9px 4px; background: #e5eade; }
@@ -1955,48 +1956,52 @@ html[lang="ko-KR"] .intro h1 {
 .snow-teaching .notice-toast, .snow-teaching .coin-pop, .snow-teaching .vignette,
 .snow-teaching .frost-edge, .snow-teaching .impact-flash,
 .snow-teaching .cold-hud:not(.teaching) { visibility: hidden; }
-.snow-lesson { position: fixed; z-index: 8; inset: 0; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); outline: none; touch-action: none; }
-.snow-card { width: min(820px, 100%); max-height: 100%; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-areas: "heading heading" "stage copy" "footer footer"; border: 1px solid #d7dfd9; border-radius: 20px; overflow: hidden; color: #2b403c; box-shadow: 0 24px 90px #142c3444, 0 0 0 100vmax #162c3bb8; }
-.snow-card-heading { grid-area: heading; display: flex; align-items: center; gap: 18px; padding: 22px 26px 18px; background: #f7f6ef; border-bottom: 1px solid #dbe3df; }
-#snow-kicker { display: block; color: #748476; font-size: 11px; letter-spacing: 0.08em; margin-bottom: 4px; }
-.snow-card h2 { margin: 0; font-size: clamp(22px, 3vw, 28px); font-weight: 650; letter-spacing: 0.04em; line-height: 1.25; }
-.snow-stepper { display: flex; flex-direction: column; gap: 8px; margin-left: auto; text-align: right; font-size: 12px; color: #6c8175; font-variant-numeric: tabular-nums; }
-.snow-step-dots { display: flex; gap: 5px; }
-.snow-step-dots i { display: block; width: 18px; height: 3px; border-radius: 3px; background: #d8e0d7; }
-.snow-step-dots i.current { background: #b7834f; }
-#snow-review-close { width: 36px; height: 36px; flex: none; }
-.snow-stage { grid-area: stage; min-width: 0; overflow: hidden; border-right: 1px solid #c9d8dc; }
-#snow-viewport { height: 330px; width: 100%; pointer-events: none; }
-.snow-card-copy { grid-area: copy; display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 26px; background: #f7f6ef; overflow-y: auto; touch-action: pan-y; }
-.snow-card-copy p { margin: 0; font-size: 16px; line-height: 1.85; text-wrap: pretty; }
-#snow-detail { margin-top: 16px; padding-top: 16px; border-top: 1px solid #dce2d8; color: #936544; font-size: 14px; }
-#snow-exceptions { display: block; margin-top: 20px; color: #748075; font-size: 12px; line-height: 1.8; }
-#snow-detail:empty, #snow-exceptions:empty, #snow-meter-slot:empty { display: none; }
-.snow-card-footer { grid-area: footer; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 26px; background: #edf0e7; border-top: 1px solid #d7dfd4; color: #657360; font-size: 12px; }
-.snow-continue-mark { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: #b7814c; color: #fff8eb; font-size: 21px; }
-@media (max-width: 620px) and (min-height: 521px) {
-  .snow-card { width: min(440px, 100%); grid-template-columns: 1fr; grid-template-areas: "heading" "stage" "copy" "footer"; }
-  .snow-card-heading { padding: 16px 20px; }
-  .snow-stage { border-right: 0; border-bottom: 1px solid #c9d8dc; }
-  #snow-viewport { height: min(32dvh, 245px); }
-  .snow-card-copy { padding: 20px; max-height: 30dvh; }
-  .snow-card-copy p { font-size: 14px; }
-  #snow-detail { margin-top: 10px; padding-top: 10px; font-size: 13px; }
-  #snow-exceptions { margin-top: 12px; font-size: 11px; }
-  .snow-card-footer { padding: 12px 20px; }
-  .cold-hud.teaching { margin-bottom: 16px; }
+.snow-teaching { touch-action: pan-y; }
+.snow-lesson {
+  position: fixed; z-index: 8; inset: 0; display: grid; place-items: center;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  outline: none; touch-action: pan-y;
 }
-@media (max-height: 520px) {
-  .snow-lesson { padding: 10px; }
-  .snow-card { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
-  .snow-card-heading { padding: 10px 18px; }
-  .snow-card h2 { font-size: 20px; }
-  #snow-kicker { font-size: 10px; margin-bottom: 0; }
-  #snow-viewport { height: max(120px, calc(100dvh - 145px)); }
-  .snow-card-copy { padding: 14px 18px; max-height: calc(100dvh - 145px); }
-  .snow-card-copy p { font-size: 13px; line-height: 1.65; }
-  #snow-detail, #snow-exceptions { margin-top: 8px; padding-top: 6px; font-size: 11px; line-height: 1.6; }
-  .snow-card-footer { padding: 8px 18px; }
-  .snow-continue-mark { width: 24px; height: 24px; font-size: 17px; }
-  .cold-hud.teaching { width: 100%; margin-bottom: 12px; padding: 8px 10px; }
+.snow-card {
+  width: min(860px, 100%); max-height: 100%; min-height: 0; display: grid;
+  grid-template-columns: minmax(0, 1.22fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "heading heading" "stage copy" "footer footer";
+  border: 1px solid #d6e3e3; border-radius: 18px; overflow: hidden; color: #253b46;
+  box-shadow: 0 18px 70px #132e3d55, 0 0 0 100vmax #152c3ac2;
+}
+.snow-card-heading { grid-area: heading; display: flex; align-items: center; gap: 14px; padding: 15px 22px; background: #f3f7f6; border-bottom: 1px solid #d5e0e1; }
+#snow-kicker { display: block; color: #526b73; font-size: 11px; letter-spacing: 0.04em; margin-bottom: 2px; }
+.snow-card h2 { margin: 0; font-size: clamp(19px, 3vw, 27px); font-weight: 700; line-height: 1.22; }
+.snow-stepper { display: grid; gap: 5px; margin-left: auto; text-align: right; font-size: 12px; color: #4e6670; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.snow-step-dots { display: flex; gap: 4px; }
+.snow-step-dots i { display: block; width: 13px; height: 4px; border-radius: 4px; background: #d1e0e3; }
+.snow-step-dots i.current { background: #467787; }
+#snow-review-close { width: 42px; height: 42px; flex: none; }
+.snow-stage { grid-area: stage; min-width: 0; min-height: 0; overflow: hidden; border-right: 1px solid #c9d8dc; }
+#snow-viewport { height: clamp(104px, 48dvh, 330px); max-height: 100%; width: 100%; pointer-events: none; }
+.snow-card-copy { grid-area: copy; min-width: 0; min-height: 0; padding: 22px; background: #f3f7f6; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+.snow-card-copy p { margin: 0; font-size: 16px; line-height: 1.72; text-wrap: pretty; }
+#snow-detail { margin-top: 12px; padding: 10px 12px; border-left: 3px solid #bd7e58; border-radius: 3px; background: #f4eee6; color: #744f3f; font-size: 14px; }
+#snow-exceptions { display: block; margin-top: 12px; color: #4f6670; font-size: 13px; line-height: 1.6; }
+#snow-detail:empty, #snow-exceptions:empty, #snow-meter-slot:empty { display: none; }
+.snow-card-footer { grid-area: footer; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 22px; background: #e9f0f0; border-top: 1px solid #d4e1e1; color: #526b73; font-size: 12px; }
+.snow-next { min-height: 44px; padding: 8px 20px; border: 0; border-radius: 10px; background: #315d6c; color: #fff; font: inherit; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; touch-action: manipulation; }
+.snow-next:hover, .snow-next:focus-visible { background: #244c5b; }
+.snow-card button:focus-visible { outline: 2px solid #ca8749; outline-offset: 3px; }
+@media (max-width: 640px) and (orientation: portrait) {
+  .snow-card { width: min(450px, 100%); grid-template-columns: 1fr; grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-areas: "heading" "stage" "copy" "footer"; }
+  .snow-card-heading, .snow-card-copy, .snow-card-footer { padding-inline: 14px; }
+  .snow-card-heading, .snow-card-copy { padding-block: 11px; }
+  .snow-stage { border-right: 0; border-bottom: 1px solid #c9d8dc; }
+  #snow-viewport { height: clamp(96px, 29dvh, 250px); }
+  .snow-card-copy p { font-size: 14px; }
+  #snow-detail, #snow-exceptions { font-size: 12px; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .snow-card-heading, .snow-card-footer { padding: 7px 13px; }
+  #snow-viewport { height: max(96px, calc(100dvh - 140px)); }
+  .snow-card-copy { padding: 12px 14px; }
+  .snow-card-copy p { font-size: 13px; line-height: 1.55; }
+  #snow-detail, #snow-exceptions { margin-top: 7px; font-size: 12px; }
 }

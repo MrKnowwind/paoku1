@@ -11,6 +11,7 @@ export const CONFIG = {
   snowmanCold: 25,
   fireWarmth: 25,
   liquorWarmth: 35,
+  drinkDuration: 1.55,
   iceDistance: 24,
   iceSpeed: 1.25,
   iceRecovery: 0.35,

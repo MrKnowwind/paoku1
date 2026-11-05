@@ -29,7 +29,7 @@ export class CoastSurface {
           vec3 forestColor = mix(grassColor, pathColor, road);
           vec3 color = forestColor * vWeights.r + texture2D(stone, vWorldUV / 6.0).rgb * vWeights.g + sandColor * vWeights.b;
           float grain = sin(vWorldUV.x * 13.0 + sin(vWorldUV.y * 5.0)) * sin(vWorldUV.y * 19.0) * 0.018;
-          vec3 snowGrain = texture2D(packedSnow, vWorldUV / 2.5).rgb;
+          vec3 snowGrain = texture2D(packedSnow, vWorldUV / 2.8).rgb;
           vec3 snow = snowGrain * mix(vec3(0.88, 0.94, 1.0), vec3(1.0), smoothstep(3.8, 5.5, abs(vWorldUV.x))) + grain;
           color += snow * vWeights.a;
           float light = 0.68 + max(0.0, dot(normalize(vNormal), normalize(vec3(-0.4, 1.0, -0.3)))) * 0.32;

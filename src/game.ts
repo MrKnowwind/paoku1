@@ -618,7 +618,7 @@ export class RunnerGame {
       }
     } else if (item.type === "liquor") {
       if (lane && Math.abs(item.z) < 0.65 && Math.abs(this.y + 0.95 - item.y) < 0.9) {
-        this.collect(item); this.changeCold(-CONFIG.liquorWarmth); this.drinkTime = 1.1;
+        this.collect(item); this.changeCold(-CONFIG.liquorWarmth); this.drinkTime = CONFIG.drinkDuration;
       }
     } else if (lane && Math.abs(item.z) < 0.8 && this.y < (item.type === "snowman" ? 1.7 : 0.65)) {
       this.cleared.add(item.id); this.changeCold(item.type === "snowman" ? CONFIG.snowmanCold : CONFIG.snowdriftCold);

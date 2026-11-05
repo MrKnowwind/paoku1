@@ -61,8 +61,14 @@ export function snowBlend(distance: number, plan = defaultTrack): number {
   const smooth = t * t * (3 - 2 * t);
   if (s.biome === "snow") return 1;
   if (s.biome === "snow-transition") return s.to === "snow" ? smooth : 1 - smooth;
-  if (s.biome === "shore" && s.to === "snow") return smooth;
-  if (s.biome === "beach" && s.from === "snow") return 1 - smooth;
+  if (s.biome === "shore" && s.to === "snow") {
+    const shore = Math.max(0, Math.min(1, (distance - s.start - 60) / 20));
+    return shore * shore * (3 - 2 * shore);
+  }
+  if (s.biome === "beach" && s.from === "snow") {
+    const beach = Math.max(0, Math.min(1, (distance - s.start) / 24));
+    return 1 - beach * beach * (3 - 2 * beach);
+  }
   return 0;
 }
 

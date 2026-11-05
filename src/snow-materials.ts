@@ -41,6 +41,14 @@ export function snowMaterial(scene: Scene, surface: WinterSurface, forest: Fores
   ctx.fillStyle = {snow: "#e5eef5", ice: "#85b8cf", water: "#173e51", label: "#ead7a8"}[surface];
   ctx.fillRect(0, 0, size, size);
   if (surface === "snow") {
+    for (let i = 0; i < 38; i++) {
+      const x = random() * size, y = random() * size, radius = 26 + random() * 92;
+      for (const dx of [-size, 0, size]) for (const dy of [-size, 0, size]) {
+        const glow = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, radius);
+        glow.addColorStop(0, i % 3 ? "#ffffff32" : "#8caec345"); glow.addColorStop(1, "#dfeaf500");
+        ctx.fillStyle = glow; ctx.fillRect(x + dx - radius, y + dy - radius, radius * 2, radius * 2);
+      }
+    }
     for (let i = 0; i < 32000; i++) {
       const x = random() * size, y = random() * size, r = 0.4 + random() * 1.9;
       ctx.fillStyle = i % 3 ? "#ffffff" : "#89a7be"; ctx.globalAlpha = 0.08 + random() * 0.18;
@@ -91,8 +99,11 @@ export function snowMaterial(scene: Scene, surface: WinterSurface, forest: Fores
     const bump = new DynamicTexture("winter-micro-normal-" + surface, 512, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
     const context = bump.getContext() as CanvasRenderingContext2D;
     const data = context.createImageData(512, 512);
-    for (let i = 0; i < data.data.length; i += 4) {
-      data.data[i] = 128 + Math.round((random() - 0.5) * 28); data.data[i + 1] = 128 + Math.round((random() - 0.5) * 28);
+    for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) {
+      const u = x / 512 * Math.PI * 2, v = y / 512 * Math.PI * 2;
+      const i = (y * 512 + x) * 4;
+      data.data[i] = 128 + Math.round(11 * Math.sin(u * 19 + v * 13) + 5 * Math.cos(u * 43 - v * 22));
+      data.data[i + 1] = 128 + Math.round(10 * Math.cos(v * 19 - u * 11) + 4 * Math.sin(v * 31 + u * 17));
       data.data[i + 2] = 254; data.data[i + 3] = 255;
     }
     context.putImageData(data, 0, 0); bump.update(); bump.level = surface === "snow" ? 0.22 : 0.35;
