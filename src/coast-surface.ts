@@ -2,19 +2,23 @@ import { snowMaterial } from "./snow-materials.ts";
 import type { ForestProps } from "./props.ts";
 import { Scene } from "@babylonjs/core/scene";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
 export class CoastSurface {
   readonly material: ShaderMaterial;
+  readonly fallback: StandardMaterial;
   constructor(scene: Scene, forest: ForestProps) {
+    this.fallback = new StandardMaterial("coastal-ground-fallback", scene);
+    this.fallback.specularColor.setAll(0);
     this.material = new ShaderMaterial("world-scale-coastal-surface", scene, {
       vertexSource: `precision highp float;
-        attribute vec3 position; attribute vec3 normal; attribute vec2 uv; attribute vec4 color;
+        attribute vec3 position; attribute vec3 normal; attribute vec2 uv; attribute vec4 coastWeights;
         uniform mat4 world; uniform mat4 viewProjection; uniform float scroll;
         varying vec3 vPosition; varying vec3 vNormal; varying vec2 vSandUV; varying vec4 vWeights; varying vec2 vWorldUV;
         void main() {
           vec4 p = world * vec4(position, 1.0); vPosition = p.xyz;
-          vNormal = normalize(mat3(world) * normal); vSandUV = uv; vWeights = color;
+          vNormal = normalize(mat3(world) * normal); vSandUV = uv; vWeights = coastWeights;
           vWorldUV = vec2(p.x, p.z + scroll); gl_Position = viewProjection * p;
         }`,
       fragmentSource: `precision highp float;
@@ -36,12 +40,15 @@ export class CoastSurface {
           float haze = 1.0 - exp(-pow(length(eye - vPosition) * fogDensity, 2.0));
           gl_FragColor = vec4(mix(color * light, fogColor, haze), 1.0);
         }`,
-    }, {attributes: ["position", "normal", "uv", "color"],
+    }, {attributes: ["position", "normal", "uv", "coastWeights"],
       uniforms: ["world", "viewProjection", "scroll", "eye", "fogColor", "fogDensity"], samplers: ["sand", "trail", "stone", "grass", "packedSnow"]});
     for (const [name, file] of Object.entries({sand: "beach-sand-v2.webp", trail: "woodland-trail.webp", stone: "canyon-trail.webp", grass: "woodland-grass.webp"})) {
       const texture = new Texture(import.meta.env.BASE_URL + "art/" + file, scene);
       texture.anisotropicFilteringLevel = 8;
-      if (name === "sand") texture.wrapU = texture.wrapV = Texture.MIRROR_ADDRESSMODE;
+      if (name === "sand") {
+        texture.wrapU = texture.wrapV = Texture.MIRROR_ADDRESSMODE;
+        texture.onLoadObservable.addOnce(() => { this.fallback.diffuseTexture = texture; });
+      }
       this.material.setTexture(name, texture);
     }
     this.material.setTexture("packedSnow", snowMaterial(scene, "snow", forest).diffuseTexture!);

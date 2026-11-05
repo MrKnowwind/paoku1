@@ -7,7 +7,6 @@ import { ForestScene } from "./scene.ts";
 import { Economy } from "./economy.ts";
 import { coreBiomes } from "./track.ts";
 import type { CoreBiome } from "./track.ts";
-import { fishWarning } from "./fish.ts";
 import { CONFIG } from "./config.ts";
 import { Tutorial } from "./tutorial.ts";
 import type { LessonId } from "./tutorial.ts";
@@ -98,9 +97,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <svg class="cold-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M3.34 7l17.32 10M3.34 17 20.66 7M9 5l3 3 3-3M9 19l3-3 3 3M4.44 11l4.09-1.1-1.1-4.1M19.56 13l-4.09 1.1 1.1 4.1M7.43 18.2l1.1-4.1-4.09-1.1M16.57 5.8l-1.1 4.1 4.09 1.1"/></svg>
     <div class="cold-track"><i id="cold-fill"></i></div>
   </section>
-  ${["left", "right"].map(side => `<div class="fish-warning fish-${side}" id="fish-${side}" role="img" hidden>
-    <svg viewBox="0 0 32 30" aria-hidden="true"><path d="M14.35 3.1a1.9 1.9 0 0 1 3.3 0l12 20.75a1.9 1.9 0 0 1-1.65 2.85H4a1.9 1.9 0 0 1-1.65-2.85Z" fill="currentColor" stroke="#532318" stroke-width="1.8"/><path d="M16 10v7" stroke="#38201b" stroke-width="3" stroke-linecap="round"/><circle cx="16" cy="21.5" r="1.55" fill="#38201b"/></svg>
-  </div>`).join("")}
+
   <div class="frost-edge" id="frost-edge" hidden></div>
   <div class="snow-lesson" id="snow-lesson" hidden role="dialog" aria-modal="true" aria-labelledby="snow-title" aria-describedby="snow-copy" tabindex="-1">
     <article class="snow-card">
@@ -168,8 +165,6 @@ function localize() {
     el.setAttribute("aria-label", label);
   });
   document.querySelector("#home-best")!.textContent = n(best);
-  document.querySelector("#fish-left")!.setAttribute("aria-label", t("fishFromLeft"));
-  document.querySelector("#fish-right")!.setAttribute("aria-label", t("fishFromRight"));
   document
     .querySelector('meta[name="description"]')!
     .setAttribute("content", t("description").replace("\n", " "));
@@ -247,7 +242,7 @@ function renderDialog() {
                 ? "canyonArchHint"
                 : "hitArch"
               : "hitRock";
-    dialog.innerHTML = `<div class="result-heading"><span class="result-seal">${icon("trophy")}</span><h2 id="dialog-title">${t("over")}</h2>${newBest ? `<span class="record-tag">${t("newBest")}</span>` : ""}</div><div class="final-score"><span>${t("score")}</span><strong>${n(game.score)}</strong></div><div class="result-stats"><div><span class="stat-label" aria-label="${t("totalDistance")}">${icon("route")}</span><strong>${n(game.distance)}<small>m</small></strong></div><div><span class="stat-label" aria-label="${t("collected")}">${icon("coin")}</span><strong>${n(game.coins)}</strong></div></div><p class="collision-tip">${icon("help")}<span>${t(hint)}</span></p><div class="result-actions"><button class="primary-button" data-action="restart">${icon("restart")}${t("again")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button><button class="secondary-button" data-action="shop">${icon("shop")}${t("shop")}</button></div>`;
+    dialog.innerHTML = `<div class="result-heading"><span class="result-seal">${icon("trophy")}</span><h2 id="dialog-title">${t("over")}</h2>${newBest ? `<span class="record-tag">${t("newBest")}</span>` : ""}</div><div class="final-score"><span>${t("score")}</span><strong>${n(game.score)}</strong></div><div class="result-stats"><div><span class="stat-label" aria-label="${t("totalDistance")}">${icon("route")}</span><strong>${n(game.distance)}<small>m</small></strong></div><div><span class="stat-label" aria-label="${t("collected")}">${icon("coin")}</span><strong>${n(game.coins)}</strong></div></div><p class="collision-tip">${icon("help")}<span>${t(hint)}</span></p><div class="result-actions"><button class="primary-button" data-action="restart">${icon("restart")}${t("again")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   }
 }
 
@@ -433,32 +428,6 @@ function updateTutorialUi() {
   overlay.hidden = !lesson || lesson.id === "snow" || game.mode !== "running" || !!activeDialog;
   if (lesson) document.querySelector("#tutorial-title")!.textContent = t(lessonTitles[lesson.id]);
 }
-const fishMarkers = [
-  {side: -1, node: document.querySelector<HTMLElement>("#fish-left")!},
-  {side: 1, node: document.querySelector<HTMLElement>("#fish-right")!},
-];
-function updateFishWarnings() {
-  const show = game.mode === "running" && game.swimming && !game.transitioning && !activeDialog && !tutorial.active;
-  const nearest: Partial<Record<number, {z: number; y: number; urgency: number}>> = {};
-  if (show) {
-    for (const item of game.items) {
-      if (!item.fish || item.z < -1.15 || item.z > CONFIG.fishWarningDistance) continue;
-      const warning = fishWarning(item.fish, game.worldTime);
-      if (!warning) continue;
-      const previous = nearest[warning.side];
-      if (!previous || item.z < previous.z) nearest[warning.side] = {z: item.z, y: item.y, urgency: warning.urgency};
-    }
-  }
-  for (const {side, node} of fishMarkers) {
-    const approach = nearest[side];
-    node.hidden = !approach;
-    if (!approach) continue;
-    const depth = CONFIG.waterHeights.findIndex(height => Math.abs(height + 0.95 - approach.y) < 0.1);
-    node.style.top = `${64 - Math.max(0, depth) * 12}%`;
-    node.style.color = `hsl(${48 * (1 - approach.urgency)} 100% 56%)`;
-  }
-}
-
 function updateFeatureUi() {
   const state = economy.state;
   document.querySelectorAll<HTMLElement>(".wallet-count").forEach(element => {
@@ -920,7 +889,6 @@ try {
         void counter.offsetWidth;
         counter.classList.add("pulse");
       }
-      updateFishWarnings();
       updateFeatureUi();
       lastCoins = game.coins;
       document.querySelector("#score")!.textContent = n(game.score);

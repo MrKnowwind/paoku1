@@ -1,4 +1,5 @@
 import { openingFog } from "./opening.ts";
+import { fishWarning } from "./fish.ts";
 import { CONFIG } from "./config.ts";
 import "@babylonjs/core/Engines/thinEngine.scissor";
 import { Engine } from "@babylonjs/core/Engines/engine";
@@ -1279,6 +1280,41 @@ export class ForestScene {
     }
   }
 
+  private fishSignTexture?: DynamicTexture;
+  private fishSignColors = new Map<number, StandardMaterial>();
+
+  private fishSignMaterial(urgency: number) {
+    const step = Math.round(urgency * 24);
+    const cached = this.fishSignColors.get(step);
+    if (cached) return cached;
+    if (!this.fishSignTexture) {
+      const texture = new DynamicTexture("fish-warning-triangle", 128, this.scene, true);
+      const ctx = texture.getContext();
+      ctx.beginPath();
+      ctx.moveTo(64, 8); ctx.lineTo(120, 110); ctx.lineTo(8, 110); ctx.closePath();
+      ctx.lineJoin = "round";
+      ctx.fillStyle = "#fff"; ctx.fill();
+      ctx.lineWidth = 7; ctx.strokeStyle = "#352823"; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(64, 43); ctx.lineTo(64, 73);
+      ctx.lineWidth = 11; ctx.lineCap = "round"; ctx.stroke();
+      ctx.beginPath(); ctx.arc(64, 91, 6, 0, Math.PI * 2);
+      ctx.fillStyle = "#352823"; ctx.fill();
+      texture.hasAlpha = true;
+      texture.update();
+      this.fishSignTexture = texture;
+    }
+    const material = new StandardMaterial(`fish-warning-${step}`, this.scene);
+    material.diffuseTexture = this.fishSignTexture;
+    material.useAlphaFromDiffuseTexture = true;
+    material.disableLighting = true;
+    material.backFaceCulling = false;
+    material.fogEnabled = false;
+    material.emissiveTexture = this.fishSignTexture;
+    material.emissiveColor = Color3.Lerp(Color3.FromHexString("#ffd843"), Color3.FromHexString("#ff4735"), step / 24);
+    this.fishSignColors.set(step, material);
+    return material;
+  }
+
   private createItem(item: TrackItem) {
     if (["ice", "pool", "snowdrift", "snowman", "fire", "liquor", "stump", "snow-log"].includes(item.type)) {
       const root = this.snowProps.create(item.type);
@@ -1302,8 +1338,16 @@ export class ForestScene {
           shine.scaling.set(0.6, 1.5, 0.35); shine.rotation.z = -0.5;
         }
       } else if (item.type === "fish") {
+        const sign = CreatePlane("fish-entry-sign", {size: 1.25}, this.scene);
+        sign.parent = root;
+        sign.billboardMode = Mesh.BILLBOARDMODE_ALL;
+        sign.isPickable = false;
+        sign.material = this.fishSignMaterial(0);
+        sign.setEnabled(false);
+        const school = new TransformNode("fish-school", this.scene);
+        school.parent = root;
         for (let i = 0; i < 6; i++) {
-          const fish = this.ocean.fish(root, i % 2 ? "#efba69" : "#e6a177");
+          const fish = this.ocean.fish(school, i % 2 ? "#efba69" : "#e6a177");
           fish.position.set((i % 3 - 1) * 0.5, (Math.floor(i / 3) - 0.5) * 0.4, (i % 2) * 0.18);
           fish.scaling.setAll(0.85);
         }
@@ -2204,9 +2248,21 @@ export class ForestScene {
         const b = game.waterBounds(item);
         mesh.position.set(b.x, item.type === "volcano" ? item.y : b.y, item.z);
         if (item.type === "fish") {
-          mesh.rotation.y = b.direction * Math.PI / 2;
-          mesh.rotation.x = 0;
-          mesh.setEnabled(b.active);
+          mesh.position.x = 0;
+          const school = mesh.getChildTransformNodes(true).find(node => node.name === "fish-school")!;
+          school.position.x = b.x;
+          school.rotation.y = b.direction * Math.PI / 2;
+          school.setEnabled(b.active);
+          const sign = mesh.getChildMeshes().find(node => node.name === "fish-entry-sign")!;
+          const warning = item.fish && fishWarning(item.fish, game.worldTime);
+          const visible = game.swimming && !game.transitioning && item.z >= -1.15 &&
+            item.z <= CONFIG.fishWarningDistance && !!warning;
+          sign.setEnabled(visible);
+          if (visible && warning) {
+            sign.position.x = warning.side * CONFIG.fishWarningEdge;
+            sign.material = this.fishSignMaterial(warning.urgency);
+            sign.scaling.setAll(1 + Math.max(0, item.z) * 0.019);
+          }
           for (const tail of mesh.getChildMeshes().filter(m => m.name === "fish-fan-tail"))
             tail.rotation.y = Math.sin(game.worldTime * 7 + item.id) * 0.3;
         }

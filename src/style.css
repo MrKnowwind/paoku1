@@ -679,14 +679,12 @@ dialog[data-view="pause"] > .primary-button {
 .result-seal {
   display: grid;
   place-items: center;
-  color: #a18b53;
-  width: 25px;
-  height: 30px;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
 }
-.result-seal .icon {
-  width: 24px;
-  height: 24px;
-}
+.result-seal .icon { width: 36px; height: 36px; display: block; }
+.result-heading h2 { margin: 0; }
 .record-tag {
   margin-left: auto;
   color: #947d45;
@@ -1369,10 +1367,6 @@ html[lang="ko-KR"] .intro h1 {
   width: 40px;
   height: 40px;
 }
-.result-seal .art-icon {
-  width: 50px;
-  height: 50px;
-}
 .distance-counter .art-icon,
 .coin-counter .art-icon,
 .shop-wallet .art-icon {
@@ -1762,10 +1756,6 @@ html[lang="ko-KR"] .intro h1 {
 .cold-hud.warming .cold-track i { background: #cc904b; }
 .cold-hud.teaching { position: relative; z-index: auto; inset: auto; transform: none; width: min(210px, 100%); margin: 0 0 14px; background: #e8f2f6; }
 .cold-hud.teaching .cold-track i { transition: none; }
-.fish-warning { position: fixed; z-index: 5; width: clamp(32px, 5vw, 48px); aspect-ratio: 32 / 30; transform: translateY(-50%); pointer-events: none; filter: drop-shadow(0 2px 4px #172021a0); }
-.fish-warning svg { display: block; width: 100%; }
-.fish-left { left: max(14px, calc(env(safe-area-inset-left) + 8px)); }
-.fish-right { right: max(14px, calc(env(safe-area-inset-right) + 8px)); }
 .frost-edge { position: fixed; z-index: 3; inset: 0; pointer-events: none; box-shadow: inset 0 0 35px 9px #c5e5ff94; }
 .terrain-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .terrain-selector button { border: 1px solid #b8c8bb; border-radius: 8px; padding: 9px 4px; background: #e5eade; }

@@ -57,10 +57,12 @@ test("seeded append-only planning survives out-of-order queries and forest overr
   }
 });
 
-test("snow and water connectors blend continuously without hazards or early cold", () => {
+test("all 12 directed connectors preserve surface continuity and safety", () => {
+  const checked = new Set<string>();
   for (let seed = 1; seed <= 16; seed++) {
     const plan = new TrackPlan(seed); plan.at(18000);
     for (const s of plan.sections.filter(s => !coreBiomes.includes(s.biome as typeof coreBiomes[number]))) {
+      checked.add(`${s.from}/${s.to}`);
       assert.equal(obstacleAllowed((s.start + s.end) / 2, seed, plan), false);
       for (const boundary of [s.start, s.end]) {
         const a = coastWeights(boundary - 0.0001, plan), b = coastWeights(boundary + 0.0001, plan);
@@ -71,6 +73,7 @@ test("snow and water connectors blend continuously without hazards or early cold
       }
     }
   }
+  assert.equal(checked.size, 12);
   const game = snowGame(); game.distance = 620; game.update(0.5); assert.equal(game.cold, 0);
 });
 

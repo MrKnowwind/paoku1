@@ -38,6 +38,7 @@ export class TerrainScene {
   private seed = 0;
   private plan = defaultTrack;
   private snow?: SnowProps;
+  private pendingSurfaces = new Map<Mesh, Material>();
   private cells = new Map<number, TransformNode>();
   private coastSurface?: CoastSurface;
   private get sand(): ShaderMaterial {
@@ -158,22 +159,16 @@ export class TerrainScene {
       uv[i] = (uv[i] * width + x - width / 2) / tile;
       uv[i + 1] = (uv[i + 1] * length + world) / tile;
     }
-    if (material === this.coastSurface?.material) {
-      const vertices = mesh.getVerticesData(VertexBuffer.PositionKind)!;
-      const weights: number[] = [];
-      for (let i = 0; i < vertices.length; i += 3) {
-        const d = world + length / 2 + vertices[i + 2];
-        const pair = coastSandUV(x + vertices[i], d, this.plan);
-        uv[i / 3 * 2] = pair[0]; uv[i / 3 * 2 + 1] = pair[1];
-        weights.push(...coastWeights(d, this.plan));
-      }
-      mesh.setVerticesData(VertexBuffer.ColorKind, weights);
-    }
     mesh.setVerticesData(VertexBuffer.UVKind, uv);
     mesh.parent = parent;
     mesh.position.set(x, y, z);
     mesh.material = material;
     mesh.receiveShadows = true;
+  }
+
+  private prepareSurface(mesh: Mesh, preferred: Material, fallback: Material) {
+    mesh.material = fallback;
+    this.pendingSurfaces.set(mesh, preferred);
   }
 
   private canyonProfile(world: number, distance: number) {
@@ -209,6 +204,7 @@ export class TerrainScene {
       }
       const mesh = this.surface("single-layer-winter-ground", pos, coastGridIndices(columns, rows), uv, colors, root, withSnowLayer(base, snowTexture));
       mesh.setVerticesData(WINTER_VERTEX, coverage, false, 3);
+      this.prepareSurface(mesh, mesh.material!, base);
     }
     this.snow ??= new SnowProps(this.scene, this.props);
     for (const side of [-1, 1]) {
@@ -408,7 +404,10 @@ export class TerrainScene {
 
       }
     }
-    const seabed = this.surface("rippled-coastal-contours", positions, coastGridIndices(columns, rows), uvs, colors, root, this.sand);
+    const material = this.sand;
+    const seabed = this.surface("rippled-coastal-contours", positions, coastGridIndices(columns, rows), uvs, new Array(colors.length).fill(1), root, material);
+    seabed.setVerticesData("coastWeights", colors, false, 4);
+    this.prepareSurface(seabed, material, this.coastSurface!.fallback);
     if (underwater) this.water.caustics(root, seabed);
     // Dry land occludes the full-width sea; shoreline depth controls surf and transparency.
     this.water.cell(root, world, (x, d) => this.coastHeight(x, d));
@@ -496,7 +495,7 @@ export class TerrainScene {
           this.ground(0.025, 7, side * 3.8, CONFIG.waterHeights[i] - 0.1, 5, root, this.guide, world);
       }
     }
-    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && !mesh.isVerticesDataPresent(WINTER_VERTEX) && (mesh.material === this.sand || mesh.material instanceof StandardMaterial && mesh.material.alpha === 1)) as Mesh[];
+    const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && mesh !== seabed && !mesh.isVerticesDataPresent(WINTER_VERTEX) && mesh.material instanceof StandardMaterial && mesh.material.alpha === 1) as Mesh[];
     if (opaque.length) { const batch = mergeSceneryMeshes(opaque); batch.parent = root; batch.name = "batched-coastal-reef"; }
   }
 
@@ -756,5 +755,12 @@ export class TerrainScene {
       root.position.z = index * 10 - distance;
     }
     this.coastSurface?.update(distance);
+    for (const [mesh, material] of this.pendingSurfaces) {
+      if (mesh.isDisposed()) this.pendingSurfaces.delete(mesh);
+      else if (material.isReady(mesh)) {
+        mesh.material = material;
+        this.pendingSurfaces.delete(mesh);
+      }
+    }
   }
 }
