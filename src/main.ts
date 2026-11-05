@@ -802,7 +802,7 @@ window.addEventListener("keydown", (event) => {
   if (tutorial.active?.id === "snow" && !activeDialog) {
     if (event.code === "Tab") {
       event.preventDefault();
-      const buttons = [...document.querySelectorAll<HTMLButtonElement>("#snow-lesson button:not([hidden])")];
+      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("#snow-lesson button:not([hidden])"));
       const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
       buttons[index < 0 ? 0 : (index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
       return;
