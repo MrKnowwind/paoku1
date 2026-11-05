@@ -504,13 +504,13 @@ test("water generation leaves connected safe columns with unique IDs", () => {
   assert.equal(new Set(game.items.map(i => i.id)).size, game.items.length);
   for (const item of waterItems.filter(i => ["bubble", "coral", "volcano", "fish"].includes(i.type))) {
     const row = Math.floor((item.worldZ - 65) / CONFIG.rowSpacing);
-    const safeX = waterSafeLane(row) * 2.5;
-    assert.ok(Math.abs(waterSafeLane(row) - waterSafeLane(Math.max(0, row - 1))) <= 1);
+    const safeX = waterSafeLane(row, game.trackSeed) * 2.5;
+    assert.ok(Math.abs(waterSafeLane(row, game.trackSeed) - waterSafeLane(Math.max(0, row - 1), game.trackSeed)) <= 1);
     if (item.coral) {
       for (const y of CONFIG.waterHeights)
         assert.equal(touchesCoral(item.coral, safeX, y + 0.95, 0, 0.7), false);
     } else if (item.type === "fish") {
-      assert.ok(Math.abs(item.y - CONFIG.waterHeights[fishSafeLevel(row)] - 0.95) > 2);
+      assert.ok(Math.abs(item.y - CONFIG.waterHeights[fishSafeLevel(row, game.trackSeed)] - 0.95) > 2);
     } else {
       const b = game.waterBounds(item);
       assert.ok(Math.abs(b.x - safeX) - b.rx > 0.95);
@@ -666,9 +666,9 @@ test("ocean rows add extra schools across all heights with distinct IDs and a ro
       schools++;
       assert.ok(item.fish);
       const row = Math.floor((item.worldZ - 65) / CONFIG.rowSpacing);
-      const escape = fishSafeLevel(row);
+      const escape = fishSafeLevel(row, game.trackSeed);
       assert.ok(Math.abs(item.y - CONFIG.waterHeights[escape] - 0.95) > 1.1);
-      assert.ok(Math.abs(escape - fishSafeLevel(Math.max(0, row - 1))) <= 1);
+      assert.ok(Math.abs(escape - fishSafeLevel(Math.max(0, row - 1), game.trackSeed)) <= 1);
       fishHeights.add(item.y);
       const before = game.waterBounds(item);
       game.pause(); game.update(5);
@@ -742,4 +742,21 @@ test("wall layouts vary across seeds and sides, including the first gap", () => 
   }
   assert.equal(layouts.size, 24);
   assert.ok(differentSides >= 22);
+});
+
+
+test("underwater safe routes vary with the seed and remain reachable", () => {
+  const lanes = new Set<string>(), heights = new Set<string>();
+  for (let seed = 1; seed <= 24; seed++) {
+    const laneRoute = Array.from({length: 80}, (_, row) => waterSafeLane(row, seed));
+    const heightRoute = Array.from({length: 80}, (_, row) => fishSafeLevel(row, seed));
+    lanes.add(JSON.stringify(laneRoute)); heights.add(JSON.stringify(heightRoute));
+    for (const route of [laneRoute, heightRoute]) {
+      assert.equal(new Set(route).size, 3);
+      for (let row = 1; row < route.length; row++) assert.ok(Math.abs(route[row] - route[row - 1]) <= 1);
+    }
+    assert.deepEqual(Array.from({length: 80}, (_, row) => waterSafeLane(row, seed)), laneRoute);
+    assert.deepEqual(Array.from({length: 80}, (_, row) => fishSafeLevel(row, seed)), heightRoute);
+  }
+  assert.equal(lanes.size, 24); assert.equal(heights.size, 24);
 });

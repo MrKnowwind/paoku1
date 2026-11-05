@@ -1,3 +1,4 @@
+import { safeRoute } from "./safe-route.ts";
 import { CONFIG } from "./config.ts";
 
 export interface CoralPoint { x: number; y: number; z: number }
@@ -74,6 +75,6 @@ export function touchesCoral(plan: CoralPlan, x: number, y: number, z: number, p
 }
 
 // At most one column change between rows, with >1 second between rows at max speed.
-export function waterSafeLane(row: number): number {
-  return [0, -1, 0, 1][Math.floor(row / 2) % 4];
+export function waterSafeLane(row: number, seed = 0): number {
+  return safeRoute(row, seed, 2, 227) - 1;
 }

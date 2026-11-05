@@ -1,3 +1,4 @@
+import { safeRoute } from "./safe-route.ts";
 import { CONFIG } from "./config.ts";
 
 export interface FishCrossing { direction: number; startTime: number }
@@ -11,7 +12,7 @@ export function fishPosition(crossing: FishCrossing, time: number) {
   };
 }
 
-// Rotate the escape height gradually; no swimming layer stays permanently safe.
-export function fishSafeLevel(row: number): number {
-  return [2, 1, 0, 1][Math.floor(row / 4) % 4];
+// Keep each random escape height for four rows to allow a clear swimming response.
+export function fishSafeLevel(row: number, seed = 0): number {
+  return safeRoute(row, seed, 4, 113);
 }

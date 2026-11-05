@@ -511,14 +511,14 @@ export class RunnerGame {
   }
   // Reserve a reachable column, then place rooted reefs and coins around it.
   private waterRow(z: number, row: number, base: number) {
-    const safeLane = waterSafeLane(row);
+    const safeLane = waterSafeLane(row, this.seed);
     const blocked = [-1, 0, 1].filter(lane => lane !== safeLane);
     const lane = blocked[Math.floor(this.hash(row, 10) * blocked.length)];
     const types: ItemType[] = ["bubble", "coral", "volcano"];
     const rollType = this.hash(row, 11);
     const type: ItemType = rollType < CONFIG.waterFishChance ? "fish"
       : types[Math.floor((rollType - CONFIG.waterFishChance) / (1 - CONFIG.waterFishChance) * types.length)];
-    const escapeLevel = fishSafeLevel(row);
+    const escapeLevel = fishSafeLevel(row, this.seed);
     const fishLevels = [0, 1, 2].filter(level => level !== escapeLevel);
     const level = type === "volcano" ? 0 : type === "fish"
       ? fishLevels[Math.floor(this.hash(row, 12) * fishLevels.length)]
@@ -533,7 +533,7 @@ export class RunnerGame {
     this.emit(type, lane, z, coral ? coral.rootY : type === "volcano" ? CONFIG.seabedHeight + 0.65 : CONFIG.waterHeights[level] + 0.95, base);
     const hazard = this.items.find(i => i.id === this.idBase + base);
     if (hazard) {
-      hazard.shape = row % 3;
+      hazard.shape = Math.floor(this.hash(row, 40) * 3);
       hazard.coral = coral;
       if (type === "fish") hazard.fish = this.fishCrossing(z, row, base, 15);
     }
@@ -570,7 +570,7 @@ export class RunnerGame {
     return crossing;
   }
   waterBounds(item: TrackItem) {
-    const phase = ((this.worldTime + item.worldZ * 0.017) % 10 + 10) % 10;
+    const phase = ((this.worldTime + this.hash(item.id, 41) * 10) % 10 + 10) % 10;
     const eruption = item.type === "volcano" && phase >= 4 && phase < 6;
     const warning = item.type === "volcano" && phase >= 2 && phase < 4;
     const fish = item.fish ? fishPosition(item.fish, this.worldTime) : undefined;
