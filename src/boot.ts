@@ -35,8 +35,7 @@ const draw = (update: LoadingUpdate) => {
   bar.setAttribute("aria-valuenow", String(Math.floor(highest)));
   root.querySelector("#startup-percent")!.textContent = `${Math.floor(highest)}%`;
   status.textContent = copy[update.phase];
-  detail.textContent = update.total ? `${((update.loaded ?? 0) / 1048576).toFixed(1)} / ${(update.total / 1048576).toFixed(1)} MB` : copy.hint;
-  root.querySelectorAll<HTMLElement>(".startup-step").forEach((step, i) => step.classList.toggle("is-done", highest >= [65, 96, 100][i]));
+  detail.textContent = "";
   if (update.phase === "ready") {
     done = true; root.classList.add("is-finished");
     setTimeout(() => { if (done) root.hidden = true; }, 600);

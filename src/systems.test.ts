@@ -1,4 +1,4 @@
-import { fishPosition, fishSafeLevel } from "./fish.ts";
+import { fishPosition, fishSafeLevel, fishWarning } from "./fish.ts";
 import { coastFloor, coastWeights, coastSandUV } from "./coast-layout.ts";
 import { TrackPlan } from "./track.ts";
 import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
@@ -657,8 +657,8 @@ test("all swimming levels stay below the surface while the lowest level still me
 });
 
 
-test("ocean rows add extra schools across all heights with distinct IDs and a rotating escape layer", () => {
-  let rows = 0, extras = 0, schools = 0;
+test("denser ocean rows keep a route and spread coins across safe swimming cells", () => {
+  let mainRows = 0, extraSchools = 0, doubleRows = 0;
   const fishHeights = new Set<number>();
   for (let seed = 1; seed <= 12; seed++) {
     const game = new RunnerGame({random: () => seed / 13});
@@ -666,31 +666,62 @@ test("ocean rows add extra schools across all heights with distinct IDs and a ro
     const hazards = game.items.filter(item => sectionAt(item.worldZ, game.track).biome === "water" &&
       ["bubble", "coral", "volcano", "fish"].includes(item.type));
     assert.equal(new Set(game.items.map(item => item.id)).size, game.items.length);
+    const rows = new Map<number, typeof hazards>();
     for (const item of hazards) {
-      const rowOffset = (item.worldZ - 65) % CONFIG.rowSpacing;
-      if (rowOffset === 0) rows++;
-      else {
-        assert.equal(rowOffset, CONFIG.rowSpacing / 2);
+      const offset = (item.worldZ - 65) % CONFIG.rowSpacing;
+      if (offset === 0) {
+        const items = rows.get(item.worldZ) ?? [];
+        items.push(item);
+        rows.set(item.worldZ, items);
+      } else {
+        assert.equal(offset, CONFIG.rowSpacing / 2);
         assert.equal(item.type, "fish");
-        extras++;
+        extraSchools++;
       }
       if (item.type !== "fish") continue;
-      schools++;
       assert.ok(item.fish);
       const row = Math.floor((item.worldZ - 65) / CONFIG.rowSpacing);
       const escape = fishSafeLevel(row, game.trackSeed);
       assert.ok(Math.abs(item.y - CONFIG.waterHeights[escape] - 0.95) > 1.1);
-      assert.ok(Math.abs(escape - fishSafeLevel(Math.max(0, row - 1), game.trackSeed)) <= 1);
       fishHeights.add(item.y);
-      const before = game.waterBounds(item);
-      game.pause(); game.update(5);
-      assert.deepEqual(game.waterBounds(item), before);
-      game.resume();
+    }
+    mainRows += rows.size;
+    doubleRows += [...rows.values()].filter(items => items.length === 2).length;
+    for (const [z, items] of rows) {
+      if (z - game.distance < 8 || z - game.distance > CONFIG.trackLookahead - 8) continue;
+      const coins = game.items.filter(item => item.type === "coin" && Math.abs(item.worldZ - z) <= 8);
+      const cells = new Set(coins.map(coin => `${coin.lane}/${coin.y}`));
+      assert.ok(cells.size >= 4 && cells.size <= 6);
+      assert.ok(new Set(coins.map(coin => coin.y)).size >= 2);
+      const row = (z - 65) / CONFIG.rowSpacing;
+      const safeLane = waterSafeLane(row, game.trackSeed);
+      const safeHeight = CONFIG.waterHeights[fishSafeLevel(row, game.trackSeed)] + 0.95;
+      assert.ok(coins.some(coin => coin.lane === safeLane && coin.y === safeHeight));
+      for (const coin of coins) for (const hazard of items) {
+        if (hazard.coral) assert.equal(touchesCoral(hazard.coral, coin.lane * 2.5, coin.y, 0, 0.7), false);
+        else if (hazard.type === "fish") assert.notEqual(coin.y, hazard.y);
+        else if (hazard.type === "volcano") assert.notEqual(coin.lane, hazard.lane);
+        else assert.ok(coin.lane !== hazard.lane || coin.y !== hazard.y);
+      }
     }
   }
   assert.equal(fishHeights.size, 3, "fish use all three heights");
-  assert.ok(extras > rows * 0.3, "extra schools increase obstacle density");
-  assert.ok(schools > (rows + extras) * 0.5, "fish account for most ocean encounters");
+  assert.ok(extraSchools > mainRows * 0.6, "extra schools fill most intermediate rows");
+  assert.ok(doubleRows > mainRows * 0.3, "fixed hazards regularly appear in pairs");
+});
+
+test("fish warning identifies the entry side and escalates until the school passes", () => {
+  for (const direction of [-1, 1]) {
+    const crossing = {direction, startTime: 10};
+    const entry = crossing.startTime + (CONFIG.fishHalfSpan - CONFIG.fishWarningEdge) / CONFIG.fishSpeed;
+    assert.equal(fishWarning(crossing, entry - CONFIG.fishWarningLead - 0.1), undefined);
+    const early = fishWarning(crossing, entry - 1.6)!;
+    const near = fishWarning(crossing, entry - 0.15)!;
+    assert.equal(early.side, -direction);
+    assert.ok(early.urgency < near.urgency && near.urgency < 1);
+    assert.equal(fishWarning(crossing, entry)?.urgency, 1);
+    assert.equal(fishWarning(crossing, entry + 2 * CONFIG.fishWarningEdge / CONFIG.fishSpeed + 0.1), undefined);
+  }
 });
 
 

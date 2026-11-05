@@ -7,6 +7,7 @@ import { ForestScene } from "./scene.ts";
 import { Economy } from "./economy.ts";
 import { coreBiomes } from "./track.ts";
 import type { CoreBiome } from "./track.ts";
+import { fishWarning } from "./fish.ts";
 import { CONFIG } from "./config.ts";
 import { Tutorial } from "./tutorial.ts";
 import type { LessonId } from "./tutorial.ts";
@@ -57,8 +58,6 @@ let activeDialog:
   | null = null;
 let runFinalized = false;
 let buyBusyUntil = 0;
-let lastPickupSerial = 0;
-let lastClearSerial = 0;
 let toastTimer = 0;
 let statusMarkup = "";
 let resumeOnClose = false;
@@ -95,24 +94,30 @@ const text = (key: MessageKey, tag = "span", cls = "") =>
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <canvas id="world" aria-label="3D"></canvas>
-  <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="100"><strong id="cold-label"></strong><b id="cold-value"></b><div class="cold-track"><i id="cold-fill"></i></div><small id="cold-feedback"></small></section>
+  <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="${CONFIG.coldMax}">
+    <svg class="cold-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M3.34 7l17.32 10M3.34 17 20.66 7M9 5l3 3 3-3M9 19l3-3 3 3M4.44 11l4.09-1.1-1.1-4.1M19.56 13l-4.09 1.1 1.1 4.1M7.43 18.2l1.1-4.1-4.09-1.1M16.57 5.8l-1.1 4.1 4.09 1.1"/></svg>
+    <div class="cold-track"><i id="cold-fill"></i></div>
+  </section>
+  ${["left", "right"].map(side => `<div class="fish-warning fish-${side}" id="fish-${side}" role="img" hidden>
+    <svg viewBox="0 0 32 30" aria-hidden="true"><path d="M14.35 3.1a1.9 1.9 0 0 1 3.3 0l12 20.75a1.9 1.9 0 0 1-1.65 2.85H4a1.9 1.9 0 0 1-1.65-2.85Z" fill="currentColor" stroke="#532318" stroke-width="1.8"/><path d="M16 10v7" stroke="#38201b" stroke-width="3" stroke-linecap="round"/><circle cx="16" cy="21.5" r="1.55" fill="#38201b"/></svg>
+  </div>`).join("")}
   <div class="frost-edge" id="frost-edge" hidden></div>
   <div class="snow-lesson" id="snow-lesson" hidden role="dialog" aria-modal="true" aria-labelledby="snow-title" aria-describedby="snow-copy" tabindex="-1">
     <article class="snow-card">
-      <header class="snow-card-heading"><div><small id="snow-kicker"></small><h2 id="snow-title"></h2></div><div class="snow-stepper"><span id="snow-progress"></span><span class="snow-step-dots" aria-hidden="true"><i></i><i></i><i></i></span></div><button id="snow-review-close" class="icon-button" data-action="snow-review-close" hidden>${icon("close")}</button></header>
+      <header class="snow-card-heading"><h2 id="snow-title"></h2><div class="snow-stepper" id="snow-progress" role="img"><span class="snow-step-dots" aria-hidden="true"><i></i><i></i><i></i></span></div><button id="snow-review-close" class="icon-button" data-action="snow-review-close" hidden>${icon("close")}</button></header>
       <div class="snow-stage"><div id="snow-viewport" aria-label="3D"></div></div>
       <section class="snow-card-copy"><div id="snow-meter-slot"></div><p id="snow-copy"></p><p id="snow-detail"></p><small id="snow-exceptions"></small></section>
-      <footer class="snow-card-footer"><span id="snow-tap"></span><button class="snow-next" id="snow-next" data-action="snow-next"></button></footer>
+      <footer class="snow-card-footer"><button class="snow-next" id="snow-next" data-action="snow-next"></button></footer>
     </article>
   </div>
   <div class="vignette"></div><div class="impact-flash"></div>
   <div class="shell">
     <header class="header">
       <a class="brand" href="#" data-action="home" data-label="brand">
-        <span class="brand-mark">${icon("leaf")}</span>${text("brand", "strong")}
+        <span class="brand-mark">${icon("leaf")}</span>
       </a>
       <section class="hud" id="hud" hidden data-label="score">
-        <div class="hud-main">${text("score", "small")}<strong id="score">0</strong></div>
+        <div class="hud-main"><strong id="score" data-label="score">0</strong></div>
         <div class="hud-secondary">
           <span class="distance-counter" data-label="distance">${icon("route")}<span><b id="distance">0</b><small>m</small></span></span>
           <span class="coin-counter" data-label="coins">${icon("coin")}<b id="coins">0</b></span>
@@ -129,15 +134,12 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         <h1>${text("titleA", "span")}${text("titleB", "span", "title-accent")}</h1>
         <button class="primary-button start-button" data-action="start" disabled>${icon("play")}${text("start")}</button>
         <button class="supply-button" data-action="shop">${icon("shop")}${text("shop")}<span>${icon("coin")}<b class="wallet-count">${n(economy.state.wallet)}</b></span></button>
-        <div class="best-record">${icon("trophy")}${text("best", "small")}<strong id="home-best">${n(best)} <span>${t("bestUnit")}</span></strong></div>
+        <div class="best-record" data-label="best">${icon("trophy")}<strong id="home-best">${n(best)}</strong></div>
       </section>
-      <div class="live-hint" id="live-hint" hidden>${text("liveHint", "span", "keyboard-only")}${text("mobileHint", "span", "touch-only")}</div>
     </main>
     <footer><button class="icon-button help-button" data-action="guide" data-label="howTo">${icon("help")}</button></footer>
   </div>
-  <div class="coin-pop" id="coin-pop" aria-hidden="true"></div>
   <section class="run-status" id="run-status" hidden aria-label="${t("powerStatus")}"></section>
-  <div class="route-notice" id="route-notice" hidden role="status"></div>
   <button class="active-tool" id="booster-button" data-action="boost" data-label="activateBoost" hidden>${icon("rocket")}<span id="booster-status"></span></button>
   <div class="notice-toast" id="notice-toast" hidden role="status"></div>
   <div class="tutorial-overlay" id="tutorial-overlay" hidden>
@@ -165,8 +167,9 @@ function localize() {
     el.title = label;
     el.setAttribute("aria-label", label);
   });
-  document.querySelector("#home-best")!.innerHTML =
-    `${n(best)} <span>${t("bestUnit")}</span>`;
+  document.querySelector("#home-best")!.textContent = n(best);
+  document.querySelector("#fish-left")!.setAttribute("aria-label", t("fishFromLeft"));
+  document.querySelector("#fish-right")!.setAttribute("aria-label", t("fishFromRight"));
   document
     .querySelector('meta[name="description"]')!
     .setAttribute("content", t("description").replace("\n", " "));
@@ -184,9 +187,9 @@ function renderDialog() {
       price: number,
     ) => {
       const unavailable = state.wallet < price;
-      return `<article class="supply-card"><span class="supply-icon">${icon(glyph)}</span><div><h3>${t(kind)}</h3><p>${t(kind === "booster" ? "boosterDesc" : "hourglassDesc")}</p><small>${t("stock")} · ${n(kind === "booster" ? state.boosters : state.hourglasses)}</small></div><div class="purchase-row"><span>${icon("coin")}${n(price)}</span><button class="secondary-button" data-action="buy-${kind}" ${unavailable ? "disabled" : ""}>${t(unavailable ? "insufficient" : "buy")}</button></div></article>`;
+      return `<article class="supply-card"><span class="supply-icon">${icon(glyph)}</span><div><h3>${t(kind)}</h3><p>${t(kind === "booster" ? "boosterDesc" : "hourglassDesc")}</p><small aria-label="${t("stock")}">×${n(kind === "booster" ? state.boosters : state.hourglasses)}</small></div><div class="purchase-row"><span>${icon("coin")}${n(price)}</span><button class="secondary-button" data-action="buy-${kind}" ${unavailable ? "disabled" : ""}>${t(unavailable ? "insufficient" : "buy")}</button></div></article>`;
     };
-    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("shop")}</span><h2 id="dialog-title">${t("shop")}</h2></div><div class="shop-wallet">${t("wallet")}<strong>${icon("coin")}<span class="wallet-count">${n(state.wallet)}</span></strong></div>${product("booster", "rocket", CONFIG.boosterPrice)}${product("hourglass", "hourglass", CONFIG.hourglassPrice)}`;
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("shop")}</span><h2 id="dialog-title">${t("shop")}</h2></div><div class="shop-wallet" aria-label="${t("wallet")}"><strong>${icon("coin")}<span class="wallet-count">${n(state.wallet)}</span></strong></div>${product("booster", "rocket", CONFIG.boosterPrice)}${product("hourglass", "hourglass", CONFIG.hourglassPrice)}`;
   } else if (activeDialog === "revive") {
     const usable = game.canRewind && economy.state.hourglasses > 0;
     const hint = game.hourglassUsed
@@ -194,7 +197,7 @@ function renderDialog() {
       : economy.state.hourglasses === 0
         ? "noHourglass"
         : "reviveHint";
-    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div><p class="revive-copy">${t(hint)}</p><div class="revive-stock">${icon("hourglass")}${t("stock")} · ${n(economy.state.hourglasses)}</div><button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div>${usable ? "" : `<p class="revive-copy">${t(hint)}</p>`}<div class="revive-stock" aria-label="${t("stock")}">${icon("hourglass")}×${n(economy.state.hourglasses)}</div><button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
   } else if (activeDialog === "settings") {
     const selected = languages.find((item) => item.code === language)!;
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("settings")}</span><h2 id="dialog-title">${t("settings")}</h2></div>
@@ -205,8 +208,8 @@ function renderDialog() {
       <div class="setting-row"><span class="setting-label">${icon("sound")}${t("sound")}</span><button class="toggle ${sound ? "is-on" : ""}" data-action="sound" role="switch" aria-checked="${sound}" aria-label="${t("sound")}"><span></span></button></div>
       <div class="setting-row"><span class="setting-label">${icon("quality")}${t("quality")}</span><div class="segmented"><button class="${quality ? "selected" : ""}" data-quality="high" aria-pressed="${quality}">${t("high")}</button><button class="${!quality ? "selected" : ""}" data-quality="low" aria-pressed="${!quality}">${t("low")}</button></div></div>
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${t("terrainOverride")}</span><small>${t("terrainOverrideHint")}</small></div><button class="toggle ${terrainOverride ? "is-on" : ""}" data-action="terrain-override" role="switch" aria-checked="${terrainOverride}" aria-label="${t("terrainOverride")}"><span></span></button></div>
-      <div class="terrain-selector" role="radiogroup" aria-label="${t("terrainOverride")}">${coreBiomes.map(b => `<button role="radio" aria-checked="${terrainTarget === b}" data-terrain="${b}" ${terrainOverride ? "" : "disabled"} class="${terrainTarget === b ? "selected" : ""}">${t(b)}</button>`).join("")}</div><p class="terrain-hint">${t("terrainUnlockHint")}</p>
-      <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span><small>${t("tutorialTestHint")}</small></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>`;
+      <div class="terrain-selector" role="radiogroup" aria-label="${t("terrainOverride")}">${coreBiomes.map(b => `<button role="radio" aria-checked="${terrainTarget === b}" data-terrain="${b}" ${terrainOverride ? "" : "disabled"} class="${terrainTarget === b ? "selected" : ""}">${t(b)}</button>`).join("")}</div>
+      <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>`;
   } else if (activeDialog === "guide") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("help")}</span><h2 id="dialog-title">${t("howTo")}</h2></div><div class="guide-list">
       ${(
@@ -223,7 +226,7 @@ function renderDialog() {
         )
         .join(
           "",
-        )}</div><button class="secondary-button full-width" data-action="snow-guide">${t("snowGuide")}</button><p class="terrain-hint">${t("snowExceptions")}</p>`;
+        )}</div><button class="secondary-button full-width" data-action="snow-guide">${t("snowGuide")}</button>`;
   } else if (activeDialog === "pause") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
@@ -244,7 +247,7 @@ function renderDialog() {
                 ? "canyonArchHint"
                 : "hitArch"
               : "hitRock";
-    dialog.innerHTML = `<div class="result-heading"><span class="result-seal">${icon("trophy")}</span><h2 id="dialog-title">${t("over")}</h2>${newBest ? `<span class="record-tag">${t("newBest")}</span>` : ""}</div><div class="final-score"><span>${t("score")}</span><strong>${n(game.score)}</strong></div><div class="result-stats"><div><span class="stat-label">${icon("route")}${t("totalDistance")}</span><strong>${n(game.distance)}<small>m</small></strong></div><div><span class="stat-label">${icon("coin")}${t("collected")}</span><strong>${n(game.coins)}</strong></div></div><p class="collision-tip">${icon("help")}<span>${t(hint)}</span></p><p class="wallet-receipt">${t("walletEarned")} · ${n(game.coins)}</p><div class="result-actions"><button class="primary-button" data-action="restart">${icon("restart")}${t("again")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button><button class="secondary-button" data-action="shop">${icon("shop")}${t("shop")}</button></div>`;
+    dialog.innerHTML = `<div class="result-heading"><span class="result-seal">${icon("trophy")}</span><h2 id="dialog-title">${t("over")}</h2>${newBest ? `<span class="record-tag">${t("newBest")}</span>` : ""}</div><div class="final-score"><span>${t("score")}</span><strong>${n(game.score)}</strong></div><div class="result-stats"><div><span class="stat-label" aria-label="${t("totalDistance")}">${icon("route")}</span><strong>${n(game.distance)}<small>m</small></strong></div><div><span class="stat-label" aria-label="${t("collected")}">${icon("coin")}</span><strong>${n(game.coins)}</strong></div></div><p class="collision-tip">${icon("help")}<span>${t(hint)}</span></p><div class="result-actions"><button class="primary-button" data-action="restart">${icon("restart")}${t("again")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button><button class="secondary-button" data-action="shop">${icon("shop")}${t("shop")}</button></div>`;
   }
 }
 
@@ -305,7 +308,6 @@ function syncView() {
   document.querySelector<HTMLElement>("#intro")!.hidden = !ready;
   document.querySelector<HTMLElement>("#hud")!.hidden =
     ready || game.introducing;
-  document.querySelector<HTMLElement>("#live-hint")!.hidden = true;
   document.querySelector<HTMLElement>(".pause-button")!.hidden =
     ready || game.mode === "rewinding";
 }
@@ -374,9 +376,6 @@ const lessonTitles: Record<LessonId, MessageKey> = {
   booster: "lessonBooster",
   hourglass: "lessonHourglass",
 };
-function snowText(key: MessageKey) {
-  return t(key).replace("{drift}", String(CONFIG.snowdriftCold)).replace("{man}", String(CONFIG.snowmanCold)).replace("{fire}", String(CONFIG.fireWarmth)).replace("{liquor}", String(CONFIG.liquorWarmth));
-}
 function updateSnowUi() {
   const teaching = tutorial.active?.id === "snow" && !activeDialog;
   const step = tutorial.snowStep;
@@ -389,16 +388,14 @@ function updateSnowUi() {
     panel.dataset.step = String(step);
     panel.dataset.locale = language;
     panel.querySelector<HTMLElement>(".snow-card-copy")!.scrollTop = 0;
-    document.querySelector("#snow-kicker")!.textContent = t("snowGuide");
-    document.querySelector("#snow-progress")!.textContent = `${step} / 3`;
+    document.querySelector("#snow-progress")!.setAttribute("aria-label", `${step} / 3`);
     panel.querySelectorAll<HTMLElement>(".snow-step-dots i").forEach((dot, i) => dot.classList.toggle("current", i + 1 === step));
     document.querySelector<HTMLElement>("#snow-review-close")!.hidden = !tutorial.reviewingSnow;
     document.querySelector("#snow-review-close")!.setAttribute("aria-label", t("close"));
     document.querySelector("#snow-title")!.textContent = t(step === 1 ? "cold" : step === 2 ? "threats" : "warmth");
-    document.querySelector("#snow-copy")!.textContent = snowText(step === 1 ? "snowLessonCold" : step === 2 ? "snowLessonThreats" : "snowLessonWarmth");
+    document.querySelector("#snow-copy")!.textContent = t(step === 1 ? "snowLessonCold" : step === 2 ? "snowLessonThreats" : "snowLessonWarmth");
     document.querySelector("#snow-detail")!.textContent = step === 2 ? t("snowLessonFatal") : "";
     document.querySelector("#snow-exceptions")!.textContent = step === 3 ? t("snowExceptions") : "";
-    document.querySelector("#snow-tap")!.textContent = t("snowTap");
     document.querySelector("#snow-next")!.textContent = t(step === 3 ? "gotIt" : "snowNext");
     if (newlyOpened) panel.focus({preventScroll: true});
   }
@@ -410,15 +407,13 @@ function updateSnowUi() {
   else if (cold.parentElement === meterSlot) document.querySelector("#app")!.append(cold);
   cold.classList.toggle("teaching", teaching && step === 1);
   const sample = teaching && step === 1;
+  document.body.classList.toggle("cold-visible", !cold.hidden && !teaching);
   cold.classList.toggle("critical", !sample && game.cold >= 75);
   const value = sample ? 40 : game.cold;
-  document.querySelector("#cold-label")!.textContent = t(sample ? "snowMeterSample" : game.cold >= 75 ? "coldWarning" : "cold");
-  document.querySelector("#cold-value")!.textContent = `${Math.floor(value)}/${CONFIG.coldMax}`;
-  cold.setAttribute("aria-label", t(sample ? "snowMeterSample" : "cold")); cold.setAttribute("aria-valuenow", String(Math.floor(value)));
-  document.querySelector<HTMLElement>("#cold-fill")!.style.width = `${value}%`;
-  const feedback = document.querySelector<HTMLElement>("#cold-feedback")!;
-  feedback.textContent = game.icy ? t("iceSlip") : game.coldFeedback > 0 ? `${game.coldDelta > 0 ? "+" : ""}${game.coldDelta}` : "";
-  feedback.classList.toggle("warming", game.coldDelta < 0 && !game.icy);
+  cold.setAttribute("aria-label", t(sample ? "snowMeterSample" : "cold"));
+  cold.setAttribute("aria-valuenow", String(Math.floor(value)));
+  document.querySelector<HTMLElement>("#cold-fill")!.style.width = `${value / CONFIG.coldMax * 100}%`;
+  cold.classList.toggle("warming", !sample && game.coldFeedback > 0 && game.coldDelta < 0);
   document.querySelector<HTMLElement>("#frost-edge")!.hidden = !game.inSnow || game.cold < 75;
 }
 function closeSnowReview() {
@@ -438,139 +433,63 @@ function updateTutorialUi() {
   overlay.hidden = !lesson || lesson.id === "snow" || game.mode !== "running" || !!activeDialog;
   if (lesson) document.querySelector("#tutorial-title")!.textContent = t(lessonTitles[lesson.id]);
 }
+const fishMarkers = [
+  {side: -1, node: document.querySelector<HTMLElement>("#fish-left")!},
+  {side: 1, node: document.querySelector<HTMLElement>("#fish-right")!},
+];
+function updateFishWarnings() {
+  const show = game.mode === "running" && game.swimming && !game.transitioning && !activeDialog && !tutorial.active;
+  const nearest: Partial<Record<number, {z: number; y: number; urgency: number}>> = {};
+  if (show) {
+    for (const item of game.items) {
+      if (!item.fish || item.z < -1.15 || item.z > CONFIG.fishWarningDistance) continue;
+      const warning = fishWarning(item.fish, game.worldTime);
+      if (!warning) continue;
+      const previous = nearest[warning.side];
+      if (!previous || item.z < previous.z) nearest[warning.side] = {z: item.z, y: item.y, urgency: warning.urgency};
+    }
+  }
+  for (const {side, node} of fishMarkers) {
+    const approach = nearest[side];
+    node.hidden = !approach;
+    if (!approach) continue;
+    const depth = CONFIG.waterHeights.findIndex(height => Math.abs(height + 0.95 - approach.y) < 0.1);
+    node.style.top = `${64 - Math.max(0, depth) * 12}%`;
+    node.style.color = `hsl(${48 * (1 - approach.urgency)} 100% 56%)`;
+  }
+}
+
 function updateFeatureUi() {
   const state = economy.state;
-  document
-    .querySelectorAll<HTMLElement>(".wallet-count")
-    .forEach((el) => (el.textContent = n(state.wallet)));
-  const runningView = game.mode !== "ready" && !game.introducing;
+  document.querySelectorAll<HTMLElement>(".wallet-count").forEach(element => {
+    element.textContent = n(state.wallet);
+  });
   const status = document.querySelector<HTMLElement>("#run-status")!;
-  const protectedTime = game.shield ? game.shieldTime : game.protectionTime;
   const rewind = game.mode === "rewinding";
-  const activePowers = [
-    ...(game.magnetTime > 0 ? ["magnet"] : []),
-    ...(protectedTime > 0 ? ["shield"] : []),
-    ...(game.boosting || rewind ? ["rocket"] : []),
-  ];
-  const showPowers =
-    (game.mode === "running" || rewind) && activePowers.length > 0;
-  status.hidden = !showPowers;
-  document.body.classList.toggle("powers-active", showPowers);
-  const markup = activePowers
-    .map(
-      (name) =>
-        `<article class="power-slot" data-power="${name}"><span class="power-art">${icon(name)}</span><div class="power-readout"><span class="power-name"></span><strong class="power-time"></strong><small class="power-state"></small></div><div class="power-meter"><i></i></div></article>`,
-    )
-    .join("");
+  const powers = [
+    {glyph: "magnet", label: t("magnet"), time: game.magnetTime, duration: CONFIG.magnetDuration, active: game.magnetTime > 0},
+    {glyph: game.shield ? "shield" : "protection", label: t(game.shield ? "shield" : "briefProtection"), time: game.shield ? game.shieldTime : game.protectionTime, duration: game.shield ? CONFIG.shieldDuration : CONFIG.rewindProtection, active: game.shield || game.protectionTime > 0},
+    {glyph: rewind ? "hourglass" : "rocket", label: t(rewind ? "hourglass" : "booster"), time: rewind ? game.rewindRemaining : game.boostRemaining, duration: rewind ? CONFIG.rewindDuration : CONFIG.boostDistance, active: rewind || game.boosting},
+  ].filter(power => power.active);
+  status.hidden = (game.mode !== "running" && !rewind) || !powers.length;
+  const markup = powers.map(({glyph}) => `<div class="power-slot" data-power="${glyph}" role="img">${icon(glyph)}<div class="power-meter"><i></i></div></div>`).join("");
   if (markup !== statusMarkup) {
     statusMarkup = markup;
     status.innerHTML = markup;
   }
-  status.setAttribute("aria-label", t("powerStatus"));
-  const seconds = (time: number) =>
-    `${time < 10 ? time.toFixed(1) : Math.ceil(time)}s`;
-  const power = (
-    name: string,
-    label: string,
-    time: number,
-    duration: number,
-    stateLabel: string,
-    live: boolean,
-    glyph = name,
-  ) => {
-    if (!live) return;
-    const slot = status.querySelector<HTMLElement>(`[data-power="${name}"]`)!;
-    slot.dataset.state = "active";
-    slot.classList.toggle("is-ending", live && time > 0 && time <= 3);
-    slot.querySelector(".power-name")!.textContent = label;
-    slot.querySelector(".power-time")!.textContent =
-      time > 0 ? seconds(time) : live ? "…" : "—";
-    slot.querySelector(".power-state")!.textContent = stateLabel;
-    (slot.querySelector(".power-meter i") as HTMLElement).style.transform =
-      `scaleX(${Math.max(0, Math.min(1, time / duration))})`;
-    const img = slot.querySelector<HTMLImageElement>("img")!;
-    const url = iconAsset(glyph);
-    if (img.getAttribute("src") !== url) img.src = url;
-    slot.setAttribute(
-      "aria-label",
-      `${label} · ${stateLabel}${time > 0 ? ` · ${seconds(time)}` : ""}`,
-    );
-  };
-  power(
-    "magnet",
-    t("magnet"),
-    game.magnetTime,
-    CONFIG.magnetDuration,
-    t(game.magnetTime > 0 ? "powerActive" : "powerIdle"),
-    game.magnetTime > 0,
-  );
-  power(
-    "shield",
-    t(game.shield || !protectedTime ? "shield" : "briefProtection"),
-    protectedTime,
-    game.shield ? CONFIG.shieldDuration : CONFIG.rewindProtection,
-    t(protectedTime > 0 ? "powerActive" : "powerIdle"),
-    protectedTime > 0,
-    game.shield || !protectedTime ? "shield" : "protection",
-  );
-  const flightTime = game.boostRemaining / (game.baseSpeed * CONFIG.boostSpeed);
-  power(
-    "rocket",
-    t(rewind ? "hourglass" : "booster"),
-    rewind
-      ? game.rewindRemaining
-      : game.boosting
-        ? flightTime
-        : state.boosters > 0
-          ? game.boostCooldown
-          : 0,
-    rewind
-      ? CONFIG.rewindDuration
-      : game.boosting
-        ? CONFIG.boostDistance / (game.baseSpeed * CONFIG.boostSpeed)
-        : CONFIG.boostCooldown,
-    t(
-      rewind || game.boosting
-        ? game.boosting && !game.boostRemaining
-          ? "flightExtending"
-          : "powerActive"
-        : state.boosters <= 0
-          ? "toolLocked"
-          : game.boostCooldown > 0
-            ? "cooldown"
-            : "toolReady",
-    ),
-    rewind || game.boosting,
-    rewind ? "hourglass" : "rocket",
-  );
+  for (const {glyph, label, time, duration} of powers) {
+    const slot = status.querySelector<HTMLElement>(`[data-power="${glyph}"]`)!;
+    slot.setAttribute("aria-label", label);
+    slot.classList.toggle("is-ending", time / duration < 0.22);
+    slot.querySelector<HTMLElement>(".power-meter i")!.style.transform = `scaleX(${Math.min(1, time / duration)})`;
+  }
   const button = document.querySelector<HTMLButtonElement>("#booster-button")!;
-  button.hidden = !runningView;
-  button.disabled =
-    state.boosters <= 0 ||
-    game.mode !== "running" ||
-    game.boosting || game.icy || tutorial.active?.id === "snow" ||
-    game.boostCooldown > 0;
+  button.hidden = game.mode === "ready" || game.introducing;
+  button.disabled = state.boosters <= 0 || game.mode !== "running" || game.boosting || game.icy ||
+    tutorial.active?.id === "snow" || game.boostCooldown > 0;
   button.classList.toggle("tool-live", game.boosting);
-  document.querySelector("#booster-status")!.textContent =
-    game.boosting
-      ? `${Math.ceil(game.boostRemaining)}m`
-      : state.boosters <= 0
-        ? t("toolLocked")
-        : game.boostCooldown > 0
-          ? `${Math.ceil(game.boostCooldown)}s`
-          : `${t("stock")} · ${n(state.boosters)}`;
-  const notice = document.querySelector<HTMLElement>("#route-notice")!;
-  const message = game.mode === "rewinding" ? t("rewinding") : "";
-  notice.hidden = !message || !!tutorial.active;
-  if (notice.textContent !== message) notice.textContent = message;
-  if (lastPickupSerial !== game.pickupSerial) {
-    lastPickupSerial = game.pickupSerial;
-    beep("start");
-  }
-  if (lastClearSerial !== game.clearSerial) {
-    lastClearSerial = game.clearSerial;
-    showToast(t("continueHint"));
-  }
+  document.querySelector("#booster-status")!.textContent = game.boosting ? "" :
+    game.boostCooldown > 0 ? `${Math.ceil(game.boostCooldown)}s` : `×${n(state.boosters)}`;
 }
 function act(action: string) {
   if (action === "snow-next" && tutorial.active?.id === "snow") { advanceSnow(); return; }
@@ -615,7 +534,6 @@ function act(action: string) {
     })) {
       tutorial.complete("booster");
       beep("boost");
-      showToast(t("boostHint"));
     }
     return;
   }
@@ -940,7 +858,6 @@ try {
   );
   let previous = performance.now();
   let lastCoins = 0;
-  const rewards = document.querySelector<HTMLElement>("#coin-pop")!;
   const loadingStarted = performance.now();
   let textureFallback = false;
   let maximumPending = Math.max(1, world.scene.getWaitingItemsCount());
@@ -998,33 +915,17 @@ try {
       updateTutorialUi();
       if (game.coins > lastCoins) {
         beep("coin");
-        const reward = document.createElement("span");
-        reward.className = "coin-reward";
-        reward.textContent = `+${n((game.coins - lastCoins) * 50)}`;
-        rewards.append(reward);
-        reward.addEventListener("animationend", () => reward.remove(), {
-          once: true,
-        });
         const counter = document.querySelector<HTMLElement>(".coin-counter")!;
         counter.classList.remove("pulse");
         void counter.offsetWidth;
         counter.classList.add("pulse");
       }
-      if (game.mode !== "running" || activeDialog) rewards.replaceChildren();
-      if (rewards.childElementCount) {
-        const anchor = world!.getRewardAnchor();
-        rewards.style.left = `${anchor.x}px`;
-        rewards.style.top = `${anchor.y}px`;
-        rewards.style.visibility = anchor.visible ? "visible" : "hidden";
-      }
+      updateFishWarnings();
       updateFeatureUi();
       lastCoins = game.coins;
       document.querySelector("#score")!.textContent = n(game.score);
       document.querySelector("#distance")!.textContent = n(game.distance);
       document.querySelector("#coins")!.textContent = n(game.coins);
-      document
-        .querySelector<HTMLElement>("#live-hint")!
-        .classList.toggle("faded", game.distance > 48);
       if (wasRunning && game.mode === "over") {
         beep("hit");
         resultDelay = game.lastHit === "pool" ? 1.8 : game.lastHit === "cold" ? 1.2 : 0.65;

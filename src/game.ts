@@ -625,54 +625,69 @@ export class RunnerGame {
       this.snowHitX = item.lane * 2.5; this.snowHitSerial++;
     }
   }
-  // Reserve a reachable column, then place rooted reefs and coins around it.
+  // Fixed hazards stay out of the safe column. Schools leave its escape height open.
   private waterRow(z: number, row: number, base: number) {
     const safeLane = waterSafeLane(row, this.seed);
     const blocked = [-1, 0, 1].filter(lane => lane !== safeLane);
     const lane = blocked[Math.floor(this.hash(row, 10) * blocked.length)];
-    const types: ItemType[] = ["bubble", "coral", "volcano"];
-    const rollType = this.hash(row, 11);
-    const type: ItemType = rollType < CONFIG.waterFishChance ? "fish"
-      : types[Math.floor((rollType - CONFIG.waterFishChance) / (1 - CONFIG.waterFishChance) * types.length)];
+    const otherLane = blocked.find(column => column !== lane)!;
+    const hasExtraHazard = this.hash(row, 19) < CONFIG.waterExtraHazardChance;
+    const extraLevel = Math.floor(this.hash(row, 20) * 3);
+    const types = ["bubble", "coral", "volcano"] as const;
+    const roll = this.hash(row, 11);
+    const type = roll < CONFIG.waterFishChance ? "fish"
+      : types[Math.floor((roll - CONFIG.waterFishChance) / (1 - CONFIG.waterFishChance) * types.length)];
     const escapeLevel = fishSafeLevel(row, this.seed);
     const fishLevels = [0, 1, 2].filter(level => level !== escapeLevel);
     const level = type === "volcano" ? 0 : type === "fish"
       ? fishLevels[Math.floor(this.hash(row, 12) * fishLevels.length)]
       : Math.floor(this.hash(row, 12) * 3);
+    const cellHeight = (index: number) => CONFIG.waterHeights[index] + 0.95;
     let coral: CoralPlan | undefined;
     if (type === "coral") {
-      const neighbour = Math.abs(blocked[0] - blocked[1]) === 1 && this.hash(row, 13) < 0.5
-        ? blocked.find(l => l !== lane) : undefined;
+      const neighbour = !hasExtraHazard && level < 2 && Math.abs(lane - otherLane) === 1 && this.hash(row, 13) < 0.5
+        ? otherLane : undefined;
       const side = Math.sign(lane || neighbour || -safeLane);
       coral = makeCoral(lane, level + 1, neighbour, this.hash(row, 14) < 0.5 ? side : 0);
     }
-    this.emit(type, lane, z, coral ? coral.rootY : type === "volcano" ? CONFIG.seabedHeight + 0.65 : CONFIG.waterHeights[level] + 0.95, base);
-    const hazard = this.items.find(i => i.id === this.idBase + base);
+    this.emit(type, lane, z, coral ? coral.rootY : type === "volcano" ? CONFIG.seabedHeight + 0.65 : cellHeight(level), base);
+    const hazard = this.items.find(item => item.id === this.idBase + base);
     if (hazard) {
       hazard.shape = Math.floor(this.hash(row, 40) * 3);
       hazard.coral = coral;
       if (type === "fish") hazard.fish = this.fishCrossing(z, row, base, 15);
     }
-    // Interleave an extra school between ordinary rows without adding coins or pickups.
+    if (hasExtraHazard) this.emit("bubble", otherLane, z, cellHeight(extraLevel), base + 4);
+
     const extraZ = z + CONFIG.rowSpacing / 2;
-    if (this.hash(row, 16) < CONFIG.waterExtraFishChance &&
-        sectionAt(extraZ, this.track).biome === "water" && obstacleAllowed(extraZ, this.seed, this.track)) {
-      this.emit("fish", lane, extraZ, CONFIG.waterHeights[fishLevels[Math.floor(this.hash(row, 17) * fishLevels.length)]] + 0.95, base + 64);
-      const school = this.items.find(item => item.id === this.idBase + base + 64);
-      if (school) school.fish = this.fishCrossing(extraZ, row, base + 64, 18);
+    if (this.hash(row, 16) < CONFIG.waterExtraFishChance && obstacleAllowed(extraZ, this.seed, this.track)) {
+      const extraId = base + 64;
+      const extraFishLevel = fishLevels[Math.floor(this.hash(row, 17) * fishLevels.length)];
+      this.emit("fish", lane, extraZ, cellHeight(extraFishLevel), extraId);
+      const school = this.items.find(item => item.id === this.idBase + extraId);
+      if (school) school.fish = this.fishCrossing(extraZ, row, extraId, 18);
     }
-    const roll = this.hash(row, 8);
-    const count = roll < CONFIG.coinSingleRatio ? 1 : roll < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
-    const routes = (type === "fish" ? [escapeLevel] : [1, 0, 2]).flatMap(level => [safeLane, ...blocked].map(l => ({lane: l, level})))
-      .filter(cell => type === "fish" || (coral ? !touchesCoral(coral, cell.lane * 2.5, CONFIG.waterHeights[cell.level] + 0.95, 0, 0.7) : cell.lane !== lane));
-    for (const [route, cell] of routes.slice(0, count).entries())
-      for (let i = 0; i < 5; i++)
-        if (obstacleAllowed(z - 8 + i * 3.5, this.seed, this.track))
-          this.emit("coin", cell.lane, z - 8 + i * 3.5, CONFIG.waterHeights[cell.level] + 0.95, base + 16 + route * 5 + i);
+    const levels = [escapeLevel, (escapeLevel + 1) % 3, (escapeLevel + 2) % 3];
+    const routes = levels.flatMap(depth => [safeLane, lane, otherLane].map(column => ({column, depth})))
+      .filter(({column, depth}) => {
+        if (hasExtraHazard && column === otherLane && depth === extraLevel) return false;
+        if (type === "fish") return depth !== level;
+        if (coral) return !touchesCoral(coral, column * 2.5, cellHeight(depth), 0, 0.7);
+        return column !== lane || (type === "bubble" && depth !== level);
+      });
+    const count = CONFIG.waterCoinRoutes[Math.floor(this.hash(row, 8) * CONFIG.waterCoinRoutes.length)];
+    for (const {column, depth} of routes.slice(0, count)) {
+      const cellId = depth * 3 + column + 1;
+      for (let i = 0; i < 5; i++) {
+        const coinZ = z - 8 + i * 3.5;
+        if (obstacleAllowed(coinZ, this.seed, this.track))
+          this.emit("coin", column, coinZ, cellHeight(depth), base + 16 + cellId * 5 + i);
+      }
+    }
     if (this.hash(row, 3) < CONFIG.pickupChance &&
         Array.from({length: Math.ceil(CONFIG.pickupMinSpacing / CONFIG.rowSpacing) - 1}, (_, i) => row - i - 1)
-          .every(r => this.hash(r, 3) >= CONFIG.pickupChance))
-      this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", safeLane, z, CONFIG.waterHeights[type === "fish" ? escapeLevel : 1] + 0.95, base + 8);
+          .every(previous => this.hash(previous, 3) >= CONFIG.pickupChance))
+      this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", safeLane, z, cellHeight(escapeLevel), base + 8);
   }
   private fishCrossing(z: number, row: number, id: number, salt: number): FishCrossing {
     let crossing = this.fishCrossings.get(id);

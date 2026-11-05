@@ -1302,17 +1302,6 @@ export class ForestScene {
           shine.scaling.set(0.6, 1.5, 0.35); shine.rotation.z = -0.5;
         }
       } else if (item.type === "fish") {
-        // A lane-wide band makes the school's height readable before it crosses.
-        const level = CONFIG.waterHeights.reduce((best, height, index) =>
-          Math.abs(height + 0.95 - item.y) < Math.abs(CONFIG.waterHeights[best] + 0.95 - item.y) ? index : best, 0);
-        const guide = CreatePlane("fish-height-guide", {width: 7.5, height: 0.16}, this.scene);
-        guide.parent = root;
-        const guideMat = new StandardMaterial("fish-height-guide", this.scene);
-        guideMat.disableLighting = true;
-        guideMat.emissiveColor = Color3.FromHexString(["#ffbb70", "#ffe791", "#a7f5ee"][level]);
-        guideMat.alpha = 0.45;
-        guideMat.backFaceCulling = false;
-        guide.material = guideMat;
         for (let i = 0; i < 6; i++) {
           const fish = this.ocean.fish(root, i % 2 ? "#efba69" : "#e6a177");
           fish.position.set((i % 3 - 1) * 0.5, (Math.floor(i / 3) - 0.5) * 0.4, (i % 2) * 0.18);
@@ -1784,23 +1773,6 @@ export class ForestScene {
     this.lastEffectTick = tick;
   }
 
-  getRewardAnchor() {
-    const width = this.engine.getRenderWidth();
-    const height = this.engine.getRenderHeight();
-    const point = Vector3.Project(
-      new Vector3(0, 0.95, 0),
-      this.head.getWorldMatrix(),
-      this.scene.getTransformMatrix(),
-      this.camera.viewport.toGlobal(width, height),
-    );
-    const rect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
-    return {
-      x: rect.left + (point.x / width) * rect.width,
-      y: rect.top + (point.y / height) * rect.height,
-      visible: point.z >= 0 && point.z <= 1,
-    };
-  }
-
   getTutorialAnchor(itemId: number) {
     const node = this.itemMeshes.get(itemId);
     if (!node) return null;
@@ -2235,12 +2207,6 @@ export class ForestScene {
           mesh.rotation.y = b.direction * Math.PI / 2;
           mesh.rotation.x = 0;
           mesh.setEnabled(b.active);
-          const guide = mesh.getChildMeshes().find(m => m.name === "fish-height-guide");
-          if (guide) {
-            guide.rotation.y = -b.direction * Math.PI / 2;
-            guide.position.z = -b.x * b.direction;
-            guide.visibility = Math.max(0, 1 - Math.max(0, Math.abs(item.z) - 35) / 30);
-          }
           for (const tail of mesh.getChildMeshes().filter(m => m.name === "fish-fan-tail"))
             tail.rotation.y = Math.sin(game.worldTime * 7 + item.id) * 0.3;
         }
