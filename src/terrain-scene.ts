@@ -35,6 +35,7 @@ const smooth = (value: number) => {
   const t = Math.max(0, Math.min(1, value));
   return t * t * (3 - 2 * t);
 };
+const TUNNEL_HALF_WIDTH = 5.65;
 
 export class TerrainScene {
   private seed = 0;
@@ -391,12 +392,12 @@ export class TerrainScene {
       indices: number[] = [],
       uvs: number[] = [],
       colors: number[] = [];
-    const profile: [number, number][] = [[-5.65, -1.2]];
+    const profile: [number, number][] = [[-TUNNEL_HALF_WIDTH, -1.2]];
     for (let i = 0; i <= 24; i++) {
       const angle = (i / 24) * Math.PI;
-      profile.push([-Math.cos(angle) * 5.65, 3.1 + Math.sin(angle) * 4.7]);
+      profile.push([-Math.cos(angle) * TUNNEL_HALF_WIDTH, 3.1 + Math.sin(angle) * 4.7]);
     }
-    profile.push([5.65, -1.2]);
+    profile.push([TUNNEL_HALF_WIDTH, -1.2]);
     const rows = profile.length,
       depth = portal ? 1.8 : 10;
     const layers = portal ? 3 : 5;
@@ -634,8 +635,9 @@ export class TerrainScene {
           : adjacent.biome === "forest"
             ? this.tunnelTrail
             : this.tunnelStone;
-    // Extend the canyon floor into the wall so the verge has no exposed slit.
-    const roadWidth = section.biome === "canyon" ? 11.4 : 8.6;
+    // Overlap the tunnel walls even at the widest point of the weathered portal.
+    const roadWidth = section.biome === "tunnel" ? 2 * (TUNNEL_HALF_WIDTH + 0.15) :
+      section.biome === "canyon" ? 11.4 : 8.6;
     for (const span of spans) {
       this.ground(
         roadWidth,
