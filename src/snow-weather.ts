@@ -60,8 +60,8 @@ export class SnowWeather {
       }
     }
     if (this.chill > 0.05) {
-      if (this.frost?.width !== width || this.frost.height !== height)
-        this.frost = new SnowFrost(ctx, width, height);
+      if (this.frost?.width !== width || this.frost.height !== height || this.frost.high !== high)
+        this.frost = new SnowFrost(ctx, width, height, high);
       this.frost.draw(ctx, this.chill);
     }
     ctx.globalAlpha = 1;

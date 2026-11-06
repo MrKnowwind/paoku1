@@ -1,10 +1,17 @@
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
-const SIXTH_TURN = Math.PI / 3;
 
 type Point = {x: number; y: number};
-type Crystal = {center: Point; radius: number; angle: number};
 type Stroke = {from: Point; to: Point; start: number; end: number};
-type Tint = {gradient: CanvasGradient; bounds: [number, number, number, number]; start: number; end: number; opacity: number};
+type Fleck = {center: Point; radius: number; angle: number; start: number};
+type Patch = {
+  origin: Point;
+  rim: {base: Point; tip: Point}[];
+  gradient: CanvasGradient;
+  bounds: [number, number, number, number];
+  start: number;
+  end: number;
+  shape: Path2D;
+};
 
 const step = (point: Point, angle: number, distance: number): Point =>
   ({x: point.x + Math.cos(angle) * distance, y: point.y + Math.sin(angle) * distance});
@@ -12,151 +19,194 @@ const step = (point: Point, angle: number, distance: number): Point =>
 const between = (a: Point, b: Point, fraction: number): Point =>
   ({x: a.x + (b.x - a.x) * fraction, y: a.y + (b.y - a.y) * fraction});
 
-const bearing = (from: Point, to: Point) => Math.atan2(to.y - from.y, to.x - from.x);
-
-const tipAngle = (crystal: Crystal, direction: number) =>
-  crystal.angle + Math.round((direction - crystal.angle) / SIXTH_TURN) * SIXTH_TURN;
-
-const facingTip = (crystal: Crystal, to: Point) =>
-  step(crystal.center, tipAngle(crystal, bearing(crystal.center, to)), crystal.radius);
-
 export class SnowFrost {
-  private strokes: Stroke[][] = [[], [], []];
-  private tints: Tint[] = [];
+  private strokes: Stroke[][] = [[], []];
+  private flecks: Fleck[] = [];
+  private patches: Patch[] = [];
   private paths: Path2D[] = [];
+  private grain = new Path2D();
   private lastGrowth = -1;
   private unit: number;
+  private seed = 183247;
 
-  constructor(ctx: CanvasRenderingContext2D, readonly width: number, readonly height: number) {
+  constructor(ctx: CanvasRenderingContext2D, readonly width: number, readonly height: number, readonly high: boolean) {
     const unit = this.unit = Math.min(width, height);
-    const sides: Crystal[][] = [];
     for (let side = 0; side < 4; side++) {
       const length = side % 2 === 0 ? width : height;
-      const count = Math.max(3, Math.min(7, Math.round(length / unit * 3.6)));
+      const count = Math.max(7, Math.min(18, Math.round(length / (unit * 0.108))));
+      const spacing = length / count;
+      const inward = (side + 1) * Math.PI / 2;
       const edgePoint = (along: number, inset: number): Point => {
         if (side === 0) return {x: along, y: inset};
         if (side === 1) return {x: width - inset, y: along};
         if (side === 2) return {x: width - along, y: height - inset};
         return {x: inset, y: height - along};
       };
-      const seeds: Crystal[] = [];
       for (let i = 0; i < count; i++) {
-        const variation = Math.sin(i * 19.3 + side * 7.9);
-        const cornerGap = unit * 0.14;
-        const along = cornerGap + i / (count - 1) * (length - 2 * cornerGap);
-        const offset = i > 0 && i < count - 1 ? variation * unit * 0.022 : 0;
-        const crystal = {
-          center: edgePoint(along + offset, unit * (0.049 + 0.009 * variation)),
-          radius: unit * (0.041 + 0.008 * variation),
-          angle: side * Math.PI / 2 + variation * 0.22,
-        };
-        seeds.push(crystal);
-        const start = i % 2 === 0 ? 0.05 : 0.10;
-        this.addCrystal(crystal, start, 0.21, 0);
-        this.addTint(ctx, crystal.center, crystal.radius * 2.15, start, 0.44, 0.49);
+        const along = spacing * (i + 0.24 + this.random() * 0.52);
+        const corner = i === 0 || i === count - 1;
+        const depth = unit * ((corner ? 0.125 : 0.063) + this.random() * (corner ? 0.031 : 0.075));
+        const start = (corner ? 0.09 : 0.14 + i % 3 * 0.07) + this.random() * 0.105;
+        const duration = 0.29 + this.random() * 0.12;
+        const halfWidth = spacing * (0.63 + this.random() * 0.38);
+        const origin = edgePoint(along, 0);
+        const rim = Array.from({length: 13}, (_, index) => {
+          const t = index / 12;
+          const x = along + (t * 2 - 1) * halfWidth;
+          const rise = Math.sin(t * Math.PI) ** 0.63 * (0.56 + this.random() * 0.38);
+          return {base: edgePoint(x, 0), tip: edgePoint(x, depth * rise)};
+        });
+        const radius = Math.max(depth, halfWidth) * 1.2;
+        const gradient = ctx.createRadialGradient(origin.x, origin.y, 0, origin.x, origin.y, radius);
+        gradient.addColorStop(0, "#72c5f4ec");
+        gradient.addColorStop(0.42, "#91d4f5a8");
+        gradient.addColorStop(0.8, "#bce7fc3d");
+        gradient.addColorStop(1, "#bce7fc00");
+        this.patches.push({origin, rim, gradient, bounds: [origin.x - radius, origin.y - radius, 2 * radius, 2 * radius],
+          start, end: start + duration, shape: new Path2D()});
 
-        if (i % 2 === 0) {
-          const angle = tipAngle(crystal, (side + 1) * Math.PI / 2);
-          const from = step(crystal.center, angle, crystal.radius);
-          const center = step(from, angle, unit * 0.019);
-          this.addStroke(from, center, 0.72, 0.82, 2);
-          this.addCrystal({center, radius: unit * 0.018, angle: angle + 0.15}, 0.82, 0.17, 2);
+        const sideBias = i % 2 === 0 ? -1 : 1;
+        const stems = high && i % 3 === 0 ? [0, sideBias, -sideBias] : [0, sideBias];
+        for (const stem of stems) {
+          const root = edgePoint(along + stem * halfWidth * 0.34, depth * this.random() * 0.11);
+          const angle = inward + stem * 0.63 + (this.random() - 0.5) * 0.5;
+          const reach = depth * (stem === 0 ? 0.91 : 0.62) * (0.84 + this.random() * 0.23);
+          this.addFern(root, angle, reach, start + 0.035 + this.random() * 0.07, duration * 0.88, stem === 0);
+        }
+        for (let fleck = 0; fleck < (high ? 26 : 15); fleck++) {
+          const t = this.random();
+          const inset = depth * Math.sin(t * Math.PI) * this.random() * 0.86;
+          this.flecks.push({
+            center: edgePoint(along + (t * 2 - 1) * halfWidth, inset),
+            radius: unit * (0.0008 + this.random() * 0.003),
+            angle: this.random() * Math.PI,
+            start: start + inset / depth * duration * 0.72 + this.random() * 0.08,
+          });
+        }
+        if (i % 4 === 1) {
+          this.addCrystal(edgePoint(along, depth * 0.56), depth * 0.28,
+            inward + this.random(), 0.06 + this.random() * 0.14);
         }
       }
-      sides.push(seeds);
-      for (let i = 1; i < seeds.length; i++) {
-        const from = seeds[i - 1], to = seeds[i];
-        const early = (i + side) % 2 === 0;
-        this.connect(ctx, early ? from : to, early ? to : from, early ? 0.30 : 0.35, false);
-      }
     }
-    for (let i = 0; i < sides.length; i++) {
-      const edge = sides[i], next = sides[(i + 1) % sides.length];
-      this.connect(ctx, edge[edge.length - 1], next[0], 0.67, true);
-    }
+  }
+
+  private random() {
+    this.seed = (Math.imul(1664525, this.seed) + 1013904223) >>> 0;
+    return this.seed / 4294967296;
   }
 
   private addStroke(from: Point, to: Point, start: number, end: number, tier: number) {
     this.strokes[tier].push({from, to, start, end});
   }
 
-  private addCrystal(crystal: Crystal, start: number, duration: number, tier: number) {
-    const {center, radius, angle} = crystal;
-    for (let arm = 0; arm < 6; arm++) {
-      const direction = angle + arm * SIXTH_TURN;
-      const armStart = start + duration * Math.min(arm, 6 - arm) * 0.07;
-      const reach = duration * 0.57;
-      this.addStroke(center, step(center, direction, radius), armStart, armStart + reach, tier);
-      for (const [at, size] of [[0.44, 0.2], [0.73, 0.16]]) {
-        const fork = step(center, direction, radius * at);
-        const forkStart = armStart + reach * at;
-        for (const sign of [-1, 1]) {
-          const end = step(fork, direction + sign * SIXTH_TURN, radius * size * 1.15);
-          this.addStroke(fork, end, forkStart, forkStart + duration * 0.21, tier);
+  private addFern(root: Point, angle: number, length: number, start: number, duration: number, main: boolean) {
+    const bend = (this.random() - 0.5) * 0.52;
+    const knee = step(root, angle, length * 0.49);
+    const tip = step(knee, angle + bend, length * 0.51);
+    const at = (t: number) => t < 0.49 ? between(root, knee, t / 0.49) : between(knee, tip, (t - 0.49) / 0.51);
+    const stemTime = duration * 0.75;
+    this.addStroke(root, knee, start, start + stemTime * 0.49, 0);
+    this.addStroke(knee, tip, start + stemTime * 0.49, start + stemTime, 0);
+    const branches = main ? (this.high ? 8 : 6) : 5;
+    const twigs = main ? [0.34, 0.68] : [0.52];
+    for (let branch = 0; branch < branches; branch++) {
+      const t = 0.14 + branch * (0.67 / (branches - 1));
+      for (const side of [-1, 1]) {
+        const joint = t + this.random() * 0.035;
+        const base = at(joint);
+        const offshoot = angle + (t > 0.49 ? bend : 0) + side * (0.57 + this.random() * 0.4);
+        const reach = length * (1 - t) * (0.43 + this.random() * 0.21);
+        const birth = start + stemTime * joint;
+        const branchTime = duration * (0.28 - t * 0.1);
+        this.addStroke(base, step(base, offshoot, reach), birth, birth + branchTime, 1);
+        for (const twig of twigs) {
+          const needle = step(base, offshoot, reach * twig);
+          const direction = offshoot - side * (0.55 + this.random() * 0.35);
+          const twigBirth = birth + branchTime * twig;
+          this.addStroke(needle, step(needle, direction, reach * (0.46 - 0.27 * twig)), twigBirth, twigBirth + duration * 0.1, 1);
         }
       }
     }
   }
 
-  private connect(ctx: CanvasRenderingContext2D, from: Crystal, to: Crystal, start: number, corner: boolean) {
-    const angle = bearing(from.center, to.center);
-    const duration = corner ? 0.30 : 0.55;
-    const fractions = corner ? [0.5] : [0.34, 0.69];
-    let parent = from;
-    for (const [index, fraction] of fractions.entries()) {
-      const center = between(from.center, to.center, fraction);
-      const crystal = {center, radius: this.unit * (corner ? 0.021 : index === 0 ? 0.027 : 0.022), angle};
-      const stemStart = start + index * duration * 0.43;
-      const sprout = stemStart + duration * 0.20;
-      this.addStroke(facingTip(parent, center), center, stemStart, sprout, 1);
-      this.addCrystal(crystal, sprout, duration * 0.23, 1);
-      this.addTint(ctx, center, this.unit * (corner ? 0.067 : 0.072), sprout, sprout + duration * 0.23, 0.34);
-      parent = crystal;
+  private addCrystal(center: Point, radius: number, angle: number, start: number) {
+    for (let arm = 0; arm < 6; arm++) {
+      const direction = angle + arm * Math.PI / 3;
+      this.addStroke(center, step(center, direction, radius), start, start + 0.14, 1);
+      for (const t of [0.43, 0.67]) {
+        const fork = step(center, direction, radius * t);
+        for (const side of [-1, 1])
+          this.addStroke(fork, step(fork, direction + side * Math.PI / 3, radius * (1 - t) * 0.46),
+            start + 0.14 * t, start + 0.14 * t + 0.09, 1);
+      }
     }
-    this.addStroke(facingTip(parent, to.center), facingTip(to, parent.center), start + duration * 0.86, start + duration, 1);
   }
 
-  private addTint(ctx: CanvasRenderingContext2D, center: Point, radius: number, start: number, end: number, opacity: number) {
-    const {x, y} = center;
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    gradient.addColorStop(0, "#456fa8dc");
-    gradient.addColorStop(0.47, "#648fc396");
-    gradient.addColorStop(1, "#648fc300");
-    this.tints.push({gradient, bounds: [x - radius, y - radius, radius * 2, radius * 2], start, end, opacity});
+  private updatePaths(growth: number) {
+    this.paths = this.strokes.map(strokes => {
+      const path = new Path2D();
+      for (const {from, to, start, end} of strokes) {
+        if (growth <= start) continue;
+        const point = between(from, to, clamp((growth - start) / (end - start)));
+        path.moveTo(from.x, from.y);
+        path.lineTo(point.x, point.y);
+      }
+      return path;
+    });
+    for (const patch of this.patches) {
+      const amount = clamp((growth - patch.start) / (patch.end - patch.start));
+      const spread = 0.35 + 0.65 * amount;
+      patch.shape = new Path2D();
+      if (amount === 0) continue;
+      patch.shape.moveTo(patch.origin.x, patch.origin.y);
+      for (const {base, tip} of patch.rim) {
+        const edge = between(patch.origin, base, spread);
+        patch.shape.lineTo(edge.x + (tip.x - base.x) * amount, edge.y + (tip.y - base.y) * amount);
+      }
+      patch.shape.closePath();
+    }
+    this.grain = new Path2D();
+    for (const {center, radius, angle, start} of this.flecks) {
+      if (growth <= start) continue;
+      const size = radius * clamp((growth - start) / 0.08);
+      const a = step(center, angle, size);
+      const b = step(center, angle + 2.4, size * 0.75);
+      const c = step(center, angle - 2.4, size * 0.75);
+      this.grain.moveTo(a.x, a.y);
+      this.grain.lineTo(b.x, b.y);
+      this.grain.lineTo(c.x, c.y);
+      this.grain.closePath();
+    }
   }
 
   draw(ctx: CanvasRenderingContext2D, chill: number) {
-    if (chill < 0.05) return;
-    for (const {gradient, bounds, start, end, opacity} of this.tints) {
-      if (chill <= start) continue;
-      ctx.globalAlpha = clamp((chill - start) / (end - start)) * opacity;
-      ctx.fillStyle = gradient;
-      ctx.fillRect(...bounds);
-    }
-    // A fixed layout lets the same paths grow forward and retreat when the player warms up.
     const growth = Math.round(chill * 400) / 400;
     if (this.lastGrowth !== growth) {
       this.lastGrowth = growth;
-      this.paths = this.strokes.map(strokes => {
-        const path = new Path2D();
-        for (const {from, to, start, end} of strokes) {
-          if (growth <= start) continue;
-          const point = between(from, to, clamp((growth - start) / (end - start)));
-          path.moveTo(from.x, from.y);
-          path.lineTo(point.x, point.y);
-        }
-        return path;
-      });
+      this.updatePaths(growth);
     }
+    for (const {gradient, bounds, start, end, shape} of this.patches) {
+      if (chill <= start) continue;
+      const amount = clamp((chill - start) / (end - start));
+      ctx.fillStyle = gradient;
+      ctx.globalAlpha = amount * 0.22;
+      ctx.fillRect(...bounds);
+      ctx.globalAlpha = amount * 0.58;
+      ctx.fill(shape);
+    }
+    ctx.globalAlpha = 0.46;
+    ctx.fillStyle = "#e3f7ff";
+    ctx.fill(this.grain);
     for (const [tier, path] of this.paths.entries()) {
-      const line = Math.max(0.46, this.unit * 0.0019) * [1, 0.76, 0.62][tier];
-      ctx.lineWidth = line * 2.2;
-      ctx.globalAlpha = tier === 0 ? 0.63 : 0.43;
-      ctx.strokeStyle = "#345781";
+      const line = Math.max(0.44, this.unit * 0.0025) * (tier === 0 ? 1.14 : 0.57);
+      ctx.lineWidth = line * 2.7;
+      ctx.globalAlpha = tier === 0 ? 0.24 : 0.16;
+      ctx.strokeStyle = "#86c9f3";
       ctx.stroke(path);
       ctx.lineWidth = line;
-      ctx.globalAlpha = tier === 0 ? 0.94 : 0.82;
-      ctx.strokeStyle = "#ebfaff";
+      ctx.globalAlpha = tier === 0 ? 0.76 : 0.58;
+      ctx.strokeStyle = "#e8faff";
       ctx.stroke(path);
     }
   }
