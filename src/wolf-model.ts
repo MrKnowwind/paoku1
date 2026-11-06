@@ -1,11 +1,17 @@
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
 import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { CONFIG } from "./config.ts";
 
 export class WolfModel {
   root: TransformNode;
+  lastHitAt = -Infinity;
+  private healthBar: TransformNode;
+  private healthPips: Mesh[] = [];
   private body: TransformNode;
   private head: TransformNode;
   private jaw: TransformNode;
@@ -65,6 +71,29 @@ export class WolfModel {
     this.tail = joint("wolf-tail", 0, 0.09, -0.68, this.body);
     fur("wolf-brush", mane, [0.25, 0.25, 0.79], [0, 0, -0.32], this.tail);
     fur("wolf-tail-tip", paw, [0.16, 0.18, 0.29], [0, 0, -0.62], this.tail);
+
+    this.healthBar = joint("wolf-health", 0, 1.82, 0, this.root);
+    this.healthBar.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    const bar = (name: string, width: number, height: number, x: number, z: number, color: string) => {
+      const mesh = CreatePlane(name, {width, height, sideOrientation: Mesh.DOUBLESIDE}, scene);
+      mesh.position.set(x, 0, z);
+      mesh.parent = this.healthBar;
+      mesh.material = material(color, true);
+      mesh.isPickable = false;
+      return mesh;
+    };
+    bar("wolf-health-rim", 1.04, 0.19, 0, 0.012, "#c4b0a6");
+    bar("wolf-health-track", 0.98, 0.13, 0, 0.005, "#232637");
+    const pips = CONFIG.nightCombat.wolfHealth;
+    const width = 0.94 / pips;
+    for (let i = 0; i < pips; i++)
+      this.healthPips.push(bar("wolf-health-pip", width - 0.032, 0.095, (i + 0.5) * width - 0.47, -0.005, "#ff555d"));
+  }
+
+  updateHealth(health: number, leap: number) {
+    this.healthBar.setEnabled(health > 0);
+    this.healthBar.position.y = 1.82 + leap;
+    this.healthPips.forEach((pip, index) => pip.setEnabled(index < health));
   }
 
   animate(phase: number, crouch: number, leap: number, bite: number, flinch: number, fallen: number) {

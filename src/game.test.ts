@@ -5,6 +5,46 @@ import assert from "node:assert/strict";
 import { RunnerGame, INTRO_TIMING } from "./game.ts";
 import { DAY_LENGTH, NIGHT_START } from "./daylight.ts";
 
+test("ammo bags are placed ahead, stay through dawn, and refill two rounds on contact", () => {
+  const game = new RunnerGame({random: () => 0.5});
+  game.start(true);
+  game.update(0.65);
+  const bag = game.items.find(item => item.type === "ammo");
+  assert.ok(bag && bag.z >= 100);
+  game.worldTime = DAY_LENGTH - 0.005;
+  game.update(0.02);
+  assert.equal(game.phase, "day");
+  assert.ok(game.items.some(item => item.id === bag.id && item.worldZ === bag.worldZ));
+  game.distance = bag.worldZ - 0.3;
+  game.lane = bag.lane;
+  game.x = bag.lane * 2.5;
+  game.nightCombat.ammo = 0;
+  game.update(0.03);
+  assert.equal(game.nightCombat.ammo, 2);
+  assert.ok(!game.items.some(item => item.id === bag.id));
+});
+
+test("two independently locking wolves can warn together", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.start(true);
+  game.distance = 80;
+  const random = (_key: number, salt: number) =>
+    salt === 92 ? 0.25 : salt === 95 ? 0.85 : salt === 96 ? 0.1 : 0.5;
+  const combat = game.nightCombat;
+  const tick = () => combat.update(game, 0.01, random, () => false);
+  const rules = CONFIG.nightCombat;
+  tick();
+  game.worldTime += rules.entrance + rules.firstAttackDelay + 0.01;
+  tick();
+  game.worldTime += rules.windup + rules.partnerDelayMax + 0.01;
+  tick();
+  const warnings = combat.warnings(game);
+  assert.equal(warnings.length, 2);
+  assert.notEqual(warnings[0].wolf, warnings[1].wolf);
+  assert.notEqual(warnings[0].start, warnings[1].start);
+  assert.ok(warnings.every(warning => warning.fromX < -4 && warning.toX === 0));
+});
+
 test("the night debug start sets the countdown clock and applies to the requested run only", () => {
   const game = new RunnerGame({autoSpawn: false});
   game.begin(true);

@@ -32,6 +32,7 @@ export const artIcons = new Set([
   "protection",
   "slingshot",
   "stone",
+  "ammo-pouch",
 ]);
 
 export const iconAsset = (name: string) =>

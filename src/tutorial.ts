@@ -7,7 +7,8 @@ const onPath = (item: TrackItem, x: number) =>
     ? underRockShelf(item.shelf, x)
     : Math.abs(item.lane * 2.5 - x) < 1.1;
 
-export type GuideId = "snow" | "ocean";
+export type TerrainGuideId = "snow" | "ocean";
+export type GuideId = TerrainGuideId | "night";
 export type LessonId =
   | GuideId
   | "move"
@@ -20,8 +21,7 @@ export type LessonId =
   | "wallEntry"
   | "wallHeight"
   | "booster"
-  | "hourglass"
-  | "wolf";
+  | "hourglass";
 type Direction = "left" | "right" | "jump" | "slide";
 export interface Lesson {
   id: LessonId;
@@ -39,7 +39,7 @@ export class Tutorial {
   private previousGuideStep = 0;
   get guide(): GuideId | null {
     const id = this.active?.id;
-    return id === "snow" || id === "ocean" ? id : null;
+    return id === "snow" || id === "ocean" || id === "night" ? id : null;
   }
   reviewGuide(id: GuideId) {
     if (this.reviewingGuide) return;
@@ -171,6 +171,10 @@ export class Tutorial {
   update(game: RunnerGame, dt: number, _boosterUnlocked: boolean) {
     if (game.mode !== "running") return;
     this.cooldown = Math.max(0, this.cooldown - dt);
+    if (game.phase === "night" && !this.knows("night") && !this.guide) {
+      this.openGuide("night");
+      return;
+    }
     if (this.active) {
       const id = this.active.id;
       if (id === "booster" && game.boosting) this.complete(id);

@@ -2,6 +2,7 @@ import { openingFog } from "./opening.ts";
 import { fishWarning } from "./fish.ts";
 import { CONFIG } from "./config.ts";
 import { daylightBlend } from "./daylight.ts";
+import { NightSky } from "./night-sky.ts";
 import { WolfModel } from "./wolf-model.ts";
 import "@babylonjs/core/Engines/thinEngine.scissor";
 import "@babylonjs/core/Culling/ray";
@@ -45,7 +46,7 @@ import { defaultTrack, sectionAt, tunnelDarkness, snowBlend } from "./track.ts";
 import { SnowProps } from "./snow-props.ts";
 import { ICE_IMPACT_METRES, iceFallPose, sipPose } from "./winter-motion.ts";
 import { TerrainPreview } from "./terrain-preview.ts";
-import type { GuideId } from "./tutorial.ts";
+import type { TerrainGuideId } from "./tutorial.ts";
 import { POOL_WATER_Y } from "./snow-layout.ts";
 import { iconAsset } from "./art.ts";
 
@@ -75,7 +76,7 @@ const REST_Z = 0.65;
 const SUN = Color3.FromHexString("#fff0d4");
 const SUNSET = Color3.FromHexString("#ffc28b");
 const MOON = Color3.FromHexString("#a8c9ff");
-const NIGHT_SKY = Color3.FromHexString("#435b84");
+const NIGHT_SKY = Color3.FromHexString("#394f79");
 const DUSK_SKY = Color3.FromHexString("#df9774");
 const DAWN_SKY = Color3.FromHexString("#a9829e");
 
@@ -105,8 +106,12 @@ export class ForestScene {
   private leaves: InstancedMesh[] = [];
   private itemMeshes = new Map<number, TransformNode>();
   private wolves = new Map<number, WolfModel>();
-  private stones: Mesh[] = [];
-  private wolfWarning?: {area: Mesh; fill: Mesh};
+  private stones: {core: Mesh; trail: Mesh}[] = [];
+  private wolfWarnings = new Map<number, {area: Mesh; fill: Mesh; slash: Mesh; strike: number}>();
+  private clawMaterial?: StandardMaterial;
+  private nightSky?: NightSky;
+  private lastShotAt = -Infinity;
+  private lastWolfImpact = -Infinity;
   private slingshot?: TransformNode;
   private materials = new Map<string, StandardMaterial>();
   private templates = new Map<string, Mesh>();
@@ -151,7 +156,7 @@ export class ForestScene {
   private snow?: SnowProps;
   private guidePreviews = new Map<number, TerrainPreview>();
   private guideBackdrop?: Layer;
-  private previewGuide: GuideId | null = null;
+  private previewGuide: TerrainGuideId | null = null;
   private drinkBottle?: TransformNode;
   private lastSnowHit = 0;
   private lastIceRemaining = 0;
@@ -1877,6 +1882,83 @@ export class ForestScene {
     return typeof id === "number" ? id : undefined;
   }
 
+  private createClawMaterial() {
+    const texture = new DynamicTexture("wolf-claw-streaks", 128, this.scene, false);
+    const ctx = texture.getContext();
+    for (let i = 0; i < 3; i++) {
+      const offset = i * 21;
+      ctx.beginPath();
+      ctx.moveTo(21 + offset, 12 + i * 3);
+      ctx.quadraticCurveTo(58 + offset, 53, 28 + offset, 113 - i * 4);
+      ctx.quadraticCurveTo(44 + offset, 56, 21 + offset, 12 + i * 3);
+      ctx.fillStyle = i === 1 ? "#ffe8b3" : "#ff9f8c";
+      ctx.shadowColor = "#ff3f57";
+      ctx.shadowBlur = 13;
+      ctx.fill();
+    }
+    texture.update();
+    texture.hasAlpha = true;
+    texture.isBlocking = false;
+    const material = new StandardMaterial("claw-streaks", this.scene);
+    material.emissiveColor.setAll(1);
+    material.diffuseTexture = texture;
+    material.useAlphaFromDiffuseTexture = true;
+    material.disableLighting = true;
+    material.fogEnabled = false;
+    material.backFaceCulling = false;
+    return material;
+  }
+
+  private updateWolfWarnings(game: RunnerGame) {
+    const warnings = game.mode === "over" || game.terrain.biome !== "forest" ? [] : game.nightCombat.warnings(game);
+    for (const [id, effect] of this.wolfWarnings) {
+      if (warnings.some(warning => warning.wolf === id)) continue;
+      effect.area.dispose();
+      effect.fill.dispose();
+      effect.slash.dispose();
+      this.wolfWarnings.delete(id);
+    }
+    const width = CONFIG.nightCombat.biteHalfWidth;
+    for (const warning of warnings) {
+      let effect = this.wolfWarnings.get(warning.wolf);
+      if (!effect) {
+        const area = CreateGround("wolf-warning-area", {width: 2, height: 2}, this.scene);
+        const fill = CreateGround("wolf-warning-fill", {width: 2, height: 2}, this.scene);
+        const slash = CreatePlane("wolf-claw-slash", {size: 1.6}, this.scene);
+        area.material = this.mat("#c21f43", true);
+        fill.material = this.mat("#ff5a68", true);
+        slash.material = this.clawMaterial ??= this.createClawMaterial();
+        slash.billboardMode = Mesh.BILLBOARDMODE_ALL;
+        area.isPickable = fill.isPickable = slash.isPickable = false;
+        effect = {area, fill, slash, strike: -Infinity};
+        this.wolfWarnings.set(warning.wolf, effect);
+      }
+      const {area, fill, slash} = effect;
+      const dx = warning.toX - warning.fromX, dz = warning.toZ - warning.fromZ;
+      const length = Math.hypot(dx, dz);
+      const yaw = Math.atan2(dx, dz);
+      area.position.set(warning.fromX + dx * 0.5, 0.085, warning.fromZ + dz * 0.5);
+      area.rotation.y = fill.rotation.y = yaw;
+      area.scaling.set(width, 1, length * 0.5);
+      area.visibility = warning.striking ? 0.46 : 0.5 + warning.progress * 0.2;
+      const progress = warning.progress * 0.5;
+      fill.setEnabled(progress > 0);
+      fill.position.set(warning.fromX + dx * progress, 0.092, warning.fromZ + dz * progress);
+      fill.scaling.set(width - 0.11, 1, Math.max(0.001, length * progress));
+      fill.visibility = warning.striking ? 0.36 : 0.79;
+      slash.setEnabled(warning.striking && game.mode !== "rewinding");
+      if (warning.striking) {
+        const model = this.wolves.get(warning.wolf)!;
+        slash.position.set(model.root.position.x + dx / length * 0.66, 0.87, model.root.position.z + dz / length * 0.66);
+        slash.rotation.z = dx < 0 ? -0.42 : 0.42;
+        if (effect.strike !== warning.start && game.mode === "running") {
+          effect.strike = warning.start;
+          this.burst(new Vector3(warning.fromX, 0.18, warning.fromZ), "#d28a6d", 9, 5, 0.32, 0.29, 3);
+        }
+      }
+    }
+  }
+
   private updateNightCombat(game: RunnerGame) {
     const combat = game.nightCombat;
     const forest = game.terrain.biome === "forest";
@@ -1896,53 +1978,58 @@ export class ForestScene {
       const sinceHit = game.worldTime - wolf.hitAt;
       model.root.position.set(pose.x, 0.065, pose.z);
       model.root.rotation.y = pose.yaw;
-      const fallen = combat.health(wolf) <= 0 ? smooth(sinceHit / 0.22) : 0;
+      const health = combat.health(wolf);
+      const fallen = health <= 0 ? smooth(sinceHit / 0.22) : 0;
       model.root.scaling.setAll(1.12 - fallen * 0.32);
       model.animate(game.distance * 0.81 + wolf.id, pose.crouch, pose.leap, pose.bite,
         1 - smooth(sinceHit / 0.22), fallen);
-    }
-
-    const warning = forest && game.mode !== "over" ? combat.warning(game.worldTime) : undefined;
-    if (warning && !this.wolfWarning) {
-      const area = CreateGround("wolf-warning-area", {width: 2, height: 2}, this.scene);
-      const fill = CreateGround("wolf-warning-fill", {width: 2, height: 2}, this.scene);
-      area.material = this.mat("#d62642", true);
-      fill.material = this.mat("#ff5361", true);
-      area.isPickable = fill.isPickable = false;
-      this.wolfWarning = {area, fill};
-    }
-    if (this.wolfWarning) {
-      const {area, fill} = this.wolfWarning;
-      area.setEnabled(!!warning);
-      fill.setEnabled(!!warning && warning.progress > 0);
-      if (warning) {
-        const {biteHalfWidth, biteHalfLength} = CONFIG.nightCombat;
-        const z = warning.worldZ - game.distance;
-        area.position.set(warning.x, 0.082, z);
-        area.scaling.set(biteHalfWidth, 1, biteHalfLength);
-        area.visibility = 0.64 + warning.progress * 0.2;
-        fill.position.set(warning.x, 0.09, z + biteHalfLength * (1 - warning.progress));
-        fill.scaling.set(biteHalfWidth - 0.08, 1, Math.max(0.001, biteHalfLength * warning.progress - 0.06));
-        fill.visibility = 0.77;
+      model.updateHealth(health, pose.leap);
+      if (model.lastHitAt !== wolf.hitAt && game.mode === "running" && sinceHit >= 0 && sinceHit < 0.18) {
+        model.lastHitAt = wolf.hitAt;
+        const impact = new Vector3(pose.x, 0.86 + pose.leap, pose.z);
+        this.burst(impact, "#fff1b5", 8, 4.8, 0.22, 0.14, 4);
+        this.burst(impact, health > 0 ? "#ff8865" : "#ef5362", health > 0 ? 5 : 12, 5, 0.35, 0.22, 5);
       }
     }
+
+    this.updateWolfWarnings(game);
+    if (combat.playerHitAt !== this.lastWolfImpact && game.mode !== "rewinding" &&
+      game.worldTime - combat.playerHitAt >= 0 && game.worldTime - combat.playerHitAt < 0.15) {
+      this.lastWolfImpact = combat.playerHitAt;
+      this.shake = Math.max(this.shake, 0.24);
+      this.burst(new Vector3(game.x, game.y + 0.95, 0), "#ff5969", 17, 6, 0.35, 0.23, 4);
+    }
     const stones = forest && game.mode !== "over" ? combat.stones : [];
-    while (this.stones.length > stones.length) this.stones.pop()?.dispose();
+    while (this.stones.length > stones.length) {
+      const {core, trail} = this.stones.pop()!;
+      core.dispose();
+      trail.dispose();
+    }
     stones.forEach((stone, i) => {
       let mesh = this.stones[i];
       if (!mesh) {
-        mesh = CreateSphere("slingshot-stone", {diameter: 0.21, segments: 6}, this.scene);
-        mesh.material = this.mat("#c6d6ea", true);
-        mesh.isPickable = false;
+        const core = CreateSphere("slingshot-stone", {diameter: 0.22, segments: 6}, this.scene);
+        const trail = CreateSphere("stone-trail", {diameter: 0.17, segments: 5}, this.scene);
+        core.material = this.mat("#d3e2f8", true);
+        trail.material = this.mat("#8bd3ff", true);
+        core.isPickable = trail.isPickable = false;
+        trail.visibility = 0.57;
+        trail.scaling.z = 11;
+        mesh = {core, trail};
         this.stones.push(mesh);
       }
-      mesh.position.set(stone.x, stone.y, stone.z);
-      mesh.scaling.z = 1.65;
+      mesh.core.position.set(stone.x, stone.y, stone.z);
+      mesh.trail.position.set(stone.x - stone.dx * 0.85, stone.y - stone.dy * 0.85, stone.z - stone.dz * 0.85);
+      mesh.trail.lookAt(mesh.core.position);
     });
 
     const aim = forest && game.mode !== "over" && !game.boosting ? combat.aim : undefined;
     this.slingshot?.setEnabled(!!aim);
     if (!aim) return;
+    if (combat.shotAt !== this.lastShotAt && game.mode === "running") {
+      this.lastShotAt = combat.shotAt;
+      this.burst(new Vector3(game.x - 0.22, game.y + (game.sliding ? 0.65 : 1.43), 0.45), "#ffe4a1", 6, 2.9, 0.18, 0.13, 0.5);
+    }
     const hand = this.arms.find(arm => arm.side < 0)!;
     if (!this.slingshot) {
       const root = this.joint("slingshot", [0, -0.35, 0.08], hand.lower);
@@ -1965,8 +2052,11 @@ export class ForestScene {
     });
   }
 
-  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, guide: GuideId | null = null, guideStep = 0) {
-    if (this.track !== game.track) this.openingMistTime = 0;
+  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, guide: TerrainGuideId | null = null, guideStep = 0) {
+    if (this.track !== game.track) {
+      this.openingMistTime = 0;
+      this.lastShotAt = this.lastWolfImpact = -Infinity;
+    }
     this.track = game.track;
     const running = game.mode === "running",
       ready = game.mode === "ready",
@@ -1997,6 +2087,7 @@ export class ForestScene {
         if (game.lastHit === "pool") this.burst(new Vector3(game.x, POOL_WATER_Y + 0.035, 0), "#bde7ff", 34, 5, 1.6, 0.2, 5);
         this.shake = 0.2;
         this.shockLife = 0.5;
+        this.shock.material = this.mat(game.lastHit === "wolf" ? "#ff7780" : "#ffdb8c", true);
         this.shock.position.set(game.x, 0.1, 0);
         this.shock.setEnabled(true);
         if (game.lastHit !== "pool") this.burst(new Vector3(game.x, 1, 0), "#ffe0a0", 18, 5, 0.7, 0.22, 5);
@@ -2047,25 +2138,30 @@ export class ForestScene {
 
     this.scene.fogColor = fog;
     this.scene.clearColor = new Color4(fog.r, fog.g, fog.b, 1);
+    const skyOpacity = light.night * (1 - darkness) ** 2 * (1 - immersed) ** 3 * (1 - storm * 0.85);
+    if (skyOpacity > 0.002) this.nightSky ??= new NightSky(this.scene);
+    this.nightSky?.update(skyOpacity, Math.max(0.1, this.engine.getAspectRatio(this.camera)));
     const openingReady = game.openingPrepared && game.items.every(item => {
       const model = this.itemMeshes.get(item.id);
       return model && model.getChildMeshes().every(mesh => mesh.isReady());
     });
     if (running && openingReady) this.openingMistTime += dt;
     const mist = ready || introducing ? 1 : openingFog(this.openingMistTime);
-    const terrainFog = 0.009 + darkness * 0.012 + immersed * 0.008 + storm * (0.0072 + Math.sin(game.worldTime * 2) * 0.0012);
+    const terrainFog = 0.009 + light.night * 0.0018 + darkness * 0.012 + immersed * 0.008 +
+      storm * (0.0072 + Math.sin(game.worldTime * 2) * 0.0012);
     this.scene.fogDensity = terrainFog + (CONFIG.openingFogDensity - terrainFog) * mist;
     const lightWeight = exposure * (1 - immersed * 0.72);
     const moon = light.night * lightWeight;
     const dusk = light.dusk * lightWeight;
-    this.sky.intensity = (0.75 - darkness * 0.3) * (1 - moon * 0.25);
+    this.sky.intensity = (0.75 - darkness * 0.3) * (1 - moon * 0.21);
     this.sky.diffuse.copyFromFloats(1 - moon * 0.18, 1 - moon * 0.1 - dusk * 0.035, 1 - dusk * 0.1);
     this.sun.intensity = (0.85 - darkness * 0.65) * (1 - moon * 0.48 - dusk * 0.09);
     this.sun.diffuse = Color3.Lerp(Color3.Lerp(SUN, SUNSET, dusk), MOON, moon);
     this.sun.direction.set(-0.65 + 1.13 * moon - 0.37 * dusk, -1 + 0.54 * dusk + 0.18 * moon, 0.65 - 0.25 * moon);
     this.shadows.setDarkness(0.3 + moon * 0.16);
     const inlandGround = Color3.Lerp(Color3.FromHexString("#698463"), Color3.FromHexString("#a88a67"), canyonBlend);
-    this.sky.groundColor = Color3.Lerp(inlandGround, Color3.FromHexString("#a8b9ce"), snowLight);
+    this.sky.groundColor = Color3.Lerp(Color3.Lerp(inlandGround, Color3.FromHexString("#a8b9ce"), snowLight),
+      Color3.FromHexString("#6880a3"), moon * 0.42);
     this.forestVisible = canyonBlend < 0.5 && snowLight < 0.55;
     let forestSnowFade = snowLight;
     if (section.biome === "snow-transition" && section.from === "forest")
@@ -2391,6 +2487,11 @@ export class ForestScene {
         this.itemMeshes.set(item.id, mesh);
       }
       mesh.position.z = item.z;
+      if (item.type === "ammo") {
+        mesh.position.y = item.y + Math.sin(game.worldTime * 3.7 + item.id % 97) * 0.09;
+        const reveal = 1 - smooth((item.z - 98) / 28);
+        for (const part of mesh.getChildMeshes()) part.visibility = reveal;
+      }
       if (item.type === "pool" || item.type === "fire") this.snow?.animate(mesh, game.worldTime);
       if (["bubble", "coral", "volcano", "fish"].includes(item.type)) {
         const b = game.waterBounds(item);

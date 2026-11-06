@@ -58,6 +58,7 @@ let activeDialog:
   | "shop"
   | "revive"
   | null = null;
+let guideReviewFrom: "settings" | "guide" = "guide";
 let runFinalized = false;
 let buyBusyUntil = 0;
 let toastTimer = 0;
@@ -120,6 +121,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       </header>
       <div class="guide-stage">
         <div id="guide-viewport" aria-hidden="true"></div>
+        <div id="night-guide-demo" class="night-guide-demo" aria-hidden="true" hidden></div>
         <div id="guide-stage-top" class="guide-stage-labels" aria-hidden="true"></div>
         <div id="guide-stage-bottom" class="guide-stage-labels" aria-hidden="true"></div>
       </div>
@@ -254,7 +256,8 @@ function renderDialog() {
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${t("terrainOverride")}</span><small>${t("terrainOverrideHint")}</small></div><button class="toggle ${terrainOverride ? "is-on" : ""}" data-action="terrain-override" role="switch" aria-checked="${terrainOverride}" aria-label="${t("terrainOverride")}"><span></span></button></div>
       <div class="terrain-selector" role="radiogroup" aria-label="${t("terrainOverride")}">${coreBiomes.map(b => `<button role="radio" aria-checked="${terrainTarget === b}" data-terrain="${b}" ${terrainOverride ? "" : "disabled"} class="${terrainTarget === b ? "selected" : ""}">${t(b)}</button>`).join("")}</div>
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${t("startAtNight")}</span><small>${t("terrainOverrideHint")}</small></div><button class="toggle ${startAtNight ? "is-on" : ""}" data-action="start-at-night" role="switch" aria-checked="${startAtNight}" aria-label="${t("startAtNight")}"><span></span></button></div>
-      <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>`;
+      <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>
+      <button class="secondary-button full-width" data-action="night-guide">${t("nightGuide")}</button>`;
   } else if (activeDialog === "guide") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("help")}</span><h2 id="dialog-title">${t("howTo")}</h2></div><div class="guide-list">
       ${(
@@ -271,7 +274,7 @@ function renderDialog() {
         )
         .join(
           "",
-        )}</div><div class="guide-links"><button class="secondary-button" data-action="snow-guide">${t("snowGuide")}</button><button class="secondary-button" data-action="ocean-guide">${t("oceanGuide")}</button></div>`;
+        )}</div><div class="guide-links"><button class="secondary-button" data-action="snow-guide">${t("snowGuide")}</button><button class="secondary-button" data-action="ocean-guide">${t("oceanGuide")}</button><button class="secondary-button" data-action="night-guide">${t("nightGuide")}</button></div>`;
   } else if (activeDialog === "pause") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
@@ -408,7 +411,7 @@ function showToast(message: string) {
   }, 3200);
 }
 const lessonTitles: Record<LessonId, MessageKey> = {
-  wolf: "wolfTip",
+  night: "nightGuide",
   snow: "snowGuide",
   ocean: "oceanGuide",
   move: "lessonMove",
@@ -429,6 +432,21 @@ const guidePrev = document.querySelector<HTMLButtonElement>("#guide-prev")!;
 const guideNext = document.querySelector<HTMLButtonElement>("#guide-next")!;
 const guideDone = document.querySelector<HTMLButtonElement>("#guide-done")!;
 const guideClose = document.querySelector<HTMLButtonElement>("#guide-review-close")!;
+const nightGuideDemo = document.querySelector<HTMLElement>("#night-guide-demo")!;
+const nightGuideScenes = [
+  () => `<svg class="night-guide-moon" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="none" stroke="#819bc5" stroke-dasharray="3 7"/><path d="M58 21a31 31 0 1 0 20 48A30 30 0 0 1 58 21Z" fill="#ffe9b2"/><path d="m74 23 2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#c5d8ff"/></svg>${icon("slingshot")}${icon("stone", "night-demo-stone")}`,
+  () => `<svg class="night-guide-paths" viewBox="0 0 340 142">
+    <defs><path id="night-guide-wolf" d="M-18-17l11 6h14l11-6-2 18-7 10L0 17l-9-6-7-10Z"/></defs>
+    <rect x="88" y="3" width="164" height="136" rx="10" fill="#3c4d63" stroke="#7792ad"/>
+    <path d="M143 6v130m54-130v130" stroke="#899bb6" stroke-dasharray="5 7"/>
+    <path d="M48 39 170 101m121-66-68 64" fill="none" stroke="#e8465c" stroke-width="17" opacity=".74"/>
+    <path d="M48 39 170 101m121-66-68 64" fill="none" stroke="#ff9b8e" stroke-width="3" stroke-dasharray="6 4"/>
+    <use href="#night-guide-wolf" x="47" y="32" fill="#acbedc"/><use href="#night-guide-wolf" x="291" y="28" fill="#acbedc"/>
+    <path d="M34 11h26m218-4h26" stroke="#ff6678" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="170" cy="107" r="9" fill="#ffe8aa"/><path d="m132 108-12 0m3-5-5 5 5 5" fill="none" stroke="#ffe8aa" stroke-width="3" stroke-linecap="round"/>
+  </svg>`,
+  () => `${icon("ammo-pouch")}<span class="night-guide-gain">+${n(Math.ceil(CONFIG.nightCombat.ammo * CONFIG.nightCombat.refillFraction))}</span>${icon("stone", "night-demo-stone")}${icon("stone", "night-demo-stone")}`,
+];
 const weather = new SnowWeather(document.querySelector<HTMLCanvasElement>("#snow-weather")!);
 const guideNumbers: Record<string, number> = {
   base: CONFIG.coldRate,
@@ -438,6 +456,8 @@ const guideNumbers: Record<string, number> = {
   snowman: CONFIG.snowmanCold,
   fire: CONFIG.fireWarmth,
   liquor: CONFIG.liquorWarmth,
+  refillPercent: CONFIG.nightCombat.refillFraction * 100,
+  refill: Math.ceil(CONFIG.nightCombat.ammo * CONFIG.nightCombat.refillFraction),
 };
 const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?: MessageKey; top?: MessageKey[]; bottom?: MessageKey[]}[]> = {
   snow: [
@@ -450,6 +470,11 @@ const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?:
     {title: "oceanHazards", copy: "oceanHazardsCopy", bottom: ["oceanBubble", "oceanCoral", "oceanVent"]},
     {title: "oceanFish", copy: "oceanFishCopy"},
   ],
+  night: [
+    {title: "nightShooting", copy: "nightShootingCopy"},
+    {title: "nightAttacks", copy: "nightAttacksCopy", detail: "wolfTip"},
+    {title: "nightSupplies", copy: "nightSuppliesCopy", detail: "nightExitCopy"},
+  ],
 };
 
 function updateGuideUi() {
@@ -458,6 +483,7 @@ function updateGuideUi() {
   const key = `${guide}/${step}/${language}`;
   const newlyOpened = guidePanel.hidden && !!guide;
   guidePanel.hidden = !guide;
+  nightGuideDemo.hidden = guide !== "night";
   document.body.classList.toggle("terrain-teaching", !!guide);
   if (guide && (newlyOpened || guidePanel.dataset.page !== key)) {
     gesture = guideSwipe = null;
@@ -478,6 +504,7 @@ function updateGuideUi() {
     document.querySelector("#guide-progress")!.textContent = `${n(step)} / ${n(3)}`;
     document.querySelector("#guide-kicker")!.textContent = t(lessonTitles[guide]);
     const page = guidePages[guide][step - 1];
+    if (guide === "night") nightGuideDemo.innerHTML = nightGuideScenes[step - 1]();
     document.querySelector("#guide-page-title")!.textContent = t(page.title);
     const decimals = new Intl.NumberFormat(languageTags[language], {maximumFractionDigits: 3});
     document.querySelector("#guide-copy")!.textContent = t(page.copy)
@@ -506,8 +533,8 @@ function updateGuideUi() {
   cold.classList.toggle("warming", !sample && game.coldFeedback > 0 && game.coldDelta < 0);
 }
 
-function returnToHelp(guide: GuideId) {
-  activeDialog = "guide";
+function returnFromGuideReview(guide: GuideId) {
+  activeDialog = guideReviewFrom;
   updateGuideUi();
   renderDialog();
   dialog.showModal();
@@ -522,7 +549,7 @@ function guideAction(action: string) {
   else if (action === "guide-done") tutorial.finishGuide();
   else if (action === "guide-review-close") tutorial.closeGuideReview();
   gesture = guideSwipe = null;
-  if (review && !tutorial.reviewingGuide) returnToHelp(guide);
+  if (review && !tutorial.reviewingGuide) returnFromGuideReview(guide);
   else {
     updateGuideUi();
     if (guideDone.hidden && guidePanel.contains(document.activeElement) && document.activeElement === guideDone)
@@ -558,13 +585,8 @@ function updateNightUi() {
   Array.from(ammoSlots.children).forEach((slot, index) => slot.classList.toggle("spent", index >= combat.ammo));
   nightHud.classList.toggle("refilled", combat.refillFlash > 0);
   shotMeter.style.transform = `scaleX(${1 - combat.cooldown / CONFIG.nightCombat.cooldown})`;
-  ammoStatus.textContent = combat.refillFlash > 0 ? t("ammoRefill") :
+  ammoStatus.textContent = combat.refillFlash > 0 ? t("ammoRefill") + (combat.refillGain ? ` +${n(combat.refillGain)}` : "") :
     combat.ammo === 0 ? t("ammoEmpty") : combat.cooldown > 0 ? t("shotCooldown") : ammo;
-  if (game.mode === "running" && !activeDialog && !tutorial.active &&
-    combat.hunt.wolves.length && !tutorial.knows("wolf")) {
-    tutorial.complete("wolf");
-    showToast(t("wolfTip"));
-  }
 }
 function updateFeatureUi() {
   const state = economy.state;
@@ -604,10 +626,11 @@ function act(action: string) {
   if (action === "terrain-override") {
     terrainOverride = !terrainOverride; save("terrain-override", String(terrainOverride)); renderDialog(); return;
   }
-  if (action === "snow-guide" || action === "ocean-guide") {
+  if (action === "snow-guide" || action === "ocean-guide" || action === "night-guide") {
+    guideReviewFrom = activeDialog === "settings" ? "settings" : "guide";
     dialog.close();
     activeDialog = null;
-    tutorial.reviewGuide(action === "snow-guide" ? "snow" : "ocean");
+    tutorial.reviewGuide(action === "snow-guide" ? "snow" : action === "ocean-guide" ? "ocean" : "night");
     updateGuideUi();
     return;
   }
@@ -962,7 +985,7 @@ window.addEventListener("pointerup", (event) => {
     game.boosting || game.icy || document.elementFromPoint(event.clientX, event.clientY) !== worldCanvas) return;
   const canvas = worldCanvas.getBoundingClientRect();
   const id = world?.pickWolf(event.clientX - canvas.left, event.clientY - canvas.top);
-  if (id !== undefined) game.nightCombat.fire(id, game);
+  if (id !== undefined && game.nightCombat.fire(id, game)) beep("shot");
 });
 window.addEventListener("pointercancel", (event) => {
   if (guideSwipe?.id === event.pointerId) guideSwipe = null;
@@ -1005,16 +1028,23 @@ try {
       previous = now;
       const wasRunning = game.mode === "running";
       const previousMode = game.mode;
+      const previousPhase = game.phase;
       tutorial.update(game, dt, economy.state.boosters > 0);
       const simulationDt = dt * tutorial.timeScale(game);
       const transitionBefore = game.transitioning;
       const swimBefore = game.swimming;
       const pickupBefore = game.pickupSerial;
+      const refillBefore = game.nightCombat.refillFlash;
       const shieldBreakBefore = game.shieldBreakSerial;
       const clearBefore = game.clearSerial;
       game.update(simulationDt);
+      if (game.phase === "night" && (previousPhase !== "night" || previousMode === "intro"))
+        tutorial.update(game, 0, economy.state.boosters > 0);
+      const wolfImpactAge = game.worldTime - game.nightCombat.playerHitAt;
+      document.body.classList.toggle("wolf-impact", game.mode !== "rewinding" && wolfImpactAge >= 0 && wolfImpactAge < 0.32);
       audio.update(game, !!activeDialog);
       if (game.pickupSerial !== pickupBefore) beep(game.lastPickup);
+      if (game.nightCombat.refillFlash > refillBefore) beep("ammo");
       if (game.shieldBreakSerial !== shieldBreakBefore) beep("break");
       if (game.clearSerial !== clearBefore) beep("clear");
       if (transitionBefore || game.transitioning || game.icy) gesture = null;
@@ -1034,7 +1064,8 @@ try {
       updateGuideUi();
       const guide = !activeDialog ? tutorial.guide : null;
       world!.update(game, guide ? 0 : game.mode === "over" ? dt : simulationDt,
-        tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"), guide, guide ? tutorial.guideStep : 0);
+        tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"), guide === "night" ? null : guide,
+        guide ? tutorial.guideStep : 0);
       if (!loaded) {
         const pending = world!.scene.getWaitingItemsCount();
         maximumPending = Math.max(maximumPending, pending);

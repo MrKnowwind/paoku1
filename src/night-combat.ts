@@ -21,18 +21,19 @@ interface Attack {
   start: number;
   x: number;
   worldZ: number;
+  launchWorldZ?: number;
   spent: boolean;
 }
 
 export interface Hunt {
   wolves: Wolf[];
   enteredAt: number;
-  attack?: Attack;
+  attacks: Attack[];
   nextAttack: number;
   nextPack: number;
   pack: number;
   strikes: number;
-  nextRefillSlot: number;
+  nextRefillAt: number;
 }
 
 interface Stone {
@@ -40,16 +41,22 @@ interface Stone {
   x: number;
   y: number;
   z: number;
+  dx: number;
+  dy: number;
+  dz: number;
 }
 
 export class NightCombat {
   ammo: number = rules.ammo;
   cooldown = 0;
   refillFlash = 0;
+  refillGain = 0;
+  playerHitAt = -Infinity;
+  shotAt = -Infinity;
   aim?: {wolf: number; x: number; z: number};
   stones: Stone[] = [];
   hunt: Hunt = {
-    wolves: [], enteredAt: 0, nextAttack: 0, nextPack: 0, pack: 0, strikes: 0, nextRefillSlot: 0,
+    wolves: [], attacks: [], enteredAt: 0, nextAttack: 0, nextPack: 0, pack: 0, strikes: 0, nextRefillAt: 0,
   };
   private damage = new Map<number, number>();
 
@@ -66,19 +73,18 @@ export class NightCombat {
   snapshot(): Hunt {
     const hunt = this.hunt;
     return {...hunt, wolves: hunt.wolves.map(wolf => ({...wolf})),
-      attack: hunt.attack && {...hunt.attack}};
+      attacks: hunt.attacks.map(attack => ({...attack}))};
   }
 
   restore(hunt: Hunt, time: number, reviving: boolean) {
     this.clearShots();
+    const wolves = hunt.wolves.filter(wolf => this.health(wolf) > 0).map(wolf => ({...wolf}));
     this.hunt = {
       ...hunt,
-      wolves: hunt.wolves.filter(wolf => this.health(wolf) > 0).map(wolf => ({...wolf})),
-      attack: hunt.attack && {...hunt.attack},
+      wolves,
+      attacks: hunt.attacks.filter(attack => wolves.some(wolf => wolf.id === attack.wolf) &&
+        (!reviving || time < attack.start + lead - rules.lunge)).map(attack => ({...attack})),
     };
-    const attack = this.hunt.attack;
-    if (attack && (!this.hunt.wolves.some(wolf => wolf.id === attack.wolf) ||
-      (reviving && time >= attack.start + rules.windup + rules.warning))) this.hunt.attack = undefined;
   }
 
   clearShots() {
@@ -87,7 +93,8 @@ export class NightCombat {
   }
 
   refill() {
-    this.ammo = Math.min(rules.ammo, this.ammo + Math.ceil(rules.ammo * rules.refillFraction));
+    this.refillGain = Math.min(rules.ammo - this.ammo, Math.ceil(rules.ammo * rules.refillFraction));
+    this.ammo += this.refillGain;
     this.refillFlash = 0.65;
   }
 
@@ -98,28 +105,33 @@ export class NightCombat {
     const {x, z} = this.position(wolf, game);
     this.ammo--;
     this.cooldown = rules.cooldown;
+    this.shotAt = game.worldTime;
     this.aim = {wolf: id, x, z};
-    this.stones.push({wolf: id, x: game.x - 0.22, y: game.y + (game.sliding ? 0.65 : 1.43), z: 0.45});
+    const stone = {wolf: id, x: game.x - 0.22, y: game.y + (game.sliding ? 0.65 : 1.43), z: 0.45};
+    const dx = x - stone.x, dy = 0.76 - stone.y, dz = z - stone.z;
+    const length = Math.hypot(dx, dy, dz) || 1;
+    this.stones.push({...stone, dx: dx / length, dy: dy / length, dz: dz / length});
+    return true;
   }
 
   position(wolf: Wolf, game: RunnerGame) {
-    const {attack, enteredAt} = this.hunt;
+    const {enteredAt} = this.hunt;
+    const attack = this.hunt.attacks.find(attack => attack.wolf === wolf.id);
     const time = game.worldTime;
     let x = wolf.homeX + Math.sign(wolf.homeX) * 1.1 * (1 - smooth((time - enteredAt) / rules.entrance));
     let z = wolf.homeZ;
     let yaw = -Math.sign(x) * 0.12;
     let crouch = 0, leap = 0, bite = 0;
-    if (attack?.wolf === wolf.id) {
+    if (attack) {
       const elapsed = time - attack.start;
       const charge = clamp((elapsed - lead + rules.lunge) / rules.lunge);
       const back = smooth((elapsed - lead - rules.bite) / rules.recovery);
-      const progress = smooth(charge) * (1 - back);
+      const progress = smooth(charge);
+      const originZ = attack.launchWorldZ === undefined ? z : attack.launchWorldZ - game.distance;
       const targetZ = attack.worldZ - game.distance;
-      // Reach into the near edge of the same strip used for the damage check.
-      const biteZ = Math.max(targetZ - rules.biteHalfLength, Math.min(0, targetZ + rules.biteHalfLength));
-      x = lerp(x, attack.x, progress);
-      z = lerp(z, biteZ, progress);
-      const heading = Math.atan2(attack.x - wolf.homeX, biteZ - wolf.homeZ);
+      x = lerp(lerp(x, attack.x, progress), wolf.homeX, back);
+      z = lerp(lerp(originZ, targetZ, progress), wolf.homeZ, back);
+      const heading = Math.atan2(attack.x - wolf.homeX, targetZ - originZ);
       yaw = lerp(yaw, heading, smooth(elapsed / rules.windup));
       yaw = lerp(yaw, Math.sign(wolf.homeX) * -1.8, back);
       crouch = smooth(elapsed / rules.windup) * (1 - charge);
@@ -129,16 +141,20 @@ export class NightCombat {
     return {x, z, yaw, crouch, leap, bite};
   }
 
-  warning(time: number) {
-    const attack = this.hunt.attack;
-    if (!attack) return;
-    const elapsed = time - attack.start - rules.windup;
-    if (elapsed >= 0 && elapsed < rules.warning + rules.lunge + rules.bite)
-      return {x: attack.x, worldZ: attack.worldZ, progress: clamp(elapsed / (rules.warning + rules.lunge))};
+  warnings(game: RunnerGame) {
+    return this.hunt.attacks.flatMap(attack => {
+      const elapsed = game.worldTime - attack.start - rules.windup;
+      if (elapsed < 0 || elapsed >= rules.warning + rules.lunge + rules.bite) return [];
+      const wolf = this.hunt.wolves.find(wolf => wolf.id === attack.wolf)!;
+      return [{wolf: wolf.id, start: attack.start, fromX: wolf.homeX,
+        fromZ: attack.launchWorldZ === undefined ? wolf.homeZ : attack.launchWorldZ - game.distance,
+        toX: attack.x, toZ: attack.worldZ - game.distance,
+        progress: clamp(elapsed / rules.warning), striking: attack.launchWorldZ !== undefined}];
+    });
   }
 
   update(game: RunnerGame, dt: number, random: (key: number, salt: number) => number,
-    openLanes: (reach: number, landing: number) => number[], hitPlayer: () => void) {
+    hitPlayer: () => boolean) {
     const time = game.worldTime;
     const hunt = this.hunt;
     this.cooldown = Math.max(0, this.cooldown - dt);
@@ -147,7 +163,7 @@ export class NightCombat {
     const terrain = game.terrain;
     if (terrain.biome !== "forest") {
       hunt.wolves.length = 0;
-      hunt.attack = undefined;
+      hunt.attacks.length = 0;
       this.clearShots();
       return;
     }
@@ -182,45 +198,63 @@ export class NightCombat {
       if (travel >= length) {
         wolf.hitAt = time;
         this.damage.set(wolf.id, (this.damage.get(wolf.id) ?? 0) + rules.damage);
-        if (this.health(wolf) <= 0 && hunt.attack?.wolf === wolf.id) hunt.attack = undefined;
+        if (this.health(wolf) <= 0) hunt.attacks = hunt.attacks.filter(attack => attack.wolf !== wolf.id);
         return false;
       }
-      stone.x += dx * travel / length;
-      stone.y += dy * travel / length;
-      stone.z += dz * travel / length;
+      stone.dx = dx / length;
+      stone.dy = dy / length;
+      stone.dz = dz / length;
+      stone.x += stone.dx * travel;
+      stone.y += stone.dy * travel;
+      stone.z += stone.dz * travel;
       return true;
     });
 
-    if (game.boosting) hunt.attack = undefined;
-    if (hunt.attack) {
-      const attack = hunt.attack;
-      const elapsed = time - attack.start;
-      if (elapsed >= attackDuration) hunt.attack = undefined;
-      else if (!attack.spent && elapsed >= lead && elapsed <= lead + rules.bite &&
-        Math.abs(attack.x - game.x) < rules.biteHalfWidth &&
-        Math.abs(attack.worldZ - game.distance) < rules.biteHalfLength && game.y < rules.jumpClearance) {
-        attack.spent = true;
-        hitPlayer();
-      }
+    if (game.boosting) {
+      hunt.attacks.length = 0;
       return;
     }
-    if (time < hunt.nextAttack || !hunt.wolves.length || game.boosting || game.protectionTime > 0) return;
-    // The warning is locked to the ground before the wolf commits.
-    const landing = game.distance + game.speed * (lead + rules.bite / 2);
-    const safe = openLanes(game.distance + game.speed * rules.laneChangeTime, landing);
-    hunt.nextAttack = time + rules.attackRetry;
-    const strike = hunt.strikes + 1;
-    const otherLanes = safe.filter(lane => lane !== game.lane);
-    const blockEscape = random(strike, 95) < 0.5;
-    const candidates = blockEscape ? otherLanes.filter(lane => Math.abs(lane - game.lane) === 1) : [game.lane];
-    const targets = candidates.filter(lane => safe.some(escape => escape !== lane));
-    if (!targets.length) return;
-    const lane = targets[Math.floor(random(strike, 96) * targets.length)];
-    const available = hunt.wolves.filter(wolf => this.health(wolf) > 0);
-    if (!available.length) return;
-    const wolf = available[Math.floor(random(strike, 97) * available.length)];
-    hunt.strikes = strike;
-    hunt.nextAttack = time + rules.attackInterval;
-    hunt.attack = {wolf: wolf.id, start: time, x: lane * 2.5, worldZ: landing, spent: false};
+    if (hunt.attacks.length) hunt.attacks = hunt.attacks.filter(attack => time - attack.start < attackDuration);
+    for (const attack of hunt.attacks) {
+      const elapsed = time - attack.start;
+      if (elapsed < lead - rules.lunge || elapsed > lead + rules.bite || attack.spent) continue;
+      const wolf = hunt.wolves.find(wolf => wolf.id === attack.wolf)!;
+      attack.launchWorldZ ??= game.distance + wolf.homeZ;
+      const dx = attack.x - wolf.homeX, dz = attack.worldZ - attack.launchWorldZ;
+      const length = Math.hypot(dx, dz);
+      const px = game.x - wolf.homeX, pz = game.distance - attack.launchWorldZ;
+      const along = (px * dx + pz * dz) / length;
+      const across = (px * dz - pz * dx) / length;
+      const pose = this.position(wolf, game);
+      const wolfAlong = ((pose.x - wolf.homeX) * dx + (pose.z + game.distance - attack.launchWorldZ) * dz) / length;
+      if (along >= 0 && along <= length && Math.abs(across) < rules.biteHalfWidth &&
+        Math.abs(along - wolfAlong) < rules.biteHalfLength && game.y < rules.jumpClearance) {
+        attack.spent = true;
+        if (hitPlayer()) this.playerHitAt = time;
+      }
+    }
+    if (game.mode === "running") this.schedule(game, random);
+  }
+
+  private schedule(game: RunnerGame, random: (key: number, salt: number) => number) {
+    const {hunt} = this;
+    const time = game.worldTime;
+    const slots = rules.maxAttackers - hunt.attacks.length;
+    if (time < hunt.nextAttack || slots <= 0 || game.protectionTime > 0 || !hunt.wolves.length) return;
+    const ready = hunt.wolves.filter(wolf => this.health(wolf) > 0 && !hunt.attacks.some(attack => attack.wolf === wolf.id));
+    if (!ready.length) return;
+    const sequence = ++hunt.strikes;
+    const stagger = lerp(rules.partnerDelayMin, rules.partnerDelayMax, random(sequence, 98));
+    const landing = game.distance + game.speed * (lead + rules.bite * 0.5);
+    const count = slots > 1 && ready.length > 1 && random(sequence, 96) < rules.packAttackChance ? 2 : 1;
+    const neighbors = [game.lane - 1, game.lane + 1].filter(lane => Math.abs(lane) <= 1);
+    for (let index = 0; index < count; index++) {
+      const [wolf] = ready.splice(Math.floor(random(sequence, 97 + index * 4) * ready.length), 1);
+      const key = sequence * 4099 + wolf.id;
+      const lane = random(key, 95) < 0.5 ? neighbors[Math.floor(random(key, 100) * neighbors.length)] : game.lane;
+      hunt.attacks.push({wolf: wolf.id, x: lane * 2.5, start: time + stagger * index,
+        worldZ: landing + game.speed * stagger * index, spent: false});
+    }
+    hunt.nextAttack = time + lerp(rules.attackMinDelay, rules.attackMaxDelay, random(sequence, 99));
   }
 }

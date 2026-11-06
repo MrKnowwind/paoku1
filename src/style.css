@@ -433,6 +433,10 @@ h1 span {
 .crashed .impact-flash {
   animation: impact 0.55s both;
 }
+.wolf-impact .impact-flash {
+  background: radial-gradient(ellipse at center, transparent 31%, #e647605c 70%, #8b203fc9);
+  animation: impact 0.34s ease-out both;
+}
 dialog {
   width: min(390px, calc(100vw - 32px));
   max-height: calc(100svh - 40px);
@@ -1852,6 +1856,11 @@ html[lang="ko-KR"] .intro h1 {
   --guide-shell: #082839;
   --guide-accent: #57e6cc;
 }
+.terrain-guide[data-terrain="night"] .guide-card {
+  --guide-shell: #18243b;
+  --guide-accent: #b5caff;
+  border-color: #52678b;
+}
 .guide-card-heading {
   grid-area: heading;
   min-width: 0;
@@ -1913,6 +1922,20 @@ html[lang="ko-KR"] .intro h1 {
   pointer-events: none;
 }
 #guide-viewport { width: 100%; height: 100%; pointer-events: none; }
+.night-guide-demo {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(6px, 3cqw, 17px);
+  padding: 12px;
+  background: radial-gradient(ellipse at 72% 16%, #465a86, #293a5b 46%, #14213b 89%);
+}
+.night-guide-demo .art-icon, .night-guide-moon { width: clamp(42px, 20cqw, 100px); height: auto; }
+.night-guide-demo .night-demo-stone { width: clamp(20px, 10cqw, 51px); }
+.night-guide-paths { width: min(100%, 390px); max-height: 100%; }
+.night-guide-gain { color: #c5f59c; font-weight: 850; font-size: clamp(17px, 6cqw, 32px); }
 .guide-stage-labels {
   position: absolute;
   z-index: 1;
@@ -1975,6 +1998,7 @@ html[lang="ko-KR"] .intro h1 {
 }
 .guide-card button:focus-visible, .guide-card-copy:focus-visible { outline: 2px solid #fff5dc; outline-offset: -3px; }
 .guide-links { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.guide-links [data-action="night-guide"] { grid-column: 1 / -1; }
 @media (orientation: landscape) and (max-height: 455px) {
   .guide-card {
     width: min(640px, 100cqw);

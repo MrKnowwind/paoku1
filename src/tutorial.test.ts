@@ -6,6 +6,21 @@ import { CONFIG } from "./config.ts";
 
 const activeLesson = (tutorial: Tutorial) => tutorial.active?.id;
 
+test("the night guide opens at nightfall even before any wolf spawns", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.start(true);
+  const tutorial = new Tutorial(["basics", "move"], () => {});
+  assert.equal(game.nightCombat.remaining, 0);
+  tutorial.update(game, 0, false);
+  assert.equal(tutorial.guide, "night");
+  assert.equal(tutorial.timeScale(game), 0);
+  tutorial.turnGuide(1);
+  tutorial.turnGuide(1);
+  tutorial.finishGuide();
+  tutorial.update(game, 1, false);
+  assert.equal(tutorial.guide, null);
+});
+
 test("ocean guide waits for swimming controls and saves only on explicit completion", () => {
   const game = new RunnerGame({autoSpawn: false});
   game.nextTerrain = "water";
