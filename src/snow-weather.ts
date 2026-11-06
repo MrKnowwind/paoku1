@@ -13,14 +13,17 @@ export class SnowWeather {
 
   constructor(private canvas: HTMLCanvasElement) {
     this.paint = canvas.getContext("2d");
-    this.crystal.moveTo(0, 0);
-    this.crystal.lineTo(0, 1);
-    for (let i = 1; i <= 5; i++) for (const side of [-1, 1]) {
-      const at = i * 0.15, reach = (0.36 - at * 0.26) * side;
-      this.crystal.moveTo(0, at);
-      this.crystal.lineTo(reach, at + 0.2);
-      this.crystal.moveTo(reach * 0.58, at + 0.116);
-      this.crystal.lineTo(reach * 0.56, at + 0.24);
+    for (let arm = 0; arm < 6; arm++) {
+      const angle = arm * Math.PI / 3;
+      const x = Math.cos(angle), y = Math.sin(angle);
+      this.crystal.moveTo(0, 0);
+      this.crystal.lineTo(x, y);
+      for (const [at, reach] of [[0.44, 0.2], [0.73, 0.16]]) {
+        const tip = at + reach / Math.sqrt(3);
+        this.crystal.moveTo(tip * x - reach * y, tip * y + reach * x);
+        this.crystal.lineTo(at * x, at * y);
+        this.crystal.lineTo(tip * x + reach * y, tip * y - reach * x);
+      }
     }
   }
 
@@ -90,18 +93,22 @@ export class SnowWeather {
     for (let edge = 0; edge < 4; edge++) {
       const horizontal = edge % 2 === 0;
       const length = horizontal ? width : height;
-      for (let i = 0; i <= 15; i++) {
-        const t = i / 15;
+      const count = Math.min(18, Math.round(length / unit * 10));
+      for (let i = 0; i < count; i++) {
+        const t = (i + 0.5) / count;
         const growth = clamp((this.chill - 0.06 - Math.min(t, 1 - t) * 0.48) * 2.3);
         if (growth <= 0) continue;
-        const size = unit * (0.035 + 0.085 * (0.5 + 0.5 * Math.sin(i * 27.6 + edge))) * (0.35 + 0.65 * growth);
+        const radius = Math.min(unit * (0.024 + 0.037 * (0.5 + 0.5 * Math.sin(i * 27.6 + edge))), length / count * 0.43);
+        const size = radius * (0.35 + 0.65 * growth);
+        const inset = size * (1.02 + 0.16 * (0.5 + 0.5 * Math.cos(i * 13.7 + edge)));
         ctx.save();
-        ctx.translate(horizontal ? length * t : edge === 1 ? width : 0, horizontal ? edge === 0 ? 0 : height : length * t);
+        ctx.translate(horizontal ? length * t : edge === 1 ? width - inset : inset,
+          horizontal ? edge === 0 ? inset : height - inset : length * t);
         ctx.rotate(edge * Math.PI / 2 + Math.sin(i * 9.2 + edge) * 0.54);
         ctx.scale(size, size);
-        const line = Math.max(0.65, unit * 0.002) / size;
+        const line = Math.max(0.55, unit * 0.0017) / size;
         ctx.strokeStyle = "#365e8a";
-        ctx.lineWidth = line * 2.6;
+        ctx.lineWidth = line * 2.25;
         ctx.globalAlpha = growth * 0.57;
         ctx.stroke(this.crystal);
         ctx.strokeStyle = "#e9faff";
