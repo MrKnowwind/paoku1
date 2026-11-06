@@ -1,14 +1,15 @@
 import type { RunnerGame, TrackItem } from "./game.ts";
 import { underRockShelf } from "./rock-shelf.ts";
+import { CONFIG } from "./config.ts";
 
 const onPath = (item: TrackItem, x: number) =>
   item.shelf
     ? underRockShelf(item.shelf, x)
     : Math.abs(item.lane * 2.5 - x) < 1.1;
 
+export type GuideId = "snow" | "ocean";
 export type LessonId =
-  | "snow"
-  | "swim"
+  | GuideId
   | "move"
   | "jump"
   | "slide"
@@ -31,23 +32,41 @@ const basics: LessonId[] = ["move"];
 
 export class Tutorial {
   active: Lesson | null = null;
-  snowStep = 0;
-  reviewingSnow = false;
+  guideStep = 0;
+  reviewingGuide = false;
   private previousLesson: Lesson | null = null;
-  reviewSnow() {
-    this.previousLesson = this.active; this.reviewingSnow = true;
-    this.snowStep = 1; this.active = {id: "snow", gesture: "tap"};
+  private previousGuideStep = 0;
+  get guide(): GuideId | null {
+    const id = this.active?.id;
+    return id === "snow" || id === "ocean" ? id : null;
   }
-  closeSnowReview() {
-    if (!this.reviewingSnow) return;
-    this.active = this.previousLesson; this.previousLesson = null; this.reviewingSnow = false; this.snowStep = 0;
+  reviewGuide(id: GuideId) {
+    if (this.reviewingGuide) return;
+    this.previousLesson = this.active;
+    this.previousGuideStep = this.guideStep;
+    this.reviewingGuide = true;
+    this.openGuide(id);
   }
-  advanceSnow() {
-    if (this.active?.id !== "snow") return;
-    if (this.snowStep < 3) { this.snowStep++; return; }
-    this.snowStep = 0;
-    if (this.reviewingSnow) this.closeSnowReview();
-    else this.complete("snow");
+  private openGuide(id: GuideId) {
+    this.guideStep = 1;
+    this.show({id, gesture: "tap"});
+  }
+  closeGuideReview() {
+    if (!this.reviewingGuide) return;
+    this.active = this.previousLesson;
+    this.previousLesson = null;
+    this.reviewingGuide = false;
+    this.guideStep = this.previousGuideStep;
+    this.previousGuideStep = 0;
+  }
+  turnGuide(delta: -1 | 1) {
+    if (this.guide) this.guideStep = Math.max(1, Math.min(3, this.guideStep + delta));
+  }
+  finishGuide() {
+    const guide = this.guide;
+    if (!guide || this.guideStep !== 3) return;
+    if (this.reviewingGuide) this.closeGuideReview();
+    else { this.guideStep = 0; this.complete(guide); }
   }
   private seen: Set<string>;
   private runSeen: Set<string>;
@@ -75,7 +94,7 @@ export class Tutorial {
     this.runSeen = new Set(this.testMode ? [] : this.seen);
     if (this.needsBasics) basics.forEach((id) => this.runSeen.delete(id));
     this.active = null;
-    this.snowStep = 0; this.reviewingSnow = false; this.previousLesson = null;
+    this.guideStep = 0; this.reviewingGuide = false; this.previousLesson = null; this.previousGuideStep = 0;
     this.cooldown = 0;
     this.handled.clear();
   }
@@ -102,8 +121,8 @@ export class Tutorial {
   action(direction: Direction, game: RunnerGame, accepted: boolean) {
     if (!this.active) return;
     const id = this.active.id;
-    if (id === "snow") return;
-    if (["swim", "coin", "magnet", "shield"].includes(id)) {
+    if (this.guide) return;
+    if (["coin", "magnet", "shield"].includes(id)) {
       this.complete(id);
       return;
     }
@@ -125,7 +144,7 @@ export class Tutorial {
   }
   timeScale(game: RunnerGame) {
     if (!this.active || game.mode !== "running") return 1;
-    if (this.active.id === "snow") return 0;
+    if (this.guide) return 0;
     if (this.active.id === "wallHeight") return 0;
     if (this.active.id === "move" && game.distance >= 4) return 0;
     if (
@@ -159,15 +178,21 @@ export class Tutorial {
     }
     if (this.cooldown > 0 || game.boosting) return;
     if (game.inSnow && !this.knows("snow")) {
-      this.snowStep = 1; this.show({id: "snow", gesture: "tap"}); return;
+      this.openGuide("snow"); return;
     }
     if (this.needsBasics && !this.knows("move") && game.distance < 6) {
       this.show({ id: "move", gesture: "left" });
       return;
     }
-    if (game.swimming && !game.transitioning && this.canTeach("swim", `swim/${game.terrain.cycle}`)) {
-      this.show({ id: "swim", gesture: "up", encounter: `swim/${game.terrain.cycle}` });
-      return;
+    if (game.swimming && !game.transitioning && !this.knows("ocean")) {
+      const inEntryBuffer = game.distance < game.terrain.start + CONFIG.waterSafety;
+      const safeAhead = !game.items.some(item =>
+        (item.type === "bubble" || item.type === "coral" || item.type === "volcano" || item.type === "fish") &&
+        item.z > -8 && item.z < Math.max(26, game.speed));
+      if (inEntryBuffer || safeAhead) {
+        this.openGuide("ocean");
+        return;
+      }
     }
     const gapKey = String(game.gapWarning?.id ?? game.distance);
     if (game.wallSide && this.canTeach("wallHeight", `height/${gapKey}`)) {

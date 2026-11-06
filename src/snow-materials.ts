@@ -71,16 +71,19 @@ export function snowMaterial(scene: Scene, surface: WinterSurface, forest: Fores
     }
     for (let i = 0; i < 17; i++) {
       let x = random() * size, y = random() * size;
-      ctx.strokeStyle = i % 2 ? "#d8f3ff" : "#457a9d"; ctx.lineWidth = 0.8 + random() * 1.3; ctx.globalAlpha = 0.48;
+      ctx.strokeStyle = i % 2 ? "#e6f8ff" : "#365c79"; ctx.lineWidth = 1.7 + random() * 2.2; ctx.globalAlpha = 0.66;
       ctx.beginPath(); ctx.moveTo(x, y);
-      for (let n = 0; n < 8; n++) { x += (random() - 0.5) * 100; y += 20 + random() * 65; ctx.lineTo(x, y); }
+      for (let n = 0; n < 8; n++) {
+        x += (random() - 0.5) * 145; y += 20 + random() * 65; ctx.lineTo(x, y);
+        if (n % 2 === 0) { ctx.lineTo(x + (i % 2 ? 1 : -1) * (32 + random() * 70), y + 34); ctx.moveTo(x, y); }
+      }
       ctx.stroke();
     }
     material.specularColor.setAll(0.75); material.specularPower = 128;
     material.emissiveFresnelParameters = new FresnelParameters({leftColor: Color3.FromHexString("#c7e5f2").scale(0.35), rightColor: Color3.Black(), power: 4});
   } else if (surface === "water") {
     for (let i = 0; i < 100; i++) {
-      ctx.strokeStyle = i % 3 ? "#4c8b9f" : "#7faab4"; ctx.globalAlpha = 0.08 + random() * 0.12;
+      ctx.strokeStyle = i % 3 ? "#4c8b9f" : "#9ad3de"; ctx.globalAlpha = 0.12 + random() * 0.18;
       ctx.lineWidth = 0.7 + random(); ctx.beginPath();
       ctx.ellipse(random() * size, random() * size, 12 + random() * 65, 2 + random() * 9, 0, 0, Math.PI * 2); ctx.stroke();
     }

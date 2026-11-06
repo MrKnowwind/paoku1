@@ -3,6 +3,7 @@ import type { FishCrossing } from "./fish.ts";
 import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
 import type { CoralPlan } from "./coral.ts";
 import { CONFIG } from "./config.ts";
+import { WINTER_HAZARD_HALF_WIDTH } from "./snow-layout.ts";
 import { underRockShelf } from "./rock-shelf.ts";
 import type { RockShelf } from "./rock-shelf.ts";
 import {
@@ -623,7 +624,7 @@ export class RunnerGame {
   }
   private snowCollision(item: TrackItem, flying: boolean, travel: number) {
     if (flying) return;
-    const lane = Math.abs(item.lane * 2.5 - this.x) < 1.05;
+    const lane = Math.abs(item.lane * 2.5 - this.x) < WINTER_HAZARD_HALF_WIDTH;
     const crossed = item.z <= 0 && item.z > -travel - 0.05;
     if (item.type === "ice") {
       if (lane && Math.abs(item.z) < 3 && this.y <= 0.05 && this.icy) this.triggeredIce.add(item.id);

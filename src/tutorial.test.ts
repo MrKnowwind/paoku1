@@ -2,8 +2,49 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RunnerGame } from "./game.ts";
 import { Tutorial } from "./tutorial.ts";
+import { CONFIG } from "./config.ts";
 
 const activeLesson = (tutorial: Tutorial) => tutorial.active?.id;
+
+test("ocean guide waits for swimming controls and saves only on explicit completion", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.nextTerrain = "water";
+  game.start();
+  const shore = CONFIG.forestLength + CONFIG.beachLength;
+  const stored = ["move", "basics", "swim"];
+  let saved = stored;
+  const tutorial = new Tutorial(stored, seen => { saved = seen; });
+  game.distance = shore + 10;
+  tutorial.update(game, 0.1, false);
+  assert.equal(activeLesson(tutorial), undefined);
+  game.distance = shore + 23;
+  tutorial.update(game, 0.1, false);
+  assert.equal(activeLesson(tutorial), "ocean");
+  const distance = game.distance;
+  const time = game.worldTime;
+  game.update(1 * tutorial.timeScale(game));
+  assert.equal(game.distance, distance);
+  assert.equal(game.worldTime, time);
+  tutorial.turnGuide(1);
+  tutorial.turnGuide(-1);
+  assert.equal(tutorial.guideStep, 1);
+  tutorial.finishGuide();
+  assert.equal(activeLesson(tutorial), "ocean");
+  tutorial.turnGuide(1);
+  tutorial.turnGuide(1);
+  tutorial.turnGuide(1);
+  assert.equal(tutorial.guideStep, 3);
+  assert.deepEqual(saved, stored);
+  tutorial.finishGuide();
+  assert.ok(saved.includes("ocean"));
+  tutorial.resetRun(game);
+  tutorial.update(game, 1, false);
+  assert.equal(activeLesson(tutorial), undefined);
+  tutorial.testMode = true;
+  tutorial.resetRun(game);
+  tutorial.update(game, 1, false);
+  assert.equal(activeLesson(tutorial), "ocean");
+});
 
 test("ordinary shelves do not interrupt play with first-encounter guidance", () => {
   const game = new RunnerGame({ autoSpawn: false });

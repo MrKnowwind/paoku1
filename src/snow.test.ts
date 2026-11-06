@@ -78,7 +78,7 @@ test("all 12 directed connectors preserve surface continuity and safety", () => 
 });
 
 test("cold freezes during pause and teaching, warms before the cap check, and clears on exit", () => {
-  const game = snowGame(); game.update(1); assert.ok(Math.abs(game.cold - CONFIG.coldRate) < 0.001);
+  const game = snowGame(); game.update(1); assert.ok(Math.abs(game.cold - 2.25) < 0.001);
   game.pause(); game.update(5); assert.ok(Math.abs(game.cold - CONFIG.coldRate) < 0.001); game.resume();
   game.cold = 99.999; game.addItem("liquor", 0, 0.2); game.update(0.01);
   assert.equal(game.mode, "running"); assert.ok(game.cold < 66); assert.ok(game.drinkTime > 0);
@@ -171,7 +171,7 @@ test("seeded blizzard increases passive cold by 50 percent and clears when leavi
   assert.ok(stormDistance > 805 && stormDistance < 1000);
   game.distance = stormDistance;
   game.update(0.5);
-  assert.ok(Math.abs(game.cold - 0.5 * CONFIG.coldRate * 1.5) < 0.001);
+  assert.ok(Math.abs(game.cold - 0.5 * 3.375) < 0.001);
   const duplicate = snowGame();
   duplicate.distance = stormDistance;
   assert.equal(duplicate.blizzard, 1);
@@ -185,15 +185,17 @@ test("three real-model lesson steps freeze cold and timers and persist only on f
   const game = snowGame(); game.magnetTime = 6; game.boostCooldown = 20;
   let saved: string[] = [];
   const tutorial = new Tutorial(["basics", "move", "swim"], seen => {saved = seen;}); tutorial.resetRun(game);
-  tutorial.update(game, 0.1, false); assert.equal(tutorial.snowStep, 1);
+  tutorial.update(game, 0.1, false); assert.equal(tutorial.guideStep, 1);
   for (let i = 0; i < 3; i++) {
     game.update(10 * tutorial.timeScale(game)); assert.equal(game.cold, 0); assert.equal(game.magnetTime, 6); assert.equal(game.boostCooldown, 20);
-    assert.equal(saved.includes("snow"), false); tutorial.advanceSnow();
+    assert.equal(saved.includes("snow"), false); tutorial.turnGuide(1);
   }
+  assert.equal(saved.includes("snow"), false);
+  tutorial.finishGuide();
   assert.ok(saved.includes("snow") && saved.includes("swim")); assert.equal(tutorial.active, null);
   tutorial.resetRun(game); tutorial.update(game, 1, false); assert.equal(tutorial.active, null);
-  tutorial.reviewSnow(); tutorial.advanceSnow(); tutorial.advanceSnow(); tutorial.advanceSnow(); assert.ok(tutorial.knows("snow"));
-  tutorial.testMode = true; tutorial.resetRun(game); tutorial.update(game, 1, false); assert.equal(tutorial.snowStep, 1);
+  tutorial.reviewGuide("snow"); tutorial.turnGuide(1); tutorial.turnGuide(1); tutorial.finishGuide(); assert.ok(tutorial.knows("snow"));
+  tutorial.testMode = true; tutorial.resetRun(game); tutorial.update(game, 1, false); assert.equal(tutorial.guideStep, 1);
 });
 
 test("rewind restores historical cold without replaying liquor or fire warmth and avoids uncontrolled revival", () => {
@@ -213,9 +215,9 @@ test("closing the snow review preserves the interrupted lesson without marking s
   let saved: string[] = [];
   const tutorial = new Tutorial([], seen => {saved = seen;});
   tutorial.update(game, 0, false); assert.equal(tutorial.active?.id, "move");
-  tutorial.reviewSnow(); tutorial.advanceSnow(); assert.equal(tutorial.snowStep, 2);
-  tutorial.closeSnowReview();
-  assert.equal(tutorial.active?.id, "move"); assert.equal(tutorial.snowStep, 0);
+  tutorial.reviewGuide("snow"); tutorial.turnGuide(1); assert.equal(tutorial.guideStep, 2);
+  tutorial.closeGuideReview();
+  assert.equal(tutorial.active?.id, "move"); assert.equal(tutorial.guideStep, 0);
   assert.equal(tutorial.knows("snow"), false); assert.deepEqual(saved, []);
 });
 

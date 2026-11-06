@@ -20,11 +20,13 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { defaultTrack, gapsNear, roadSpans, sectionAt, snowBlend } from "./track.ts";
 import { snowMaterial } from "./snow-materials.ts";
 import { WINTER_VERTEX, withSnowLayer } from "./snow-layer.ts";
-import { winterGroundHeight, winterShoulder } from "./snow-layout.ts";
+import { WINTER_HAZARD_HALF_WIDTH, winterGroundHeight, winterShoulder } from "./snow-layout.ts";
+import type { TrackItem } from "./game.ts";
 import { SnowProps } from "./snow-props.ts";
 import { mergeSceneryMeshes } from "./scenery-mesh";
 import type { ForestProps } from "./props.ts";
@@ -40,6 +42,9 @@ export class TerrainScene {
   private snow?: SnowProps;
   private pendingSurfaces = new Map<Mesh, Material>();
   private cells = new Map<number, TransformNode>();
+  private poolCuts = new Map<number, string>();
+  private windRibbons = new Map<number, Mesh>();
+  private snowWind?: StandardMaterial;
   private coastSurface?: CoastSurface;
   private get sand(): ShaderMaterial {
     this.coastSurface ??= new CoastSurface(this.scene, this.props);
@@ -180,52 +185,145 @@ export class TerrainScene {
     return Math.max(0.004, leave * enter);
   }
 
-  private winterCell(world: number, index: number, root: TransformNode) {
+  private winterCell(world: number, index: number, root: TransformNode, pools: readonly TrackItem[]) {
     const section = this.plan.at(world + 5);
     const canyonSide = section.biome === "snow-transition" && (section.from === "canyon" || section.to === "canyon");
     const roadEdge = (snow: number) => canyonSide ? 4.3 + 1.4 * (1 - snow) : 4.3;
     const snowTexture = snowMaterial(this.scene, "snow", this.props).diffuseTexture!;
-    const rows = 8, columns = 16;
+    const halfLength = CONFIG.poolLength / 2;
+    const sorted = (values: number[]) => [...new Set(values)].sort((a, b) => a - b);
+    const zCuts = sorted([
+      ...Array.from({length: 9}, (_, i) => i * 1.25),
+      ...pools.flatMap(pool => [-halfLength, halfLength].map(end => pool.worldZ + end - world)).filter(z => z > 0 && z < 10),
+    ]);
+    const roadCuts = sorted([
+      ...Array.from({length: 17}, (_, i) => i / 16),
+      ...pools.flatMap(pool => [-WINTER_HAZARD_HALF_WIDTH, WINTER_HAZARD_HALF_WIDTH].map(edge => (pool.lane * 2.5 + edge + 4.3) / 8.6)),
+    ]);
     for (const band of [-1, 0, 1]) {
       const pos: number[] = [], uv: number[] = [], coverage: number[] = [], colors: number[] = [];
       const base = band === 0 ? (canyonSide ? this.stone : this.trail) : (canyonSide ? this.stone : this.grass);
       const tile = band === 0 ? (canyonSide ? 6 : 8) : (canyonSide ? 6 : 2.5);
-      for (let row = 0; row <= rows; row++) {
-        const z = row * 10 / rows, d = world + z;
+      const columns = band === 0 ? roadCuts.length - 1 : 22;
+      for (const z of zCuts) {
+        const d = world + z;
         const snow = snowBlend(d, this.plan), edge = roadEdge(snow);
         for (let col = 0; col <= columns; col++) {
           const t = col / columns;
-          const x = band === 0 ? (t * 2 - 1) * edge : band < 0 ? -74.3 + t * (74.3 - edge) : edge + t * (74.3 - edge);
+          const x = band === 0 ? (roadCuts[col] * 2 - 1) * edge : band * (edge + t ** 1.55 * (74.3 - edge));
           pos.push(x, winterGroundHeight(x, d, snow, edge), z);
           uv.push(x / tile, d / tile);
           coverage.push(x / 2.8, d / 2.8, winterShoulder(x, d, this.plan));
-          colors.push(1, 1, 1, 1);
+          const packed = (1 - smooth((Math.abs(x) - 2.8) / 1.5)) * snow;
+          const shade = packed * (0.06 + 0.025 * Math.sin(d * 0.22)) +
+            snow * smooth((Math.abs(x) - 24) / 40) * (0.15 + 0.07 * Math.sin(d * 0.044 + x * 0.16));
+          colors.push(1 - shade, 1 - shade * 0.78, 1 - shade * 0.45, 1);
         }
       }
-      const mesh = this.surface("single-layer-winter-ground", pos, coastGridIndices(columns, rows), uv, colors, root, withSnowLayer(base, snowTexture));
+      const visible: number[] = [];
+      for (let row = 0; row < zCuts.length - 1; row++) for (let col = 0; col < columns; col++) {
+        const a = row * (columns + 1) + col, b = a + columns + 1;
+        const x = (pos[a * 3] + pos[(a + 1) * 3]) / 2;
+        const z = world + (zCuts[row] + zCuts[row + 1]) / 2;
+        if (band === 0 && pools.some(pool => Math.abs(z - pool.worldZ) < halfLength &&
+          Math.abs(x - pool.lane * 2.5) < WINTER_HAZARD_HALF_WIDTH)) continue;
+        if (band < 0) visible.push(a, b, a + 1, a + 1, b, b + 1);
+        else visible.push(a, a + 1, b, a + 1, b + 1, b);
+      }
+      const mesh = this.surface("single-layer-winter-ground", pos, visible, uv, colors, root, withSnowLayer(base, snowTexture));
       mesh.setVerticesData(WINTER_VERTEX, coverage, false, 3);
       this.prepareSurface(mesh, mesh.material!, base);
     }
     this.snow ??= new SnowProps(this.scene, this.props);
     for (const side of [-1, 1]) {
-      const d = world + 4, snow = snowBlend(d, this.plan);
-      const x = side * (8 + Math.sin(index * 1.7 + side) * 1.8 + 3 * (1 - snow));
-      const tree = this.snow.pine(root, snow);
-      tree.position.set(x, winterGroundHeight(x, d, snow, roadEdge(snow)), 4);
-      tree.scaling.setAll((0.8 + 0.24 * Math.sin(index * 2.3 + side)) * (0.32 + 0.68 * smooth(snow / 0.66)));
-      if (snow > 0.28) {
-        const z = 7, bankX = side * (6.4 + Math.cos(index * 1.9) * 0.75);
-        const bank = this.snow.drift(root);
-        bank.position.set(bankX, winterGroundHeight(bankX, world + z, snow, roadEdge(snow)), z);
-        bank.rotation.y = Math.sin(index + side) * 0.8;
-        bank.scaling.set(1.1 + snow * 0.7, 0.23 + snow * 0.24, 1.4 + Math.cos(index) * 0.35);
+      const seed = index * 17 + this.seed * 0.618 + side * 93;
+      const pick = (salt: number) => {
+        const value = Math.sin(seed + salt * 37.1) * 43758.5453;
+        return value - Math.floor(value);
+      };
+      const z = 1.4 + pick(1) * 7, snow = snowBlend(world + z, this.plan);
+      const place = (node: TransformNode, x: number, at: number) => {
+        const cover = snowBlend(world + at, this.plan);
+        node.position.set(side * x, winterGroundHeight(side * x, world + at, cover, roadEdge(cover)) - 0.04, at);
+        node.rotation.y = pick(6) * Math.PI * 2;
+      };
+      const grove = Math.sin(world * 0.027 + side * 1.8 + this.seed * 0.19);
+      if (pick(2) < 0.63 + grove * 0.32) {
+        const tree = this.snow.pine(root, snow, seed);
+        place(tree, 8 + pick(3) * 9 + (1 - snow) * 3, z);
+        const scale = (0.64 + pick(4) * 0.72) * (0.32 + 0.68 * smooth(snow / 0.66));
+        tree.scaling.set(scale * (0.74 + pick(5) * 0.5), scale, scale);
       }
-      if ((index + (side > 0 ? 1 : 0)) % 3 === 0 && snow > 0.32) {
-        const rockX = side * (16 + Math.sin(index * 1.3) * 3);
-        const rock = this.snow.outcrop(root, index + side, snow);
-        rock.position.set(rockX, winterGroundHeight(rockX, world + 5, snow, roadEdge(snow)), 5);
+      if (snow > 0.28 && pick(7) > 0.22) {
+        const bank = this.snow.drift(root);
+        place(bank, 5.7 + pick(8) * 2.1, 10 - z);
+        bank.rotation.y = 0.4 + pick(9) * 0.9;
+        bank.scaling.set(0.8 + pick(4) * 1.3, 0.32 + pick(5) * 0.65, 1.4 + pick(3) * 0.9);
+        if (pick(10) > 0.53) this.snow.vergeDetails(bank, seed);
+      }
+      if (snow > 0.32 && pick(11) > 0.67) {
+        const rock = this.snow.outcrop(root, seed, snow);
+        place(rock, 12 + pick(12) * 15, 5);
+        rock.scaling.set(1.3 + pick(5), 0.9 + pick(4) * 0.6, 1);
       }
     }
+    this.batchWinterScenery(root);
+    if (section.biome === "snow" && index % 3 === 0) this.windRibbons.set(index, this.windRibbon(root));
+  }
+
+  private batchWinterScenery(root: TransformNode) {
+    const groups = new Map<Material, Mesh[]>();
+    for (const mesh of root.getChildMeshes()) {
+      if (!(mesh instanceof Mesh) || mesh.name === "single-layer-winter-ground" || !mesh.material) continue;
+      const group = groups.get(mesh.material) ?? [];
+      group.push(mesh);
+      groups.set(mesh.material, group);
+    }
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      // MergeMeshes extracts standard vertex data. Carry the snow coverage along separately.
+      const snow = group[0].isVerticesDataPresent(WINTER_VERTEX)
+        ? group.flatMap(mesh => Array.from(mesh.getVerticesData(WINTER_VERTEX)!))
+        : null;
+      const merged = Mesh.MergeMeshes(group, true, true);
+      if (!merged) continue;
+      if (snow) merged.setVerticesData(WINTER_VERTEX, snow, false, 3);
+      merged.parent = root;
+      merged.receiveShadows = true;
+    }
+  }
+
+  private windRibbon(root: TransformNode) {
+    if (!this.snowWind) {
+      const texture = new DynamicTexture("blown-snow", {width: 128, height: 32}, this.scene, true);
+      const ctx = texture.getContext();
+      ctx.save();
+      ctx.translate(64, 16);
+      ctx.scale(1, 0.18);
+      const fade = ctx.createRadialGradient(0, 0, 0, 0, 0, 64);
+      fade.addColorStop(0, "#e5f5ffb0");
+      fade.addColorStop(1, "#e5f5ff00");
+      ctx.fillStyle = fade;
+      ctx.fillRect(-64, -89, 128, 178);
+      ctx.restore();
+      texture.hasAlpha = true;
+      texture.update();
+      const mat = this.snowWind = new StandardMaterial("blown-snow", this.scene);
+      mat.emissiveTexture = texture;
+      mat.emissiveColor.setAll(0.8);
+      mat.opacityTexture = texture;
+      mat.disableLighting = true;
+      mat.specularColor.setAll(0);
+      mat.backFaceCulling = false;
+    }
+    const ribbon = CreateGround("ground-spindrift", {width: 11, height: 3}, this.scene);
+    ribbon.parent = root;
+    ribbon.position.set(-12, 0.31, 4.5);
+    ribbon.rotation.y = -0.32;
+    ribbon.material = this.snowWind;
+    ribbon.isPickable = false;
+    ribbon.visibility = 0;
+    return ribbon;
   }
 
   private cliffWall(side: number, world: number, parent: TransformNode) {
@@ -499,7 +597,7 @@ export class TerrainScene {
     if (opaque.length) { const batch = mergeSceneryMeshes(opaque); batch.parent = root; batch.name = "batched-coastal-reef"; }
   }
 
-  private build(index: number) {
+  private build(index: number, pools: readonly TrackItem[]) {
     const world = index * 10,
       section = sectionAt(world + 5, this.plan);
     const root = new TransformNode(`terrain-${index}`, this.scene);
@@ -508,7 +606,7 @@ export class TerrainScene {
       return root;
     }
     if (section.biome === "snow" || section.biome === "snow-transition") {
-      this.winterCell(world, index, root);
+      this.winterCell(world, index, root, pools);
       return root;
     }
     const gap = gapsNear(world, this.seed, this.plan).find(
@@ -728,15 +826,19 @@ export class TerrainScene {
     }
     return root;
   }
-  update(distance: number, time = 0, seed = 0, plan = defaultTrack) {
+  update(distance: number, time = 0, seed = 0, plan = defaultTrack, pools: readonly TrackItem[] = [], storm = 0) {
     const changed = this.seed !== seed || this.plan !== plan;
     this.plan = plan;
     this.seed = seed;
     this.water.update(distance, time);
     const first = Math.floor((distance - 50) / 10),
       last = Math.ceil((distance + 180) / 10);
+    const cuts = (index: number) => pools.filter(pool =>
+      pool.worldZ - CONFIG.poolLength / 2 < index * 10 + 10 &&
+      pool.worldZ + CONFIG.poolLength / 2 > index * 10);
+    const key = (cut: readonly TrackItem[]) => cut.map(pool => `${pool.lane}/${pool.worldZ}`).sort().join(";");
     for (const [index, root] of this.cells)
-      if (changed || index < first || index > last) {
+      if (changed || index < first || index > last || this.poolCuts.get(index) !== key(cuts(index))) {
         const batches = new Set(
           root.getChildMeshes().map((mesh) => mesh.material),
         );
@@ -745,14 +847,25 @@ export class TerrainScene {
           if (material instanceof MultiMaterial)
             material.dispose(false, false, false);
         this.cells.delete(index);
+        this.poolCuts.delete(index);
+        this.windRibbons.delete(index);
       }
     for (let index = first; index <= last; index++) {
       let root = this.cells.get(index);
       if (!root) {
-        root = this.build(index);
+        const cut = cuts(index);
+        root = this.build(index, cut);
         this.cells.set(index, root);
+        this.poolCuts.set(index, key(cut));
       }
       root.position.z = index * 10 - distance;
+      const wind = this.windRibbons.get(index);
+      if (wind) {
+        const phase = time * 0.43 + index * 0.618;
+        const t = phase - Math.floor(phase);
+        wind.position.x = -15 + 30 * t;
+        wind.visibility = (0.045 + storm * (0.22 + Math.sin(time * 2.1 + index) * 0.07)) * Math.sin(t * Math.PI) ** 2;
+      }
     }
     this.coastSurface?.update(distance);
     for (const [mesh, material] of this.pendingSurfaces) {

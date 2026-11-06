@@ -29,6 +29,7 @@ import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import { CreateLathe } from "@babylonjs/core/Meshes/Builders/latheBuilder";
 import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
+import { CreatePolyhedron } from "@babylonjs/core/Meshes/Builders/polyhedronBuilder";
 import type { RunnerGame, TrackItem } from "./game.ts";
 import { INTRO_TIMING } from "./game.ts";
 import { RunnerMotion } from "./motion.ts";
@@ -39,7 +40,9 @@ import { TerrainScene } from "./terrain-scene.ts";
 import { defaultTrack, sectionAt, tunnelDarkness, snowBlend } from "./track.ts";
 import { SnowProps } from "./snow-props.ts";
 import { ICE_IMPACT_METRES, iceFallPose, sipPose } from "./winter-motion.ts";
-import { SnowPreview } from "./snow-preview.ts";
+import { TerrainPreview } from "./terrain-preview.ts";
+import type { GuideId } from "./tutorial.ts";
+import { POOL_WATER_Y } from "./snow-layout.ts";
 import { iconAsset } from "./art.ts";
 
 type Triple = [number, number, number];
@@ -95,6 +98,7 @@ export class ForestScene {
   private templates = new Map<string, Mesh>();
   private particles: Particle[] = [];
   private pool: Mesh[] = [];
+  private snowChunks: Mesh[] = [];
   private softTexture!: DynamicTexture;
   private terrainView!: TerrainScene;
   private forestBackdrop!: TransformNode;
@@ -131,7 +135,10 @@ export class ForestScene {
   private track = defaultTrack;
   private openingMistTime = 0;
   private snow?: SnowProps;
-  private snowPreview?: SnowPreview;
+  private guidePreviews = new Map<number, TerrainPreview>();
+  private previewGuide: GuideId | null = null;
+  private previewStep = 0;
+  private previewStarted = 0;
   private drinkBottle?: TransformNode;
   private lastSnowHit = 0;
   private lastIceRemaining = 0;
@@ -1484,8 +1491,10 @@ export class ForestScene {
     duration = 0.5,
     size = 0.2,
     gravity = 1,
+    snowChunks = false,
   ) {
     if (!this.high) count = Math.ceil(count / 2);
+    const pool = snowChunks ? this.snowChunks : this.pool;
     if (!this.particleMaterials.has(color)) {
       const material = new StandardMaterial(`particle-${color}`, this.scene);
       material.diffuseTexture = this.softTexture;
@@ -1496,10 +1505,12 @@ export class ForestScene {
       this.particleMaterials.set(color, material);
     }
     for (let i = 0; i < count && this.particles.length < 72; i++) {
-      const mesh =
-        this.pool.pop() ?? CreatePlane("particle", { size: 1 }, this.scene);
-      mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
-      mesh.material = this.particleMaterials.get(color)!;
+      const mesh = pool.pop() ?? (snowChunks
+        ? CreatePolyhedron("snow-chunk", {type: 1, size: 0.72}, this.scene)
+        : CreatePlane("particle", {size: 1}, this.scene));
+      mesh.billboardMode = snowChunks ? Mesh.BILLBOARDMODE_NONE : Mesh.BILLBOARDMODE_ALL;
+      mesh.material = snowChunks ? this.mat("#eaf4f7") : this.particleMaterials.get(color)!;
+      if (snowChunks) mesh.rotation.set(i * 1.1, i * 2.4, i * 0.71);
       mesh.position.copyFrom(position);
       mesh.setEnabled(true);
       mesh.visibility = 1;
@@ -1842,7 +1853,7 @@ export class ForestScene {
     };
   }
 
-  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, snowLesson = 0) {
+  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, guide: GuideId | null = null, guideStep = 0) {
     if (this.track !== game.track) this.openingMistTime = 0;
     this.track = game.track;
     const running = game.mode === "running",
@@ -1866,24 +1877,25 @@ export class ForestScene {
         this.shockLife = 0;
         for (const p of this.particles) {
           p.mesh.setEnabled(false);
-          this.pool.push(p.mesh);
+          (p.mesh.name === "snow-chunk" ? this.snowChunks : this.pool).push(p.mesh);
         }
         this.particles = [];
       }
       if (game.mode === "over") {
-        if (game.lastHit === "pool") this.burst(new Vector3(game.x, 0.2, 0), "#bde7ff", 40, 5, 1.6, 0.2, 5);
+        if (game.lastHit === "pool") this.burst(new Vector3(game.x, POOL_WATER_Y + 0.035, 0), "#bde7ff", 34, 5, 1.6, 0.2, 5);
         this.shake = 0.2;
         this.shockLife = 0.5;
         this.shock.position.set(game.x, 0.1, 0);
         this.shock.setEnabled(true);
-        this.burst(new Vector3(game.x, 1, 0), "#ffe0a0", 18, 5, 0.7, 0.22, 5);
+        if (game.lastHit !== "pool") this.burst(new Vector3(game.x, 1, 0), "#ffe0a0", 18, 5, 0.7, 0.22, 5);
       }
       this.mode = game.mode;
     }
     const waterBefore = this.runner.position.y;
     const pose = this.motion.update(game, dt);
     const scroll = ready || introducing ? 0 : game.distance;
-    this.terrainView.update(scroll, game.worldTime, game.trackSeed, this.track);
+    this.terrainView.update(scroll, game.worldTime, game.trackSeed, this.track,
+      game.items.filter(item => item.type === "pool"), game.blizzard);
     // Exposure follows the lens crossing the mouth, not the runner seven metres ahead.
     const cameraDistance = Math.max(0, scroll + this.camera.position.z);
     const darkness = tunnelDarkness(cameraDistance, this.track);
@@ -1921,7 +1933,7 @@ export class ForestScene {
     });
     if (running && openingReady) this.openingMistTime += dt;
     const mist = ready || introducing ? 1 : openingFog(this.openingMistTime);
-    const terrainFog = 0.009 + darkness * 0.012 + immersed * 0.008 + game.blizzard * 0.015;
+    const terrainFog = 0.009 + darkness * 0.012 + immersed * 0.008 + game.blizzard * (0.0058 + Math.sin(game.worldTime * 2) * 0.0012);
     this.scene.fogDensity = terrainFog + (CONFIG.openingFogDensity - terrainFog) * mist;
     this.sky.intensity = 0.75 - darkness * 0.3;
     this.sun.intensity = 0.85 - darkness * 0.65;
@@ -2173,10 +2185,12 @@ export class ForestScene {
     this.lastIceRemaining = game.iceRemaining;
     if (this.lastSnowHit !== game.snowHitSerial) {
       this.lastSnowHit = game.snowHitSerial;
-      this.burst(new Vector3(game.snowHitX, 0.8, 0), "#eef8ff", 22, 4, 0.7, 0.18, 5);
+      const impact = new Vector3(game.snowHitX, 0.65, 0);
+      this.burst(impact, "#eef8ff", 14, 4, 0.7, 0.18, 5);
+      this.burst(impact, "#eef8ff", 8, 4.6, 0.83, 0.23, 6, true);
     }
     if (game.lastHit === "pool") {
-      this.shock.position.set(game.x, 0.12, 0); this.shock.rotation.set(0, 0, 0);
+      this.shock.position.set(game.x, POOL_WATER_Y + 0.018, 0); this.shock.rotation.set(0, 0, 0);
       this.shock.scaling.setAll(1 + this.motion.pose.death * 2.5);
     }
     this.contact.position.x = this.runner.position.x;
@@ -2184,7 +2198,7 @@ export class ForestScene {
     this.restStop.position.z = REST_Z - scroll;
     this.restStop.setEnabled(this.restStop.position.z > -24);
     this.contact.scaling.setAll(1 / (1 + (ready ? 0 : game.y) * 0.3));
-    this.contact.visibility = 1 / (1 + (ready ? 0 : game.y) * 0.65);
+    this.contact.visibility = game.lastHit === "pool" ? 0 : 1 / (1 + (ready ? 0 : game.y) * 0.65);
     if (
       running &&
       !airborne &&
@@ -2249,7 +2263,7 @@ export class ForestScene {
         this.itemMeshes.set(item.id, mesh);
       }
       mesh.position.z = item.z;
-      if (this.snow) this.snow.animate(mesh, game.worldTime);
+      if (item.type === "pool" || item.type === "fire") this.snow?.animate(mesh, game.worldTime);
       if (["bubble", "coral", "volcano", "fish"].includes(item.type)) {
         const b = game.waterBounds(item);
         mesh.position.set(b.x, item.type === "volcano" ? item.y : b.y, item.z);
@@ -2351,7 +2365,7 @@ export class ForestScene {
         p.mesh.visibility = Math.max(0, p.life / p.duration);
         if (p.life <= 0) {
           p.mesh.setEnabled(false);
-          this.pool.push(p.mesh);
+          (p.mesh.name === "snow-chunk" ? this.snowChunks : this.pool).push(p.mesh);
           return false;
         }
         return true;
@@ -2439,25 +2453,40 @@ export class ForestScene {
       3,
       dt,
     );
-    if (this.snowPreview && this.snowPreview.step !== snowLesson) { this.snowPreview.dispose(); this.snowPreview = undefined; }
-    if (snowLesson && !this.snowPreview) this.snowPreview = new SnowPreview(this.scene, this.runner, this.snowProps, snowLesson);
+    if (this.previewGuide !== guide) {
+      for (const preview of this.guidePreviews.values()) preview.dispose();
+      this.guidePreviews.clear();
+      this.previewGuide = guide;
+      this.previewStep = 0;
+    }
+    if (this.previewStep !== guideStep) {
+      this.previewStep = guideStep;
+      this.previewStarted = performance.now();
+    }
+    let preview = this.guidePreviews.get(guideStep);
+    if (guide && !preview) {
+      preview = new TerrainPreview(this.scene, this.runner, guide, guideStep,
+        () => this.snowProps, item => this.createItem(item), urgency => this.fishSignMaterial(urgency));
+      this.guidePreviews.set(guideStep, preview);
+    }
+    for (const [step, stage] of this.guidePreviews) stage.setEnabled(step === guideStep);
     this.scene.activeCamera = this.camera;
     this.scene.render();
-    const viewport = document.querySelector<HTMLElement>("#snow-viewport");
-    if (this.snowPreview && viewport) {
+    const viewport = document.querySelector<HTMLElement>("#guide-viewport");
+    if (preview && viewport) {
       const rect = viewport.getBoundingClientRect();
       const canvasRect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
       if (rect.width < 1 || rect.height < 1) return;
-      this.snowPreview.frame(rect, canvasRect);
+      preview.frame(rect, canvasRect, (performance.now() - this.previewStarted) / 1000);
       const sx = this.engine.getRenderWidth() / canvasRect.width, sy = this.engine.getRenderHeight() / canvasRect.height;
       const fogEnabled = this.scene.fogEnabled, shadowsEnabled = this.scene.shadowsEnabled;
       const autoClearDepth = this.scene.autoClearDepthAndStencil;
       try {
         this.engine.enableScissor(Math.round((rect.left - canvasRect.left) * sx), Math.round((canvasRect.bottom - rect.bottom) * sy), Math.round(rect.width * sx), Math.round(rect.height * sy));
-        this.scene.activeCamera = this.snowPreview.camera;
+        this.scene.activeCamera = preview.camera;
         this.scene.autoClear = false; this.scene.autoClearDepthAndStencil = false;
         this.scene.fogEnabled = false; this.scene.shadowsEnabled = false;
-        this.engine.clear(Color4.FromHexString("#dce7ecff"), true, true, true);
+        this.engine.clear(Color4.FromHexString(guide === "snow" ? "#dce7ecff" : "#c2e5e8ff"), true, true, true);
         this.scene.render();
       } finally {
         this.engine.disableScissor(); this.scene.autoClear = true; this.scene.autoClearDepthAndStencil = autoClearDepth;
