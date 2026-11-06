@@ -4,7 +4,7 @@ import { Viewport } from "@babylonjs/core/Maths/math.viewport";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
-import { CreateLineSystem } from "@babylonjs/core/Meshes/Builders/linesBuilder";
+import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { SnowProps } from "./snow-props.ts";
@@ -14,9 +14,11 @@ import { makeCoral } from "./coral.ts";
 import { CONFIG } from "./config.ts";
 
 export class TerrainPreview {
+  static readonly layerMask = 0x10000000;
   readonly camera: FreeCamera;
   private root: TransformNode;
   private stageMaterial: StandardMaterial;
+  private diagramMaterials: StandardMaterial[] = [];
   private frameWidth = 4.3;
   private frameHeight = 3.55;
   private overhead = 0.41;
@@ -30,7 +32,7 @@ export class TerrainPreview {
     this.root = new TransformNode("terrain-guide-stage", scene);
     this.root.position.x = 1000;
     this.camera = new FreeCamera("terrain-guide-camera", new Vector3(1000, 6, -10), scene);
-    this.camera.layerMask = 0x10000000;
+    this.camera.layerMask = TerrainPreview.layerMask;
     this.camera.minZ = 0.1;
     this.camera.maxZ = 45;
     this.camera.fov = 0.66;
@@ -58,35 +60,24 @@ export class TerrainPreview {
         }
       }
       if (guide === "ocean") {
-        this.frameWidth = 6.1;
+        this.frameWidth = 5;
         this.frameHeight = 4.65;
-        this.overhead = 0.18;
+        this.overhead = 0.24;
         this.targetY = 2.26;
-        const lines: Vector3[][] = [];
+        const border = this.diagramInk("#75d9d6");
+        const currentCell = this.diagramInk("#ffd270");
+        const movement = this.diagramInk("#6af1b9");
         for (let row = 0; row < 3; row++) for (let col = -1; col <= 1; col++) {
-          const x = col * 1.4, y = 0.86 + row * 1.4, half = 0.63;
-          lines.push([
-            new Vector3(x - half, y - half, 1), new Vector3(x + half, y - half, 1),
-            new Vector3(x + half, y + half, 1), new Vector3(x - half, y + half, 1),
-            new Vector3(x - half, y - half, 1),
-          ]);
+          const current = row === 1 && col === 0;
+          this.diagramFrame(col * 1.4, 0.86 + row * 1.4, 1.26, 1.26,
+            current ? currentCell : border, current ? 0.04 : 0.021);
         }
-        const grid = CreateLineSystem("guide-swim-grid", {lines}, scene);
-        grid.color = Color3.FromHexString("#759c9a");
-        grid.parent = this.root;
-        const arrows: Vector3[][] = [];
         for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const point = (along: number, across = 0) =>
-            new Vector3(x * along - y * across, 2.26 + y * along + x * across, 0.65);
-          arrows.push([point(0.69), point(1.3)], [point(1.09, -0.13), point(1.3), point(1.09, 0.13)]);
+          this.diagramArrow(x * 1.12, 2.26 + y * 1.12, x, y, 0.54, movement);
         }
-        const steps = CreateLineSystem("guide-swim-arrows", {lines: arrows}, scene);
-        steps.color = Color3.FromHexString("#176b64");
-        steps.parent = this.root;
-        // Match the live runner's forward (+Z) swim pitch, viewed from behind.
-        explorer.scaling.setAll(0.65);
-        explorer.position.set(0, 1.95, -0.08);
-        explorer.rotation.set(1.05, 0, 0);
+        explorer.scaling.setAll(0.83);
+        explorer.position.set(0, 1.91, -0.08);
+        explorer.rotation.set(1.19, 0, -0.11);
       }
     } else if (guide === "snow" && step === 2) {
       this.frameWidth = 8.9;
@@ -158,23 +149,23 @@ export class TerrainPreview {
         const crossing = model("fish");
         const school = crossing.getChildTransformNodes(true).find(node => node.name === "fish-school")!;
         const sign = crossing.getChildMeshes().find(mesh => mesh.name === "fish-entry-sign")!;
-        const lines: Vector3[][] = [];
-        for (const y of [1.1, 2.12, 3.14]) lines.push([new Vector3(-3.1, y, 1), new Vector3(3.1, y, 1)]);
-        const lanes = CreateLineSystem("guide-fish-depths", {lines}, scene);
-        lanes.parent = this.root;
-        lanes.color = Color3.FromHexString("#75a2a9");
+        const edge = this.diagramInk("#4e9eaa");
+        const activeLane = this.diagramInk("#83e9dd");
+        this.diagramFrame(0, 0.92, 6.8, 1.03, edge, 0.023);
+        this.diagramFrame(0, 2.12, 6.8, 1.03, activeLane, 0.032);
+        this.diagramFrame(0, 3.32, 6.8, 1.03, edge, 0.023);
         crossing.position.y = 2.12;
         sign.setEnabled(true);
-        sign.position.x = -2.75;
-        sign.material = warningMaterial(0.78);
-        school.position.x = 0.35;
+        sign.position.x = -2.69;
+        sign.scaling.setAll(0.59);
+        sign.material = warningMaterial(0);
+        const urgentSign = sign.clone("guide-urgent-fish-sign", crossing, true)!;
+        urgentSign.position.x = -1.86;
+        urgentSign.material = warningMaterial(1);
+        school.position.x = 0.57;
+        school.scaling.setAll(1.1);
         school.rotation.y = Math.PI / 2;
-        const path = CreateLineSystem("guide-fish-direction", {lines: [
-          [new Vector3(-1.8, 1.76, 0.42), new Vector3(2.65, 1.76, 0.42)],
-          [new Vector3(2.36, 1.55, 0.42), new Vector3(2.65, 1.76, 0.42), new Vector3(2.36, 1.97, 0.42)],
-        ]}, scene);
-        path.color = Color3.FromHexString("#176b64");
-        path.parent = this.root;
+        this.diagramArrow(2.57, 2.12, 1, 0, 0.86, this.diagramInk("#6af1b9"));
       }
     }
     const stage = CreateCylinder("lesson-display-plinth", {diameter: this.frameWidth, height: 0.12, tessellation: 48}, scene);
@@ -185,7 +176,44 @@ export class TerrainPreview {
     this.stageMaterial.specularColor.setAll(0.03);
     stage.material = this.stageMaterial;
     stage.setEnabled(guide === "snow" || step === 2);
-    for (const mesh of this.root.getChildMeshes()) mesh.layerMask = 0x10000000;
+    for (const mesh of this.root.getChildMeshes()) mesh.layerMask = TerrainPreview.layerMask;
+  }
+
+  private diagramInk(color: string) {
+    const material = new StandardMaterial("guide-diagram-ink", this.root.getScene());
+    material.disableLighting = true;
+    material.emissiveColor = Color3.FromHexString(color);
+    this.diagramMaterials.push(material);
+    return material;
+  }
+
+  private diagramStroke(path: Vector3[], material: StandardMaterial, radius: number) {
+    const stroke = CreateTube("guide-diagram-stroke", {path, radius, tessellation: 6, cap: 3}, this.root.getScene());
+    stroke.parent = this.root;
+    stroke.material = material;
+  }
+
+  private diagramFrame(x: number, y: number, width: number, height: number, material: StandardMaterial, stroke: number) {
+    const radius = 0.15;
+    const path: Vector3[] = [];
+    for (let corner = 0; corner < 4; corner++) {
+      const cx = x + (corner === 0 || corner === 3 ? 1 : -1) * (width / 2 - radius);
+      const cy = y + (corner < 2 ? 1 : -1) * (height / 2 - radius);
+      for (let i = 0; i <= 4; i++) {
+        const angle = (corner + i / 4) * Math.PI / 2;
+        path.push(new Vector3(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius, 1));
+      }
+    }
+    path.push(path[0].clone());
+    this.diagramStroke(path, material, stroke);
+  }
+
+  private diagramArrow(cx: number, cy: number, x: number, y: number, length: number, material: StandardMaterial) {
+    const point = (along: number, across = 0) =>
+      new Vector3(cx + x * along - y * across, cy + y * along + x * across, 0.62);
+    const tip = length / 2;
+    this.diagramStroke([point(-tip), point(tip)], material, 0.059);
+    this.diagramStroke([point(tip - 0.19, -0.17), point(tip), point(tip - 0.19, 0.17)], material, 0.05);
   }
 
   frame(rect: DOMRect, canvas: DOMRect) {
@@ -202,6 +230,7 @@ export class TerrainPreview {
   dispose() {
     this.root.dispose();
     this.stageMaterial.dispose();
+    for (const material of this.diagramMaterials) material.dispose();
     this.camera.dispose();
   }
 }

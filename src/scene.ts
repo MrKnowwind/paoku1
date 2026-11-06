@@ -5,6 +5,7 @@ import "@babylonjs/core/Engines/thinEngine.scissor";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
+import { Layer } from "@babylonjs/core/Layers/layer";
 import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
@@ -136,6 +137,7 @@ export class ForestScene {
   private openingMistTime = 0;
   private snow?: SnowProps;
   private guidePreviews = new Map<number, TerrainPreview>();
+  private guideBackdrop?: Layer;
   private previewGuide: GuideId | null = null;
   private drinkBottle?: TransformNode;
   private lastSnowHit = 0;
@@ -1314,7 +1316,8 @@ export class ForestScene {
     material.disableLighting = true;
     material.backFaceCulling = false;
     material.fogEnabled = false;
-    material.emissiveTexture = this.fishSignTexture;
+    // Tint the white areas with emission. Adding the white texture as emission clips the tint to white.
+    material.linkEmissiveWithDiffuse = true;
     material.emissiveColor = Color3.Lerp(Color3.FromHexString("#ffd843"), Color3.FromHexString("#ff4735"), step / 24);
     this.fishSignColors.set(step, material);
     return material;
@@ -2454,6 +2457,17 @@ export class ForestScene {
     if (this.previewGuide !== guide) {
       for (const preview of this.guidePreviews.values()) preview.dispose();
       this.guidePreviews.clear();
+      this.guideBackdrop?.dispose();
+      this.guideBackdrop = undefined;
+      if (guide) {
+        const backdrop = new Layer("guide-backdrop", null, this.scene);
+        const texture = new Texture(import.meta.env.BASE_URL + `art/guide-${guide}.webp`, this.scene, true);
+        texture.isBlocking = false;
+        texture.wrapU = texture.wrapV = Texture.CLAMP_ADDRESSMODE;
+        backdrop.texture = texture;
+        backdrop.layerMask = TerrainPreview.layerMask;
+        this.guideBackdrop = backdrop;
+      }
       this.previewGuide = guide;
     }
     let preview = this.guidePreviews.get(guideStep);
@@ -2471,6 +2485,14 @@ export class ForestScene {
       const canvasRect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
       if (rect.width < 1 || rect.height < 1) return;
       preview.frame(rect, canvasRect);
+      const backdrop = this.guideBackdrop?.texture;
+      if (backdrop instanceof Texture) {
+        const aspect = rect.width / rect.height;
+        backdrop.uScale = Math.min(1, aspect / 1.5);
+        backdrop.vScale = Math.min(1, 1.5 / aspect);
+        backdrop.uOffset = (1 - backdrop.uScale) / 2;
+        backdrop.vOffset = (1 - backdrop.vScale) / 2;
+      }
       const sx = this.engine.getRenderWidth() / canvasRect.width, sy = this.engine.getRenderHeight() / canvasRect.height;
       const fogEnabled = this.scene.fogEnabled, shadowsEnabled = this.scene.shadowsEnabled;
       const autoClearDepth = this.scene.autoClearDepthAndStencil;
@@ -2479,7 +2501,7 @@ export class ForestScene {
         this.scene.activeCamera = preview.camera;
         this.scene.autoClear = false; this.scene.autoClearDepthAndStencil = false;
         this.scene.fogEnabled = false; this.scene.shadowsEnabled = false;
-        this.engine.clear(Color4.FromHexString(guide === "snow" ? "#e1e8ebff" : "#d8e6dfff"), true, true, true);
+        this.engine.clear(Color4.FromHexString(guide === "snow" ? "#31547dff" : "#074d62ff"), true, true, true);
         this.scene.render();
       } finally {
         this.engine.disableScissor(); this.scene.autoClear = true; this.scene.autoClearDepthAndStencil = autoClearDepth;

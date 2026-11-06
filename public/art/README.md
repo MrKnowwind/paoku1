@@ -17,3 +17,10 @@ Final prompt:
 ## Web delivery
 
 Runtime terrain textures use WebP quality 82 at the original resolution. Original JPEGs are preserved in `art-source/textures/` outside the deployed public directory. To regenerate, open each original with Pillow and save to `public/art/<stem>.webp` with `quality=82, method=6`.
+
+## Terrain guide backgrounds
+
+`guide-ocean.webp` and `guide-snow.webp` were made with the built-in ImageGen tool, resized to 1080 × 720, and encoded as WebP quality 82. The game loads each background on demand behind its own static 3D tutorial models and diagrams.
+
+- Ocean brief. A static stylized 3D underwater basin with a petrol-blue open center, soft sunbeams, and sculpted rocks, kelp, and coral framing the edges.
+- Snow brief. A static snowy clearing with a steel-blue open center, distant glacial ridgelines, and snow-covered pines and rocks framing the edges.

@@ -114,8 +114,11 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <section class="guide-card-copy" tabindex="0"><div id="guide-meter-slot"></div><p id="guide-copy"></p><small id="guide-detail"></small></section>
       <footer class="guide-card-footer">
         <button class="guide-arrow" id="guide-prev" data-action="guide-prev"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button>
-        <span id="guide-progress" aria-live="polite"></span>
-        <button class="guide-done" id="guide-done" data-action="guide-done" hidden></button>
+        <div class="guide-pagination">
+          <span id="guide-progress" aria-live="polite"></span>
+          <small id="guide-swipe-hint"></small>
+          <button class="guide-done" id="guide-done" data-action="guide-done" hidden></button>
+        </div>
         <button class="guide-arrow" id="guide-next" data-action="guide-next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
       </footer>
     </article>
@@ -433,6 +436,9 @@ function updateGuideUi() {
     guideNext.disabled = step === 3;
     guideDone.hidden = step !== 3;
     guideDone.textContent = t("gotIt");
+    const swipeHint = document.querySelector<HTMLElement>("#guide-swipe-hint")!;
+    swipeHint.hidden = step === 3;
+    swipeHint.textContent = t("guideSwipe");
     document.querySelector("#guide-progress")!.textContent = `${n(step)} / ${n(3)}`;
     document.querySelector("#guide-kicker")!.textContent = t(lessonTitles[guide]);
     const page = guidePages[guide][step - 1];
