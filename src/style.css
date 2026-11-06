@@ -259,7 +259,7 @@ h1 span {
   margin-left: 10px;
   font-variant-numeric: tabular-nums;
 }
-footer {
+.shell > footer {
   height: 40px;
   flex-shrink: 0;
   display: flex;
@@ -1014,7 +1014,7 @@ html[lang="ko-KR"] .intro h1 {
     width: 14px;
     height: 14px;
   }
-  footer {
+  .shell > footer {
     height: 35px;
   }
   .help-button {
@@ -1088,7 +1088,7 @@ html[lang="ko-KR"] .intro h1 {
   .best-record {
     margin-top: 16px;
   }
-  footer {
+  .shell > footer {
     height: 31px;
   }
   .hud {
@@ -1744,7 +1744,7 @@ html[lang="ko-KR"] .intro h1 {
   .intro .start-button { min-height: 44px; }
   .supply-button { margin-top: 8px; min-height: 44px; padding-block: 7px; }
   .best-record { margin-top: 8px; padding-top: 8px; }
-  .shell footer { height: 20px; }
+  .shell > footer { height: 20px; }
   .header { height: 44px; }
 }
 .cold-hud { position: fixed; z-index: 5; top: max(84px, calc(env(safe-area-inset-top) + 66px)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: min(174px, 52vw); padding: 5px 9px; border: 1px solid #b0cedd; border-radius: 20px; background: #f0f8ffed; color: #315e7d; pointer-events: none; }
