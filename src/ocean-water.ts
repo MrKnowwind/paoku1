@@ -4,7 +4,6 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 
 const vertexSource = `
 precision highp float;
@@ -65,7 +64,6 @@ void main() {
 
 export class OceanWater {
   readonly material: ShaderMaterial;
-  readonly causticMaterial: ShaderMaterial;
   constructor(private scene: Scene) {
     this.material = new ShaderMaterial("moving-ocean-surface", scene, {vertexSource, fragmentSource}, {
       attributes: ["position", "waterDepth"],
@@ -76,25 +74,6 @@ export class OceanWater {
     this.material.onBindObservable.add(() => {
       if (scene.activeCamera) this.material.setVector3("eye", scene.activeCamera.globalPosition);
     });
-    this.causticMaterial = new ShaderMaterial("refracted-seabed-light", scene, {
-      vertexSource: `precision highp float;
-        attribute vec3 position; uniform mat4 world; uniform mat4 viewProjection;
-        uniform float scroll; varying vec2 vOcean;
-        void main() { vec4 p = world * vec4(position, 1.0); vOcean = vec2(p.x, p.z + scroll); gl_Position = viewProjection * p; }`,
-      fragmentSource: `precision highp float;
-        uniform float surfaceTime; varying vec2 vOcean;
-        void main() {
-          float a = sin(vOcean.x * 1.4 + sin(vOcean.y * 0.6 + surfaceTime * 0.7));
-          float b = sin(vOcean.y * 1.6 + cos(vOcean.x * 0.7 - surfaceTime * 0.6));
-          float net = 1.0 - smoothstep(0.03, 0.16, abs(a + b));
-          gl_FragColor = vec4(0.67, 0.94, 0.81, net * 0.2);
-        }`,
-    }, {attributes: ["position"], uniforms: ["world", "viewProjection", "scroll", "surfaceTime"], needAlphaBlending: true});
-  }
-
-  caustics(parent: TransformNode, seabed: Mesh) {
-    const mesh = seabed.clone("moving-seabed-caustics", parent)!;
-    mesh.position.y += 0.025; mesh.material = this.causticMaterial; mesh.isPickable = false;
   }
 
   cell(parent: TransformNode, world: number, floor: (x: number, d: number) => number) {
@@ -112,6 +91,5 @@ export class OceanWater {
 
   update(distance: number, time: number) {
     this.material.setFloat("scroll", distance).setFloat("surfaceTime", time);
-    this.causticMaterial.setFloat("scroll", distance).setFloat("surfaceTime", time);
   }
 }

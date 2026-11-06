@@ -49,6 +49,7 @@ export class TerrainScene {
   private planRevision = 0;
   private pendingSurfaces = new Map<Mesh, Material>();
   private cells = new Map<number, TransformNode>();
+  private building = new Map<number, Generator<void, void>>();
   private poolCuts = new Map<number, string>();
   private windRibbons = new Map<number, Mesh>();
   private snowWind?: StandardMaterial;
@@ -194,7 +195,7 @@ export class TerrainScene {
     this.pendingSurfaces.set(mesh, preferred);
   }
 
-  private winterCell(world: number, index: number, root: TransformNode, pools: readonly TrackItem[]) {
+  private *winterCell(world: number, index: number, root: TransformNode, pools: readonly TrackItem[]): Generator<void, void> {
     const section = this.plan.at(world + 5);
     const canyonSide = section.biome === "snow-transition" && (section.from === "canyon" || section.to === "canyon");
     const roadEdge = (snow: number) => canyonSide ? 4.3 + 1.4 * (1 - snow) : 4.3;
@@ -242,6 +243,7 @@ export class TerrainScene {
       const mesh = this.surface("single-layer-winter-ground", pos, visible, uv, colors, root, withSnowLayer(base, snowTexture));
       mesh.setVerticesData(WINTER_VERTEX, coverage, false, 3);
       this.prepareSurface(mesh, mesh.material!, base);
+      yield;
     }
     const snowProps = this.snowProps();
     for (const side of [-1, 1]) {
@@ -262,6 +264,7 @@ export class TerrainScene {
         place(tree, 8 + pick(3) * 9 + (1 - snow) * 3, z);
         const scale = (0.64 + pick(4) * 0.72) * (0.32 + 0.68 * smooth(snow / 0.66));
         tree.scaling.set(scale * (0.74 + pick(5) * 0.5), scale, scale);
+        yield;
       }
       if (snow > 0.28 && pick(7) > 0.22) {
         const bank = snowProps.drift(root);
@@ -275,6 +278,7 @@ export class TerrainScene {
         place(rock, 12 + pick(12) * 15, 5);
         rock.scaling.set(1.3 + pick(5), 0.9 + pick(4) * 0.6, 1);
       }
+      yield;
     }
     this.batchWinterScenery(root);
     if (section.biome === "snow" && index % 3 === 0) this.windRibbons.set(index, this.windRibbon(root));
@@ -455,7 +459,7 @@ export class TerrainScene {
     return coastFloor(d, this.plan) + relief * (1 - snow) + winterRelief;
   }
 
-  private coastCell(world: number, index: number, root: TransformNode) {
+  private *coastCell(world: number, index: number, root: TransformNode): Generator<void, void> {
     const section = sectionAt(world + 5, this.plan);
     const underwater = section.biome === "water";
     const positions: number[] = [], uvs: number[] = [], colors: number[] = [];
@@ -476,10 +480,11 @@ export class TerrainScene {
     const seabed = this.surface("rippled-coastal-contours", positions, coastGridIndices(columns, rows), uvs, new Array(colors.length).fill(1), root, material);
     seabed.setVerticesData("coastWeights", colors, false, 4);
     this.prepareSurface(seabed, material, coast.fallback);
+    yield;
     const water = this.water ??= new OceanWater(this.scene);
-    if (underwater) water.caustics(root, seabed);
     // Dry land occludes the full-width sea; shoreline depth controls surf and transparency.
     water.cell(root, world, (x, d) => this.coastHeight(x, d));
+    yield;
     for (const side of [-1, 1]) {
       for (let cluster = 0; cluster < 2; cluster++) {
         const x = side * (7 + cluster * 7 + Math.sin(world * 0.13 + side) * 0.8);
@@ -489,14 +494,17 @@ export class TerrainScene {
           world * 0.37 + side + cluster, underwater ? "#6b8990" : "#b4aa91");
         rock.position.set(x + Math.sin(world * 0.21) * 0.7, y + 0.35, z);
         rock.rotation.y = Math.sin(world * 0.17 + side) * 1.2;
+        yield;
         if (underwater) {
           const coral = this.ocean.coral(root, index + cluster, 1.5 + cluster * 0.8,
             ["#c78198", "#cdac71", "#819dca"][Math.abs(index + cluster) % 3]);
           coral.position.set(x - side * 0.7, this.coastHeight(x - side * 0.7, world + z) - 0.12, z);
+          yield;
           const kelp = this.ocean.kelp(root, 2.5 + cluster * 1.8, index + cluster);
           kelp.position.set(x + side * 1.7, this.coastHeight(x + side * 1.7, world + z + 1.5) - 0.08, z + 1.5);
           const fan = this.ocean.coral(root, 2, 2.5, "#bb899c");
           fan.position.set(x + side * 3.6, this.coastHeight(x + side * 3.6, world + z + 2) - 0.12, z + 2); fan.scaling.set(1.7, 1, 0.35);
+          yield;
         } else {
           // Rock pools, scattered shells and low vegetation bridge canyon and forest shores.
           for (let i = 0; i < 4; i++) {
@@ -525,6 +533,7 @@ export class TerrainScene {
           model.position.set(side * (11 + fish * 0.7), -2 - (fish % 3) * 0.4, fish * 0.7);
           model.scaling.setAll(0.65);
         }
+        yield;
       }
     }
     if (!underwater) {
@@ -558,28 +567,29 @@ export class TerrainScene {
           this.ground(0.025, 7, side * 3.8, CONFIG.waterHeights[i] - 0.1, 5, root, this.guide, world);
       }
     }
+    yield;
     const opaque = root.getChildMeshes().filter(mesh => mesh instanceof Mesh && mesh !== seabed && !mesh.isVerticesDataPresent(WINTER_VERTEX) && mesh.material instanceof StandardMaterial && mesh.material.alpha === 1) as Mesh[];
     if (opaque.length) { const batch = mergeSceneryMeshes(opaque); batch.parent = root; batch.name = "batched-coastal-reef"; }
   }
 
-  private build(index: number, pools: readonly TrackItem[]) {
+  private *build(index: number, pools: readonly TrackItem[], root: TransformNode): Generator<void, void> {
     const world = index * 10,
       section = sectionAt(world + 5, this.plan);
-    const root = new TransformNode(`terrain-${index}`, this.scene);
     const ridgeStrength = (distance: number) => canyonRidgeStrength(section, distance, this.plan);
     if (ridgeStrength(world) > 0 || ridgeStrength(world + 10) > 0) {
       for (const side of [-1, 1]) {
         const {positions, indices, uvs, colors} = canyonRidgeGeometry(side, world, ridgeStrength);
         this.surface("eroded-continuous-cliff", positions, indices, uvs, colors, root, this.cliff);
+        yield;
       }
     }
     if (["beach", "water", "shore"].includes(section.biome)) {
-      this.coastCell(world, index, root);
-      return root;
+      yield* this.coastCell(world, index, root);
+      return;
     }
     if (section.biome === "snow" || section.biome === "snow-transition") {
-      this.winterCell(world, index, root, pools);
-      return root;
+      yield* this.winterCell(world, index, root, pools);
+      return;
     }
     const gap = gapsNear(world, this.seed, this.plan).find(
       (gap) => gap.start < world + 10 && gap.end > world,
@@ -625,6 +635,7 @@ export class TerrainScene {
         slab.receiveShadows = true;
       }
     }
+    yield;
     if (section.biome === "forest") {
       for (const side of [-1, 1])
         this.ground(70, 10, side * 39.3, 0, 5, root, this.grass, world);
@@ -642,6 +653,7 @@ export class TerrainScene {
         ledge.position.set(side * 5.2, 0.12, 5);
         ledge.material = this.tunnel;
       }
+      yield;
     } else {
       this.ground(90, 10, 0, -18, 5, root, this.stone, world);
       for (const side of [-1, 1]) {
@@ -765,7 +777,6 @@ export class TerrainScene {
       merged.name = `terrain-detail-${index}`;
       merged.parent = root;
     }
-    return root;
   }
   update(distance: number, time = 0, seed = 0, plan = defaultTrack, items: readonly TrackItem[] = [], storm = 0) {
     const changed = this.seed !== seed || this.plan !== plan || plan.revision - this.planRevision > 1;
@@ -774,7 +785,6 @@ export class TerrainScene {
     this.plan = plan;
     this.planRevision = plan.revision;
     this.seed = seed;
-    this.water?.update(distance, time);
     const first = Math.floor((distance - 50) / 10),
       last = Math.ceil((distance + 180) / 10);
     const cuts = new Map<number, TrackItem[]>();
@@ -793,26 +803,43 @@ export class TerrainScene {
       const cut = cuts.get(index);
       if (changed || index * 10 + 10 >= changedFrom || index < first || index > last || this.poolCuts.get(index) !== (cut ? key(cut) : "")) {
         const batches = new Set(
-          root.getChildMeshes().map((mesh) => mesh.material),
+          root.getChildMeshes().filter(mesh => mesh instanceof Mesh).map(mesh => mesh.material),
         );
         root.dispose();
         for (const material of batches)
           if (material instanceof MultiMaterial)
             material.dispose(false, false, false);
         this.cells.delete(index);
+        this.building.get(index)?.return(undefined);
+        this.building.delete(index);
         this.poolCuts.delete(index);
         this.windRibbons.delete(index);
       }
     }
+    const deadline = performance.now() + 3;
     for (let index = first; index <= last; index++) {
       let root = this.cells.get(index);
       if (!root) {
         const cut = cuts.get(index) ?? [];
-        root = this.build(index, cut);
+        root = new TransformNode(`terrain-${index}`, this.scene);
+        root.setEnabled(false);
         this.cells.set(index, root);
+        this.building.set(index, this.build(index, cut, root));
         this.poolCuts.set(index, key(cut));
       }
-      root.position.z = index * 10 - distance;
+      const work = this.building.get(index);
+      if (work) {
+        const near = index * 10 >= distance - 25 && index * 10 <= distance + 45;
+        while (near || performance.now() < deadline) {
+          if (work.next().done) {
+            this.building.delete(index);
+            root.setEnabled(true);
+            break;
+          }
+        }
+      }
+      // Mesh merging bakes world transforms, so unfinished cells stay at the origin.
+      if (!this.building.has(index)) root.position.z = index * 10 - distance;
       const wind = this.windRibbons.get(index);
       if (wind) {
         const phase = time * 0.5 + index * 0.618;
@@ -821,7 +848,8 @@ export class TerrainScene {
         wind.visibility = (0.045 + storm * (0.39 + Math.sin(time * 2.1 + index) * 0.13)) * Math.sin(t * Math.PI) ** 2;
       }
     }
-    this.coastSurface?.update(distance);
+    this.water?.update(distance, time);
+    this.coastSurface?.update(distance, time);
     for (const [mesh, material] of this.pendingSurfaces) {
       if (mesh.isDisposed()) this.pendingSurfaces.delete(mesh);
       else if (material.isReady(mesh)) {

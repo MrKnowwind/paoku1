@@ -1,5 +1,6 @@
 import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer.js";
+import { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial.js";
 
 export function mergeSceneryMeshes(meshes: Mesh[]): Mesh {
   // Babylon requires identical vertex attributes across every merged mesh.
@@ -14,5 +15,9 @@ export function mergeSceneryMeshes(meshes: Mesh[]): Mesh {
       }
     }
   }
-  return Mesh.MergeMeshes(meshes, true, true, undefined, false, true)!;
+  // Keep equal materials adjacent so Babylon can consolidate their index ranges.
+  meshes.sort((a, b) => (a.material?.uniqueId ?? -1) - (b.material?.uniqueId ?? -1));
+  const material = meshes[0].material;
+  const singleMaterial = !(material instanceof MultiMaterial) && meshes.every(mesh => mesh.material === material);
+  return Mesh.MergeMeshes(meshes, true, true, undefined, false, !singleMaterial)!;
 }

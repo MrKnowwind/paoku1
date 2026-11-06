@@ -10,16 +10,19 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import "@babylonjs/core/Meshes/instancedMesh";
+import { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { CONFIG } from "./config.ts";
 import { makeCoral, coralPath } from "./coral.ts";
 import type { CoralPlan } from "./coral.ts";
-import { mergeSceneryMeshes } from "./scenery-mesh";
+import { mergeSceneryMeshes } from "./scenery-mesh.ts";
 
 // Shared materials keep reef detail inexpensive when terrain cells are batched.
 export class OceanProps {
   private materials = new Map<string, StandardMaterial>();
+  private fishTemplates = new Map<string, {body: Mesh; tail: Mesh}>();
   constructor(private scene: Scene) {}
 
   material(kind: string, color: string) {
@@ -160,7 +163,21 @@ export class OceanProps {
   }
 
   fish(parent: TransformNode, color = "#efb762") {
+    let template = this.fishTemplates.get(color);
+    if (!template) {
+      template = this.createFishTemplate(color);
+      this.fishTemplates.set(color, template);
+    }
     const root = new TransformNode("reef-fish", this.scene); root.parent = parent;
+    const body = template.body.createInstance("reef-fish-body");
+    body.parent = root;
+    const tail = template.tail.createInstance("fish-fan-tail");
+    tail.parent = root;
+    return root;
+  }
+
+  private createFishTemplate(color: string) {
+    const root = new TransformNode("reef-fish-template", this.scene);
     const mat = this.material("shell", color);
     const body = CreateSphere("fish-streamlined-body", {diameter: 1, segments: 12}, this.scene);
     body.parent = root; body.material = mat; body.scaling.set(0.28, 0.36, 0.74);
@@ -177,7 +194,12 @@ export class OceanProps {
     const dorsal = CreateSphere("fish-dorsal-fin", {diameter: 1, segments: 8}, this.scene);
     dorsal.parent = root; dorsal.material = mat; dorsal.position.set(0, 0.2, -0.06);
     dorsal.scaling.set(0.04, 0.2, 0.36);
-    return root;
+    const merged = mergeSceneryMeshes(root.getChildMeshes(false, mesh => mesh !== tail) as Mesh[]);
+    merged.parent = tail.parent = null;
+    merged.setEnabled(false);
+    tail.setEnabled(false);
+    root.dispose();
+    return {body: merged, tail};
   }
 
   vent(parent: TransformNode) {
@@ -196,6 +218,11 @@ export class OceanProps {
     const lip = CreateTorus("vent-glowing-minerals", {diameter: 0.5, thickness: 0.065, tessellation: 20}, this.scene);
     lip.parent = root; lip.position.y = 0.59;
     lip.material = this.material("mineral", "#dd9d68");
+    const batch = mergeSceneryMeshes(root.getChildMeshes() as Mesh[]);
+    batch.parent = root;
+    const material = batch.material;
+    if (material instanceof MultiMaterial)
+      batch.onDisposeObservable.addOnce(() => material.dispose(false, false, false));
     return root;
   }
 }

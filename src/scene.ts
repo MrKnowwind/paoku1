@@ -160,6 +160,7 @@ export class ForestScene {
   private renderScale = 0;
   private slowFrameTime = 0;
   private frameSamples = 0;
+  private stableFrameTime = 0;
   private track = defaultTrack;
   private openingMistTime = 0;
   private snow?: SnowProps;
@@ -249,7 +250,7 @@ export class ForestScene {
   }
 
   constructor(canvas: HTMLCanvasElement, highQuality: boolean, progress: (percent: number) => void = () => {}) {
-    this.engine = new Engine(canvas, true, { stencil: false }, false);
+    this.engine = new Engine(canvas, true, { stencil: false, powerPreference: "high-performance" }, false);
     this.engine.renderEvenInBackground = false;
     this.scene = new Scene(this.engine);
     this.scene.skipPointerMovePicking = true;
@@ -1571,25 +1572,37 @@ export class ForestScene {
 
   adjustResolution(frameTime: number) {
     if (!this.high || frameTime <= 0 || frameTime > 250) {
-      this.slowFrameTime = this.frameSamples = 0;
+      this.slowFrameTime = this.frameSamples = this.stableFrameTime = 0;
       return;
     }
     this.slowFrameTime += frameTime;
     this.frameSamples++;
     if (this.slowFrameTime < 1500) return;
-    if (this.slowFrameTime / this.frameSamples > 24 && this.renderScale < 3) {
+    const average = this.slowFrameTime / this.frameSamples;
+    this.stableFrameTime = average <= 17.2 ? this.stableFrameTime + this.slowFrameTime : 0;
+    if (average > 18.5 && this.renderScale < 2) {
       this.renderScale++;
-      this.resize();
+      this.updateRenderSize();
+    } else if (this.renderScale > 0 && this.stableFrameTime >= 4500) {
+      this.renderScale--;
+      this.stableFrameTime = 0;
+      this.updateRenderSize();
     }
     this.slowFrameTime = this.frameSamples = 0;
   }
 
   resize = () => {
     this.camera.fov = innerWidth < 700 ? 1.02 : 0.8;
-    const pixelLimit = Math.sqrt(innerWidth * innerHeight / 2_000_000);
-    const highScale = 1 / Math.min(devicePixelRatio, 1.5) + this.renderScale * 0.2;
-    this.engine.setHardwareScalingLevel(Math.max(pixelLimit, this.high ? highScale : 1.25));
+    this.updateRenderSize();
   };
+
+  private updateRenderSize() {
+    const pixelLimit = Math.sqrt(innerWidth * innerHeight / 2_000_000);
+    const nativeScale = Math.max(pixelLimit, 1 / Math.min(devicePixelRatio, 1.5));
+    // Two small steps, with at least 88% of the normal high-quality width and height.
+    const highScale = nativeScale / (1 - this.renderScale * 0.06);
+    this.engine.setHardwareScalingLevel(this.high ? highScale : Math.max(pixelLimit, 1.25));
+  }
 
   private createRunEffects() {
     this.shieldAura = new TransformNode("orbiting-shields", this.scene);

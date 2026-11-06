@@ -1116,6 +1116,7 @@ export class RunnerGame {
         this.mode = "over";
         this.lastHit = "gap";
       }
+      const itemReach = Math.max(1.15, travel + 0.65, this.magnetTime > 0 ? CONFIG.magnetRange : 0);
       for (const item of this.items) {
         if (
           this.mode !== "running" ||
@@ -1132,11 +1133,13 @@ export class RunnerGame {
             if (Math.abs(item.z) < 1.4 && touchesCoral(item.coral, this.x, this.visualWaterY + 0.95, -item.z)) this.collide(item);
             continue;
           }
+          if (Math.abs(item.z) >= 1.15) continue;
           const bounds = this.waterBounds(item);
-          if (bounds.active && Math.abs(item.z) < 1.15 && Math.abs(this.x - bounds.x) < bounds.rx + 0.35 &&
+          if (bounds.active && Math.abs(this.x - bounds.x) < bounds.rx + 0.35 &&
               Math.abs(this.visualWaterY + 0.95 - bounds.y) < bounds.ry + 0.45) this.collide(item);
           continue;
         }
+        if (item.attraction === undefined && Math.abs(item.z) > itemReach) continue;
         const wall = item.route === "wall";
         const closeRoute = wall
           ? this.wallSide === item.side &&

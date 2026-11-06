@@ -9,6 +9,8 @@ export class SnowWeather {
   private lastFrame = "";
   private chill = 0;
   private frost?: SnowFrost;
+  private frostLayer?: HTMLCanvasElement;
+  private frostGrowth = -1;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.paint = canvas.getContext("2d");
@@ -20,6 +22,8 @@ export class SnowWeather {
       if (this.lastFrame) {
         this.canvas.width = this.canvas.height = 1;
         this.frost = undefined;
+        this.frostLayer = undefined;
+        this.frostGrowth = -1;
         this.lastFrame = "";
       }
       this.chill = 0;
@@ -68,9 +72,21 @@ export class SnowWeather {
       }
     }
     if (this.chill > 0.05) {
-      if (this.frost?.width !== width || this.frost.height !== height || this.frost.high !== high)
-        this.frost = new SnowFrost(ctx, width, height, high);
-      this.frost.draw(ctx, this.chill);
+      const layer = this.frostLayer ??= document.createElement("canvas");
+      const paint = layer.getContext("2d")!;
+      if (this.frost?.width !== width || this.frost.height !== height || this.frost.high !== high) {
+        layer.width = width; layer.height = height;
+        this.frost = new SnowFrost(paint, width, height, high);
+        this.frostGrowth = -1;
+      }
+      const growth = Math.round(this.chill * 400) / 400;
+      if (this.frostGrowth !== growth) {
+        this.frostGrowth = growth;
+        paint.clearRect(0, 0, width, height);
+        this.frost.draw(paint, growth);
+      }
+      ctx.globalAlpha = 1;
+      ctx.drawImage(layer, 0, 0);
     }
     ctx.globalAlpha = 1;
   }

@@ -11,6 +11,10 @@ import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder.js";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer.js";
 import { mergeSceneryMeshes } from "./scenery-mesh.ts";
+import { OceanProps } from "./ocean-props.ts";
+import { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial.js";
 
 test("scenery merges uncolored wood with vertex-tinted leaves", () => {
   const engine = new NullEngine();
@@ -41,6 +45,70 @@ test("scenery merges uncolored wood with vertex-tinted leaves", () => {
       Array.from(leafColors),
     );
     assert.equal(merged.subMeshes!.length, 2);
+  } finally {
+    engine.dispose();
+  }
+});
+
+test("interleaved opaque scenery consolidates material draws and single materials stay shared", () => {
+  const engine = new NullEngine();
+  try {
+    const scene = new Scene(engine);
+    const rock = new StandardMaterial("rock", scene);
+    const shell = new StandardMaterial("shell", scene);
+    const meshes = [rock, shell, rock, shell].map((material, i) => {
+      const mesh = CreateSphere("detail-" + i, {segments: 6}, scene);
+      mesh.material = material;
+      mesh.position.x = i * 3;
+      return mesh;
+    });
+    const vertices = meshes.reduce((sum, mesh) => sum + mesh.getTotalVertices(), 0);
+    const merged = mergeSceneryMeshes(meshes);
+    assert.equal(merged.getTotalVertices(), vertices);
+    assert.equal(merged.subMeshes!.length, 2);
+    assert.ok(merged.material instanceof MultiMaterial);
+    assert.deepEqual(new Set(merged.material.subMaterials), new Set([rock, shell]));
+
+    const same = [0, 1, 2].map(() => {
+      const mesh = CreateSphere("coral", {segments: 6}, scene);
+      mesh.material = rock;
+      return mesh;
+    });
+    const count = scene.multiMaterials.length;
+    const coral = mergeSceneryMeshes(same);
+    assert.equal(coral.material, rock);
+    assert.equal(coral.subMeshes!.length, 1);
+    assert.equal(scene.multiMaterials.length, count);
+  } finally {
+    engine.dispose();
+  }
+});
+
+test("repeated fish share body geometry while retaining independent animated tails", () => {
+  const engine = new NullEngine();
+  try {
+    const scene = new Scene(engine);
+    const props = new OceanProps(scene);
+    const bodyMaterial = new StandardMaterial("scales", scene);
+    const eyeMaterial = new StandardMaterial("eyes", scene);
+    props.material = kind => kind === "eye" ? eyeMaterial : bodyMaterial;
+    const school = new TransformNode("school", scene);
+    const first = props.fish(school);
+    const second = props.fish(school);
+    const body = first.getChildMeshes().find(mesh => mesh.name === "reef-fish-body")!;
+    const otherBody = second.getChildMeshes().find(mesh => mesh.name === "reef-fish-body")!;
+    const tail = first.getChildMeshes().find(mesh => mesh.name === "fish-fan-tail")!;
+    const otherTail = second.getChildMeshes().find(mesh => mesh.name === "fish-fan-tail")!;
+    assert.ok(body instanceof InstancedMesh && otherBody instanceof InstancedMesh);
+    assert.equal(body.sourceMesh, otherBody.sourceMesh);
+    assert.equal(body.subMeshes!.length, 2);
+    assert.equal(first.getChildMeshes().length, 2);
+    tail.rotation.y = 0.4;
+    assert.equal(otherTail.rotation.y, 0);
+    assert.equal(tail.position.z, -0.43);
+    first.dispose();
+    assert.equal(otherBody.isDisposed(), false);
+    assert.equal(otherBody.sourceMesh.isDisposed(), false);
   } finally {
     engine.dispose();
   }

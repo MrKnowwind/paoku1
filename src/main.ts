@@ -995,6 +995,8 @@ try {
     quality,
     percent => reportLoading({phase: "scene", percent}),
   );
+  const perf = new URLSearchParams(location.search).get("perf") === "1"
+    ? new (await import("./performance-hud.ts")).PerformanceHud(world.scene) : null;
   let previous = performance.now();
   let lastCoins = 0;
   let lastHudUpdate = -Infinity;
@@ -1088,6 +1090,7 @@ try {
         resultDelay -= dt;
         if (resultDelay <= 0) openDialog(runFinalized ? "over" : "revive");
       }
+      perf?.update(frameTime, performance.now() - now, game.distance);
     } catch (error) {
       console.error("3D rendering failed", error);
       const failedWorld = world;

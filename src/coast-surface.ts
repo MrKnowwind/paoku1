@@ -26,25 +26,39 @@ export class CoastSurface {
         }`,
       fragmentSource: `precision highp float;
         uniform sampler2D sand; uniform sampler2D trail; uniform sampler2D stone; uniform sampler2D grass; uniform sampler2D packedSnow;
-        uniform vec3 eye; uniform vec3 fogColor; uniform float fogDensity;
+        uniform vec3 eye; uniform vec3 fogColor; uniform float fogDensity; uniform float surfaceTime;
         varying vec3 vPosition; varying vec3 vNormal; varying vec2 vSandUV; varying vec4 vWeights; varying vec2 vWorldUV;
         void main() {
-          vec3 sandColor = texture2D(sand, vSandUV).rgb;
-          vec3 pathColor = texture2D(trail, vWorldUV / 8.0).rgb * vec3(0.89, 0.86, 0.8);
-          vec3 grassColor = texture2D(grass, vWorldUV / 2.5).rgb;
-          float road = 1.0 - smoothstep(4.25, 4.4, abs(vWorldUV.x));
-          vec3 forestColor = mix(grassColor, pathColor, road);
-          vec3 color = forestColor * vWeights.r + texture2D(stone, vWorldUV / 6.0).rgb * vWeights.g + sandColor * vWeights.b;
-          float grain = sin(vWorldUV.x * 13.0 + sin(vWorldUV.y * 5.0)) * sin(vWorldUV.y * 19.0) * 0.018;
-          vec3 snowGrain = texture2D(packedSnow, vWorldUV / 2.8).rgb;
-          vec3 snow = snowGrain * mix(vec3(0.88, 0.94, 1.0), vec3(1.0), smoothstep(3.8, 5.5, abs(vWorldUV.x))) + grain;
-          color += snow * vWeights.a;
+          vec3 color = vec3(0.0);
+          if (vWeights.r > 0.0) {
+            float road = 1.0 - smoothstep(4.25, 4.4, abs(vWorldUV.x));
+            vec3 forest = vec3(0.0);
+            if (road < 1.0) forest += texture2D(grass, vWorldUV / 2.5).rgb * (1.0 - road);
+            if (road > 0.0) forest += texture2D(trail, vWorldUV / 8.0).rgb * vec3(0.89, 0.86, 0.8) * road;
+            color += forest * vWeights.r;
+          }
+          if (vWeights.g > 0.0) color += texture2D(stone, vWorldUV / 6.0).rgb * vWeights.g;
+          if (vWeights.b > 0.0) color += texture2D(sand, vSandUV).rgb * vWeights.b;
+          if (vWeights.a > 0.0) {
+            float grain = sin(vWorldUV.x * 13.0 + sin(vWorldUV.y * 5.0)) * sin(vWorldUV.y * 19.0) * 0.018;
+            vec3 snowGrain = texture2D(packedSnow, vWorldUV / 2.8).rgb;
+            vec3 snow = snowGrain * mix(vec3(0.88, 0.94, 1.0), vec3(1.0), smoothstep(3.8, 5.5, abs(vWorldUV.x))) + grain;
+            color += snow * vWeights.a;
+          }
           float light = 0.68 + max(0.0, dot(normalize(vNormal), normalize(vec3(-0.4, 1.0, -0.3)))) * 0.32;
           float haze = 1.0 - exp(-pow(length(eye - vPosition) * fogDensity, 2.0));
-          gl_FragColor = vec4(mix(color * light, fogColor, haze), 1.0);
+          color = mix(color * light, fogColor, haze);
+          float submergedSand = vWeights.b * (1.0 - smoothstep(-2.0, -0.2, vPosition.y));
+          if (submergedSand > 0.0) {
+            float a = sin(vWorldUV.x * 1.4 + sin(vWorldUV.y * 0.6 + surfaceTime * 0.7));
+            float b = sin(vWorldUV.y * 1.6 + cos(vWorldUV.x * 0.7 - surfaceTime * 0.6));
+            float net = 1.0 - smoothstep(0.03, 0.16, abs(a + b));
+            color = mix(color, vec3(0.67, 0.94, 0.81), net * 0.2 * submergedSand);
+          }
+          gl_FragColor = vec4(color, 1.0);
         }`,
     }, {attributes: ["position", "normal", "uv", "coastWeights"],
-      uniforms: ["world", "viewProjection", "scroll", "eye", "fogColor", "fogDensity"], samplers: ["sand", "trail", "stone", "grass", "packedSnow"]});
+      uniforms: ["world", "viewProjection", "scroll", "eye", "fogColor", "fogDensity", "surfaceTime"], samplers: ["sand", "trail", "stone", "grass", "packedSnow"]});
     for (const [name, file] of Object.entries({sand: "beach-sand-v2.webp", trail: "woodland-trail.webp", stone: "canyon-trail.webp", grass: "woodland-grass.webp"})) {
       const texture = new Texture(import.meta.env.BASE_URL + "art/" + file, scene);
       texture.anisotropicFilteringLevel = 8;
@@ -72,5 +86,7 @@ export class CoastSurface {
     this.snowReady = true;
   }
 
-  update(distance: number) { this.material.setFloat("scroll", distance); }
+  update(distance: number, time: number) {
+    this.material.setFloat("scroll", distance).setFloat("surfaceTime", time);
+  }
 }
