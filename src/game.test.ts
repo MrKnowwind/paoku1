@@ -3,6 +3,59 @@ import { CONFIG } from "./config.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RunnerGame, INTRO_TIMING } from "./game.ts";
+import { DAY_LENGTH, NIGHT_START } from "./daylight.ts";
+
+test("the night debug start sets the countdown clock and applies to the requested run only", () => {
+  const game = new RunnerGame({autoSpawn: false});
+  game.begin(true);
+  assert.equal(game.phase, "night");
+  assert.equal(game.worldTime, NIGHT_START);
+  game.update(1);
+  assert.equal(game.worldTime, NIGHT_START);
+  game.returnHome();
+  assert.equal(game.phase, "day");
+  game.begin();
+  assert.equal(game.worldTime, 0);
+});
+
+test("living wolves extend the forest across dawn, and clearing them opens the planned exit", () => {
+  const game = new RunnerGame({autoSpawn: false, random: () => 0.5});
+  game.nextTerrain = "snow";
+  game.start(true);
+  const originalExit = game.terrain.end;
+  assert.equal(game.track.at(originalExit).to, "snow");
+  game.distance = 80;
+  game.protectionTime = 60;
+  game.update(0.01);
+  const wolves = [...game.nightCombat.hunt.wolves];
+  assert.ok(wolves.length >= 3);
+
+  game.distance = originalExit - 1;
+  game.worldTime = DAY_LENGTH - 0.01;
+  game.update(0.1);
+  assert.equal(game.phase, "day");
+  assert.ok(game.distance > originalExit);
+  assert.equal(game.terrain.biome, "forest");
+  assert.equal(game.nightCombat.hunt.wolves.length, wolves.length);
+  const extendedExit = game.terrain.end;
+  game.distance = extendedExit - 1;
+  game.update(0.1);
+  assert.ok(game.distance > extendedExit);
+  assert.equal(game.terrain.biome, "forest");
+
+  for (const wolf of wolves) {
+    for (let shot = 0; shot < CONFIG.nightCombat.wolfHealth; shot++) {
+      game.nightCombat.fire(wolf.id, game);
+      game.update(0.6);
+      game.nightCombat.refill();
+    }
+    assert.equal(game.nightCombat.health(wolf), 0);
+  }
+  game.distance = game.terrain.end - 1;
+  game.update(0.1);
+  assert.equal(game.terrain.biome, "snow-transition");
+  assert.equal(game.terrain.to, "snow");
+});
 
 test("home and countdown stay empty; opening obstacles are ready before the first running frame", () => {
   const game = new RunnerGame({ random: () => 0.5 });

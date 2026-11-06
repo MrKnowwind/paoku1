@@ -27,7 +27,6 @@ interface Attack {
 export interface Hunt {
   wolves: Wolf[];
   enteredAt: number;
-  leavingAt?: number;
   attack?: Attack;
   nextAttack: number;
   nextPack: number;
@@ -56,6 +55,12 @@ export class NightCombat {
 
   health(wolf: Wolf) {
     return rules.wolfHealth - (this.damage.get(wolf.id) ?? 0);
+  }
+  get remaining() {
+    let count = 0;
+    for (const wolf of this.hunt.wolves)
+      if (this.health(wolf) > 0) count++;
+    return count;
   }
 
   snapshot(): Hunt {
@@ -88,8 +93,7 @@ export class NightCombat {
 
   fire(id: number, game: RunnerGame) {
     const wolf = this.hunt.wolves.find(wolf => wolf.id === id);
-    if (game.mode !== "running" || game.phase !== "night" || game.terrain.biome !== "forest" ||
-      game.boosting || game.icy || this.hunt.leavingAt !== undefined ||
+    if (game.mode !== "running" || game.terrain.biome !== "forest" || game.boosting || game.icy ||
       this.cooldown > 0 || this.ammo === 0 || !wolf || this.health(wolf) <= 0) return;
     const {x, z} = this.position(wolf, game);
     this.ammo--;
@@ -99,16 +103,13 @@ export class NightCombat {
   }
 
   position(wolf: Wolf, game: RunnerGame) {
-    const {attack, enteredAt, leavingAt} = this.hunt;
+    const {attack, enteredAt} = this.hunt;
     const time = game.worldTime;
     let x = wolf.homeX + Math.sign(wolf.homeX) * 1.1 * (1 - smooth((time - enteredAt) / rules.entrance));
     let z = wolf.homeZ;
     let yaw = -Math.sign(x) * 0.12;
     let crouch = 0, leap = 0, bite = 0;
-    if (leavingAt !== undefined) {
-      x += Math.sign(x) * 3.4 * smooth((time - leavingAt) / rules.exit);
-      yaw = Math.sign(x) * 0.74;
-    } else if (attack?.wolf === wolf.id) {
+    if (attack?.wolf === wolf.id) {
       const elapsed = time - attack.start;
       const charge = clamp((elapsed - lead + rules.lunge) / rules.lunge);
       const back = smooth((elapsed - lead - rules.bite) / rules.recovery);
@@ -143,31 +144,21 @@ export class NightCombat {
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.refillFlash = Math.max(0, this.refillFlash - dt);
     if (this.cooldown < rules.cooldown - 0.27) this.aim = undefined;
-    const forest = game.terrain.biome === "forest";
-    if (game.phase !== "night" || !forest) {
+    const terrain = game.terrain;
+    if (terrain.biome !== "forest") {
       hunt.wolves.length = 0;
       hunt.attack = undefined;
-      hunt.leavingAt = undefined;
       this.clearShots();
       return;
     }
 
-    const left = Math.min(DAY_LENGTH - dayTime(time), (game.terrain.end - game.distance) / Math.max(game.speed, 1));
-    hunt.wolves = hunt.wolves.filter(wolf => this.health(wolf) > 0 || time - wolf.hitAt < 0.33);
-    if (hunt.wolves.length && (left <= rules.exit + 0.18 || time >= hunt.enteredAt + rules.packDuration))
-      hunt.leavingAt ??= time;
-    if (hunt.leavingAt !== undefined) {
-      hunt.attack = undefined;
-      this.clearShots();
-      if (time - hunt.leavingAt >= rules.exit) {
-        hunt.wolves = [];
-        hunt.leavingAt = undefined;
-      }
-      return;
-    }
-
-    if (!hunt.wolves.length && time >= hunt.nextPack && !game.boosting && left > attackDuration + 2 &&
-      game.distance > game.terrain.start + CONFIG.exitSafety) {
+    if (hunt.wolves.length)
+      hunt.wolves = hunt.wolves.filter(wolf => this.health(wolf) > 0 || time - wolf.hitAt < 0.33);
+    if (game.phase === "night" && !hunt.wolves.length && time >= hunt.nextPack && !game.boosting &&
+      DAY_LENGTH - dayTime(time) > attackDuration + 2 &&
+      terrain.end - game.distance > rules.forestExtensionLead &&
+      terrain.end - terrain.start === CONFIG.forestLength &&
+      game.distance > terrain.start + CONFIG.exitSafety) {
       const pack = ++hunt.pack;
       const size = rules.packMin + Math.floor(random(pack, 91) * (rules.packMax - rules.packMin + 1));
       hunt.wolves = Array.from({length: size}, (_, i) => {
@@ -200,7 +191,7 @@ export class NightCombat {
       return true;
     });
 
-    if (left < rules.exit + 0.55 || game.boosting) hunt.attack = undefined;
+    if (game.boosting) hunt.attack = undefined;
     if (hunt.attack) {
       const attack = hunt.attack;
       const elapsed = time - attack.start;
@@ -213,8 +204,7 @@ export class NightCombat {
       }
       return;
     }
-    if (time < hunt.nextAttack || !hunt.wolves.length || game.boosting || game.protectionTime > 0 ||
-      left < attackDuration + rules.exit) return;
+    if (time < hunt.nextAttack || !hunt.wolves.length || game.boosting || game.protectionTime > 0) return;
     // The warning is locked to the ground before the wolf commits.
     const landing = game.distance + game.speed * (lead + rules.bite / 2);
     const safe = openLanes(game.distance + game.speed * rules.laneChangeTime, landing);

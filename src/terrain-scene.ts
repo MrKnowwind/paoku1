@@ -39,6 +39,7 @@ const smooth = (value: number) => {
 export class TerrainScene {
   private seed = 0;
   private plan = defaultTrack;
+  private planRevision = 0;
   private snow?: SnowProps;
   private pendingSurfaces = new Map<Mesh, Material>();
   private cells = new Map<number, TransformNode>();
@@ -833,8 +834,11 @@ export class TerrainScene {
     return root;
   }
   update(distance: number, time = 0, seed = 0, plan = defaultTrack, pools: readonly TrackItem[] = [], storm = 0) {
-    const changed = this.seed !== seed || this.plan !== plan;
+    const changed = this.seed !== seed || this.plan !== plan || plan.revision - this.planRevision > 1;
+    // Portal walls reach 30 metres back into the old forest.
+    const changedFrom = this.planRevision !== plan.revision ? plan.changedFrom - 30 : Infinity;
     this.plan = plan;
+    this.planRevision = plan.revision;
     this.seed = seed;
     this.water.update(distance, time);
     const first = Math.floor((distance - 50) / 10),
@@ -844,7 +848,7 @@ export class TerrainScene {
       pool.worldZ + CONFIG.poolLength / 2 > index * 10);
     const key = (cut: readonly TrackItem[]) => cut.map(pool => `${pool.lane}/${pool.worldZ}`).sort().join(";");
     for (const [index, root] of this.cells)
-      if (changed || index < first || index > last || this.poolCuts.get(index) !== key(cuts(index))) {
+      if (changed || index * 10 + 10 >= changedFrom || index < first || index > last || this.poolCuts.get(index) !== key(cuts(index))) {
         const batches = new Set(
           root.getChildMeshes().map((mesh) => mesh.material),
         );

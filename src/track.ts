@@ -26,11 +26,13 @@ export function connection(from: CoreBiome, to: CoreBiome): {biome: Biome; lengt
   if (from === "snow" || to === "snow") return [{biome: "snow-transition", length: CONFIG.snowTransition}];
   return [{biome: "tunnel", length: CONFIG.tunnelLength}];
 }
-// Queries only append. Rewinds never discard committed future choices.
+// Queries append sections. Forest combat can move an exit forward before the runner reaches it.
 export class TrackPlan {
   readonly sections: TrackSection[] = [{biome: "forest", start: 0, end: CONFIG.forestLength, cycle: 0}];
   readonly seed: number;
   readonly forced: CoreBiome | null;
+  revision = 0;
+  changedFrom = Infinity;
   constructor(seed = 1, forced: CoreBiome | null = null) { this.seed = seed; this.forced = forced; }
   at(distance: number): TrackSection {
     const d = Math.max(0, distance);
@@ -51,6 +53,18 @@ export class TrackPlan {
       this.sections.push({biome: next, start, end: start + lengths[next], cycle: ordinal, from: current, to: next});
     }
     return this.sections.find(s => d >= s.start && d < s.end)!;
+  }
+  extendForest(section: TrackSection, length: number) {
+    // Commit the next biome first so an extension cannot change the seeded choice.
+    const exit = section.end;
+    this.at(exit);
+    section.end += length;
+    for (const future of this.sections.slice(this.sections.indexOf(section) + 1)) {
+      future.start += length;
+      future.end += length;
+    }
+    this.changedFrom = exit;
+    this.revision++;
   }
 }
 export const defaultTrack = new TrackPlan();

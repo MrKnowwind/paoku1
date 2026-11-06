@@ -1879,8 +1879,8 @@ export class ForestScene {
 
   private updateNightCombat(game: RunnerGame) {
     const combat = game.nightCombat;
-    const forestNight = game.phase === "night" && game.terrain.biome === "forest";
-    const wolves = forestNight ? combat.hunt.wolves : [];
+    const forest = game.terrain.biome === "forest";
+    const wolves = forest ? combat.hunt.wolves : [];
     for (const [id, wolf] of this.wolves) {
       if (wolves.some(entry => entry.id === id)) continue;
       wolf.root.dispose();
@@ -1902,7 +1902,7 @@ export class ForestScene {
         1 - smooth(sinceHit / 0.22), fallen);
     }
 
-    const warning = forestNight && game.mode !== "over" ? combat.warning(game.worldTime) : undefined;
+    const warning = forest && game.mode !== "over" ? combat.warning(game.worldTime) : undefined;
     if (warning && !this.wolfWarning) {
       const area = CreateGround("wolf-warning-area", {width: 2, height: 2}, this.scene);
       const fill = CreateGround("wolf-warning-fill", {width: 2, height: 2}, this.scene);
@@ -1926,7 +1926,7 @@ export class ForestScene {
         fill.visibility = 0.77;
       }
     }
-    const stones = forestNight && game.mode !== "over" ? combat.stones : [];
+    const stones = forest && game.mode !== "over" ? combat.stones : [];
     while (this.stones.length > stones.length) this.stones.pop()?.dispose();
     stones.forEach((stone, i) => {
       let mesh = this.stones[i];
@@ -1940,7 +1940,7 @@ export class ForestScene {
       mesh.scaling.z = 1.65;
     });
 
-    const aim = forestNight && game.mode !== "over" && !game.boosting ? combat.aim : undefined;
+    const aim = forest && game.mode !== "over" && !game.boosting ? combat.aim : undefined;
     this.slingshot?.setEnabled(!!aim);
     if (!aim) return;
     const hand = this.arms.find(arm => arm.side < 0)!;

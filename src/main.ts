@@ -45,6 +45,7 @@ window.addEventListener("pointerdown", () => audio.unlock(), {capture: true});
 window.addEventListener("keydown", () => audio.unlock(), {capture: true});
 let quality = new URLSearchParams(location.search).get("quality") !== "low" && read("quality") !== "low";
 let terrainOverride = read("terrain-override") === "true";
+let startAtNight = read("start-at-night") === "true";
 let terrainTarget: CoreBiome = coreBiomes.find(b => b === read("terrain-target")) ?? "snow";
 let best = Math.max(0, Number(read("best")) || 0);
 let newBest = false;
@@ -103,7 +104,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <canvas id="world" aria-label="3D"></canvas>
   <aside id="night-hud" class="night-hud" hidden>
     <div class="night-weapon"><span class="weapon-icon"></span><div class="shot-meter"><i></i></div></div>
-    <div><div class="ammo-slots"></div><small class="ammo-status"></small></div>
+    <div><div class="ammo-slots"></div><small class="ammo-status"></small><small class="wolf-exit-status" hidden></small></div>
   </aside>
   <canvas id="snow-weather" aria-hidden="true" hidden></canvas>
   <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="${CONFIG.coldMax}">
@@ -193,6 +194,7 @@ const clockDot = document.querySelector<SVGCircleElement>("#clock-dot")!;
 const nightHud = document.querySelector<HTMLElement>("#night-hud")!;
 const ammoSlots = nightHud.querySelector<HTMLElement>(".ammo-slots")!;
 const ammoStatus = nightHud.querySelector<HTMLElement>(".ammo-status")!;
+const wolfExitStatus = nightHud.querySelector<HTMLElement>(".wolf-exit-status")!;
 const shotMeter = nightHud.querySelector<HTMLElement>(".shot-meter i")!;
 
 function beep(kind: Sound) {
@@ -252,6 +254,7 @@ function renderDialog() {
       <div class="setting-row"><span class="setting-label">${icon("quality")}${t("quality")}</span><div class="segmented"><button class="${quality ? "selected" : ""}" data-quality="high" aria-pressed="${quality}">${t("high")}</button><button class="${!quality ? "selected" : ""}" data-quality="low" aria-pressed="${!quality}">${t("low")}</button></div></div>
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${t("terrainOverride")}</span><small>${t("terrainOverrideHint")}</small></div><button class="toggle ${terrainOverride ? "is-on" : ""}" data-action="terrain-override" role="switch" aria-checked="${terrainOverride}" aria-label="${t("terrainOverride")}"><span></span></button></div>
       <div class="terrain-selector" role="radiogroup" aria-label="${t("terrainOverride")}">${coreBiomes.map(b => `<button role="radio" aria-checked="${terrainTarget === b}" data-terrain="${b}" ${terrainOverride ? "" : "disabled"} class="${terrainTarget === b ? "selected" : ""}">${t(b)}</button>`).join("")}</div>
+      <div class="setting-row"><div class="setting-copy"><span class="setting-label">${t("startAtNight")}</span><small>${t("terrainOverrideHint")}</small></div><button class="toggle ${startAtNight ? "is-on" : ""}" data-action="start-at-night" role="switch" aria-checked="${startAtNight}" aria-label="${t("startAtNight")}"><span></span></button></div>
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>`;
   } else if (activeDialog === "guide") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("help")}</span><h2 id="dialog-title">${t("howTo")}</h2></div><div class="guide-list">
@@ -368,7 +371,7 @@ function start() {
   resultDelay = 0;
   document.body.classList.remove("crashed");
   game.nextTerrain = terrainOverride ? terrainTarget : null;
-  game.begin();
+  game.begin(startAtNight);
   // Commit the directed exit now; visuals still load only near that section.
   game.track.at(CONFIG.forestLength);
   tutorial.resetRun(game);
@@ -544,13 +547,16 @@ function updateNightUi() {
     clockDay.textContent = day;
   }
   clockDot.setAttribute("transform", `rotate(${360 * dayTime(time) / DAY_LENGTH} 24 24)`);
-  nightHud.hidden = phase !== "night" || game.mode === "over" || !!tutorial.guide;
+  nightHud.hidden = !game.nightGearActive || game.mode === "over" || game.introducing || !!tutorial.guide;
   if (nightHud.hidden) return;
   if (!ammoSlots.childElementCount) {
     nightHud.querySelector(".weapon-icon")!.innerHTML = icon("slingshot");
     ammoSlots.innerHTML = Array.from({length: CONFIG.nightCombat.ammo}, () => icon("stone")).join("");
   }
   const combat = game.nightCombat;
+  const wolves = combat.remaining;
+  wolfExitStatus.hidden = wolves === 0;
+  if (wolves) wolfExitStatus.textContent = t("wolfExitLock").replace("{count}", n(wolves));
   const ammo = `${n(combat.ammo)} / ${n(CONFIG.nightCombat.ammo)}`;
   nightHud.setAttribute("aria-label", `${t("slingshot")} · ${t("ammo")} ${ammo}`);
   Array.from(ammoSlots.children).forEach((slot, index) => slot.classList.toggle("spent", index >= combat.ammo));
@@ -705,6 +711,11 @@ function act(action: string) {
     audio.update(game, !!activeDialog);
     renderDialog();
     dialog.querySelector<HTMLButtonElement>('[data-action="music"]')?.focus();
+  } else if (action === "start-at-night") {
+    startAtNight = !startAtNight;
+    save("start-at-night", String(startAtNight));
+    renderDialog();
+    dialog.querySelector<HTMLButtonElement>('[data-action="start-at-night"]')?.focus();
   } else if (action === "tutorial-test") {
     testTutorials = !testTutorials;
     save("test-tutorials", String(testTutorials));
@@ -951,7 +962,7 @@ window.addEventListener("pointerup", (event) => {
   const tap = gesture.tap && !gesture.direction &&
     Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) <= 12;
   gesture = null;
-  if (!tap || activeDialog || tutorial.active || game.mode !== "running" || game.phase !== "night" ||
+  if (!tap || activeDialog || tutorial.active || game.mode !== "running" || game.nightCombat.remaining === 0 ||
     game.boosting || game.icy || document.elementFromPoint(event.clientX, event.clientY) !== worldCanvas) return;
   const canvas = worldCanvas.getBoundingClientRect();
   const id = world?.pickWolf(event.clientX - canvas.left, event.clientY - canvas.top);
