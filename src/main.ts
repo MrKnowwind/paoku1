@@ -93,6 +93,7 @@ const text = (key: MessageKey, tag = "span", cls = "") =>
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <canvas id="world" aria-label="3D"></canvas>
+  <canvas id="snow-weather" aria-hidden="true" hidden></canvas>
   <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="${CONFIG.coldMax}">
     <svg class="cold-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M3.34 7l17.32 10M3.34 17 20.66 7M9 5l3 3 3-3M9 19l3-3 3 3M4.44 11l4.09-1.1-1.1-4.1M19.56 13l-4.09 1.1 1.1 4.1M7.43 18.2l1.1-4.1-4.09-1.1M16.57 5.8l-1.1 4.1 4.09 1.1"/></svg>
     <div class="cold-track"><i id="cold-fill"></i></div>
@@ -409,8 +410,52 @@ function updateSnowUi() {
   cold.setAttribute("aria-valuenow", String(Math.floor(value)));
   document.querySelector<HTMLElement>("#cold-fill")!.style.width = `${value / CONFIG.coldMax * 100}%`;
   cold.classList.toggle("warming", !sample && game.coldFeedback > 0 && game.coldDelta < 0);
-  document.querySelector<HTMLElement>("#frost-edge")!.hidden = !game.inSnow || game.cold < 75;
 }
+const snowWeather = document.querySelector<HTMLCanvasElement>("#snow-weather")!;
+const snowPaint = snowWeather.getContext("2d");
+const frostEdge = document.querySelector<HTMLElement>("#frost-edge")!;
+const flakes = Array.from({length: 170}, () => ({
+  x: Math.random(), y: Math.random(), depth: Math.random(), phase: Math.random() * 6.28,
+}));
+function updateSnowWeather() {
+  const visible = game.inSnow && game.mode !== "ready" && tutorial.snowStep === 0;
+  snowWeather.hidden = !visible;
+  frostEdge.hidden = !visible || game.cold <= 0;
+  if (!visible) return;
+  frostEdge.style.opacity = String(Math.min(1, game.cold / CONFIG.coldMax) ** 1.45);
+  if (!snowPaint) return;
+  const width = Math.max(1, snowWeather.clientWidth), height = Math.max(1, snowWeather.clientHeight);
+  if (snowWeather.width !== width) snowWeather.width = width;
+  if (snowWeather.height !== height) snowWeather.height = height;
+  const storm = game.blizzard, time = game.worldTime;
+  const gust = storm * (1 + 0.22 * Math.sin(time * 1.8));
+  snowPaint.clearRect(0, 0, width, height);
+  snowPaint.fillStyle = snowPaint.strokeStyle = "#eef9ff";
+  snowPaint.lineCap = "round";
+  const spanX = width + 120, spanY = height + 50;
+  for (let i = 0; i < flakes.length; i++) {
+    const {x, y, depth, phase} = flakes[i];
+    const strength = i < 48 ? 1 : storm * Math.min(1, (flakes.length - i) / 30);
+    if (strength < 0.01) continue;
+    const drift = i < 48 ? 10 + 16 * depth : 86 + 180 * depth;
+    const px = ((x * spanX + time * drift + Math.sin(time * 1.3 + phase) * 13 + spanX) % spanX) - 60;
+    const py = (y * spanY + time * (27 + 64 * depth)) % spanY - 25;
+    const size = 0.8 + 2.2 * depth;
+    snowPaint.globalAlpha = strength * (0.34 + depth * 0.5);
+    snowPaint.beginPath();
+    if (storm > 0.08) {
+      snowPaint.lineWidth = size;
+      snowPaint.moveTo(px, py);
+      snowPaint.lineTo(px - gust * (7 + depth * 20), py - (3 + depth * 5));
+      snowPaint.stroke();
+    } else {
+      snowPaint.arc(px, py, size * 0.7, 0, Math.PI * 2);
+      snowPaint.fill();
+    }
+  }
+  snowPaint.globalAlpha = 1;
+}
+
 function closeSnowReview() {
   if (!tutorial.reviewingSnow) return;
   tutorial.closeSnowReview(); gesture = null;
@@ -890,6 +935,7 @@ try {
         counter.classList.add("pulse");
       }
       updateFeatureUi();
+      updateSnowWeather();
       lastCoins = game.coins;
       document.querySelector("#score")!.textContent = n(game.score);
       document.querySelector("#distance")!.textContent = n(game.distance);

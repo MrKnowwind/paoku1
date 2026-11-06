@@ -804,3 +804,50 @@ test("underwater safe routes vary with the seed and remain reachable", () => {
   }
   assert.equal(lanes.size, 24); assert.equal(heights.size, 24);
 });
+
+test("late land rows add obstacles and action coin trails while wall columns retain a safe level", () => {
+  const widths = new Set<number>();
+  let wallDoubles = 0, jumpTrails = 0, slideTrails = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const game = new RunnerGame({random: () => seed / 13});
+    game.start();
+    for (let distance = 4900; distance < 20800; distance += 140) {
+      game.distance = distance;
+      game.mode = "running";
+      game.protectionTime = 10;
+      game.update(0.001);
+      const ground = new Map<number, typeof game.items>();
+      const wall = new Map<string, number>();
+      for (const item of game.items) {
+        if (item.worldZ < distance || item.worldZ >= distance + 140) continue;
+        if (item.type === "wall-rock") {
+          const key = `${item.side}/${item.worldZ}`;
+          wall.set(key, (wall.get(key) ?? 0) + 1);
+        } else if (["log", "rock", "arch"].includes(item.type)) {
+          const row = ground.get(item.worldZ) ?? [];
+          row.push(item);
+          ground.set(item.worldZ, row);
+        }
+      }
+      for (const [z, row] of ground) {
+        widths.add(row.length);
+        assert.equal(new Set(row.map(item => item.lane)).size, row.length);
+        assert.ok(row.length <= (z < 5000 ? 1 : z < 15000 ? 2 : 3));
+        if (row.length === 3) assert.ok(row.some(item => item.type === "log"));
+        for (const item of row) {
+          const coin = game.items.find(coin => coin.type === "coin" &&
+            coin.lane === item.lane && coin.worldZ === z);
+          if (coin && item.type === "log" && coin.y > 2) jumpTrails++;
+          if (coin && item.type === "arch" && coin.y === 0.95) slideTrails++;
+          if (item.type === "rock") assert.equal(coin, undefined);
+        }
+      }
+      for (const count of wall.values()) {
+        assert.ok(count <= 2);
+        if (count === 2) wallDoubles++;
+      }
+    }
+  }
+  assert.deepEqual([...widths].sort(), [1, 2, 3]);
+  assert.ok(wallDoubles > 0 && jumpTrails > 0 && slideTrails > 0);
+});

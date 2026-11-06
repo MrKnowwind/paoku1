@@ -126,6 +126,7 @@ test("fire rewards a completed normal jump, while passing beside it or flying do
 
 test("snow planning includes a soft introduction, visible lethal combos, warming and a complete bypass", () => {
   const combinations = new Set<string>();
+  const iceWidths = new Set<number>();
   for (let seed = 1; seed <= 30; seed++) {
     const game = new RunnerGame({random: () => seed / 31}); game.nextTerrain = "snow"; game.start();
     const hazards = new Map<number, typeof game.items[number]>();
@@ -142,16 +143,42 @@ test("snow planning includes a soft introduction, visible lethal combos, warming
     for (let i = 1; i < liquor.length; i++) assert.equal(liquor[i].worldZ - liquor[i-1].worldZ, CONFIG.snowWarmSpacing);
     const ice = items.filter(i => i.type === "ice").sort((a,b) => a.worldZ-b.worldZ);
     assert.ok(ice.length > 0);
-    for (const patch of ice) {
-      const next = items.find(i => i.worldZ === patch.worldZ + 16 && i.lane === patch.lane)!;
-      combinations.add(next.type);
-      assert.notEqual(patch.lane, liquor[0].lane);
-      assert.ok(["snowdrift", "snowman", "pool", "fire"].includes(next.type));
-      assert.equal(items.some(i => ["pool", "fire", "stump", "snow-log"].includes(i.type) && i.lane === liquor[0].lane && i.worldZ >= patch.worldZ && i.worldZ < patch.worldZ + CONFIG.iceDistance + 18), false);
+    for (const z of new Set(ice.map(i => i.worldZ))) {
+      const patches = ice.filter(i => i.worldZ === z);
+      iceWidths.add(patches.length);
+      assert.equal(new Set(patches.map(i => i.lane)).size, patches.length);
+      const followup = items.filter(i => i.worldZ === z + 18);
+      assert.equal(followup.length, 2);
+      assert.ok(followup.every(i => i.lane !== liquor[0].lane));
+      for (const item of followup) combinations.add(item.type);
+      assert.equal(items.some(i => ["pool", "fire", "stump", "snow-log"].includes(i.type) &&
+        i.lane === liquor[0].lane && i.worldZ >= z && i.worldZ < z + CONFIG.iceDistance + 18), false);
     }
-    assert.ok(["snowdrift", "snowman"].includes(items.find(i => i.worldZ === ice[0].worldZ + 16 && i.lane === ice[0].lane)!.type));
+    assert.equal(ice.filter(i => i.worldZ === ice[0].worldZ).length, 2);
+    assert.deepEqual(items.filter(i => i.worldZ === ice[0].worldZ + 18).map(i => i.type).sort(), ["snowdrift", "snowman"]);
   }
-  assert.ok(combinations.has("pool") && combinations.has("fire") && combinations.has("snowdrift"));
+  assert.deepEqual([...iceWidths].sort(), [2, 3]);
+  assert.deepEqual([...combinations].sort(), ["fire", "pool", "snowdrift", "snowman", "stump"]);
+});
+
+test("seeded blizzard increases passive cold by 50 percent and clears when leaving snow", () => {
+  const game = snowGame();
+  let stormDistance = 0;
+  for (let d = 660; d < 1260; d++) {
+    game.distance = d;
+    if (game.blizzard === 1) { stormDistance = d + 5; break; }
+  }
+  assert.ok(stormDistance > 805 && stormDistance < 1000);
+  game.distance = stormDistance;
+  game.update(0.5);
+  assert.ok(Math.abs(game.cold - 0.5 * CONFIG.coldRate * 1.5) < 0.001);
+  const duplicate = snowGame();
+  duplicate.distance = stormDistance;
+  assert.equal(duplicate.blizzard, 1);
+  game.distance = 1260;
+  game.update(0.01);
+  assert.equal(game.blizzard, 0);
+  assert.equal(game.cold, 0);
 });
 
 test("three real-model lesson steps freeze cold and timers and persist only on final confirmation", () => {

@@ -88,6 +88,19 @@ interface Snapshot {
   wallGap?: TrackGap;
   items: TrackItem[];
 }
+function landGrid(distance: number) {
+  if (distance >= 20000) return {origin: 20017, spacing: 20, jitter: 4};
+  if (distance >= 10000) return {origin: 10017, spacing: 24, jitter: 6};
+  return {origin: 65, spacing: CONFIG.rowSpacing, jitter: 12};
+}
+function landAnchor(distance: number): number {
+  const {origin, spacing} = landGrid(distance);
+  const anchor = origin + Math.max(0, Math.ceil((distance - origin) / spacing)) * spacing;
+  if (distance < 10000 && anchor >= 10000) return landGrid(10000).origin;
+  if (distance < 20000 && anchor >= 20000) return landGrid(20000).origin;
+  return anchor;
+}
+
 export class RunnerGame {
   mode: GameMode = "ready";
   waterLevel = 1;
@@ -115,6 +128,13 @@ export class RunnerGame {
   private generatedSnow = new Set<number>();
   get icy() { return this.iceRemaining > 0 || this.iceRecover > 0; }
   get inSnow() { return this.terrain.biome === "snow"; }
+  get blizzard() {
+    const section = this.terrain;
+    if (section.biome !== "snow") return 0;
+    const start = section.start + 145 + this.hash(section.cycle, 82) * 140;
+    const end = start + 135 + this.hash(section.cycle, 83) * 50;
+    return Math.max(0, Math.min(1, (this.distance - start) / 24, (end - this.distance) / 24));
+  }
   lane = 0;
   x = 0;
   y = 0;
@@ -150,6 +170,7 @@ export class RunnerGame {
   private horizontalVelocity = 0;
   private resumeMode: "running" | "intro" = "running";
   private nextRow = 65;
+  private nextLandRow = 65;
   private seed = 1;
   private autoSpawn: boolean;
   private random: () => number;
@@ -297,7 +318,7 @@ export class RunnerGame {
     this.cold = this.coldGrace = this.coldFeedback = this.coldDelta = 0;
     this.iceRemaining = this.iceRecover = this.iceX = this.drinkTime = 0;
     this.triggeredIce.clear(); this.firePasses.clear(); this.warmedFires.clear(); this.generatedSnow.clear();
-    this.nextRow = 65;
+    this.nextRow = this.nextLandRow = 65;
     this.runClock = 0;
     this.lastSnapshot = -1;
     this.history = [];
@@ -448,64 +469,22 @@ export class RunnerGame {
     while (this.nextRow <= this.distance + CONFIG.trackLookahead) {
       const row = Math.round((this.nextRow - 65) / CONFIG.rowSpacing);
       const biome = sectionAt(this.nextRow, this.track).biome;
-      const shifted = this.nextRow + (this.hash(row, 30) - 0.5) * 12;
-      const z = biome !== "water" && sectionAt(shifted, this.track).biome === biome ? shifted : this.nextRow;
-      const base = 1000 + row * 128;
-      if (obstacleAllowed(z, this.seed, this.track)) {
-        if (biome === "snow") {
-          this.snowRow(z);
-          this.nextRow += CONFIG.rowSpacing;
-          continue;
-        }
-        if (sectionAt(z, this.track).biome === "water") {
-          this.waterRow(z, row, base);
-          this.nextRow += CONFIG.rowSpacing;
-          continue;
-        }
-        const lane = Math.floor(this.hash(row, 1) * 3) - 1;
-        const types: ItemType[] = ["log", "arch", "rock"];
-        const type = types[Math.floor(this.hash(row, 2) * 3)];
-        const shelf = this.shelfFor(type, lane, z, base);
-        const empty = this.hash(row, 7) < 0.22;
-        if (!empty) this.emit(type, lane, z, 0, base);
-        // Centre shelves span two lanes from their wall; leave coins on the open lane.
-        const safeLane = shelf
-          ? shelf.laneCount === 1
-            ? 0
-            : -shelf.side
-          : lane === 1
-            ? 0
-            : lane + 1;
-        const available = [-1, 0, 1].filter(l => empty || (shelf ? !underRockShelf(shelf, l * 2.5) : l !== lane));
-        const roll = this.hash(row, 8);
-        const count = roll < CONFIG.coinSingleRatio ? 1 : roll < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
-        available.sort((a, b) => (a === safeLane ? -1 : b === safeLane ? 1 : a - b));
-        for (const l of available.slice(0, count))
-          for (let i = 0; i < 5; i++)
-            if (obstacleAllowed(z - 8 + i * 3.5, this.seed, this.track))
-              this.emit("coin", l, z - 8 + i * 3.5, 0.95, base + 16 + (l + 1) * 5 + i);
-        if (
-          this.hash(row, 3) < CONFIG.pickupChance &&
-          Array.from(
-            {
-              length:
-                Math.ceil(CONFIG.pickupMinSpacing / CONFIG.rowSpacing) - 1,
-            },
-            (_, i) => row - i - 1,
-          ).every(
-            (previous) =>
-              previous < 0 || this.hash(previous, 3) >= CONFIG.pickupChance,
-          )
-        )
-          this.emit(
-            this.hash(row, 4) < 0.5 ? "magnet" : "shield",
-            safeLane,
-            z,
-            1.0,
-            base + 8,
-          );
-      }
+      if (biome === "snow" && obstacleAllowed(this.nextRow, this.seed, this.track))
+        this.snowRow(this.nextRow);
+      if (biome === "water" && obstacleAllowed(this.nextRow, this.seed, this.track))
+        this.waterRow(this.nextRow, row, 1000 + row * 128);
       this.nextRow += CONFIG.rowSpacing;
+    }
+    while (this.nextLandRow <= this.distance + CONFIG.trackLookahead) {
+      const anchor = this.nextLandRow;
+      const { spacing, jitter, origin } = landGrid(anchor);
+      const row = (anchor - origin) / spacing;
+      const biome = this.track.at(anchor).biome;
+      const shifted = anchor + (this.hash(anchor < 10000 ? row : anchor, 30) - 0.5) * jitter;
+      const z = this.track.at(shifted).biome === biome ? shifted : anchor;
+      if ((biome === "forest" || biome === "canyon") && obstacleAllowed(z, this.seed, this.track))
+        this.landRow(z, anchor, anchor < 10000 ? row : anchor);
+      this.nextLandRow = landAnchor(anchor + spacing);
     }
     for (const gap of gapsNear(this.distance, this.seed, this.track)) {
       if (
@@ -527,10 +506,11 @@ export class RunnerGame {
           const choices = [0, 1, 2].filter(level => Math.abs(level - safe) <= 1);
           safe = choices[Math.floor(this.hash(base + column, 33) * choices.length)];
           const blocked = [0, 1, 2].filter(level => level !== safe);
-          if (this.hash(base + column, 34) < 0.45)
+          const distance = gap.start + offset;
+          if (this.hash(base + column, 34) < (distance >= 15000 ? 0.1 : distance >= 5000 ? 0.25 : 0.45))
             blocked.splice(Math.floor(this.hash(base + column, 35) * blocked.length), 1);
           columns.push({offset, safe, blocked});
-          offset += 24 + this.hash(base + column, 36) * 8;
+          offset += (distance >= 20000 ? 16 : distance >= 10000 ? 20 : 24) + this.hash(base + column, 36) * 8;
         }
         // Coin trails point to the safe height of the next obstacle column.
         for (let offset = 8, slot = 0; offset < gap.end - gap.start - 5; offset += 6, slot++) {
@@ -547,39 +527,95 @@ export class RunnerGame {
       }
     }
   }
-  // Whole 96m combinations reserve the same bypass lane, including the complete
-  // forced slide and pool footprint. No neighbouring row can fill that bypass.
+  private landRow(z: number, anchor: number, row: number) {
+    const base = anchor < 10000 ? 1000 + row * 128 : 1000000000 + anchor * 128;
+    const lane = Math.floor(this.hash(row, 1) * 3) - 1;
+    const lanes = [lane, lane === 1 ? 0 : lane + 1, lane === -1 ? 1 : -1];
+    const types = ["log", "arch", "rock"] as const;
+    const roll = this.hash(row, 9);
+    const count = this.hash(row, 7) < 0.22 ? 0 :
+      z >= 15000 && anchor !== landGrid(20000).origin && roll < 0.28 &&
+      this.hash(anchor - landGrid(anchor).spacing, 9) >= 0.28 ? 3 :
+      z >= 5000 && roll < 0.65 ? 2 : 1;
+    const obstacles = new Map<number, ItemType>();
+    let shelf: RockShelf | undefined;
+    for (let index = 0; index < count; index++) {
+      const l = lanes[index];
+      let type: ItemType = types[Math.floor(this.hash(row, 2 + index * 10) * 3)];
+      if (index === 2) type = "log"; // A full row always has a jumpable lane.
+      if (count > 1 && l === 0 && type === "arch" && this.track.at(z).biome === "canyon") type = "log";
+      this.emit(type, l, z, 0, base + index);
+      obstacles.set(l, type);
+      if (count === 1) shelf = this.shelfFor(type, l, z, base);
+    }
+    const available = lanes.filter(l => !obstacles.has(l) && (!shelf || !underRockShelf(shelf, l * 2.5)));
+    const safe = available[0] ?? lanes[2];
+    const coinRoll = this.hash(row, 8);
+    const coinCount = coinRoll < CONFIG.coinSingleRatio ? 1 : coinRoll < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
+    const actionLanes = lanes.filter(l => {
+      const type = obstacles.get(l);
+      return type === "log" || type === "arch" || !!shelf && underRockShelf(shelf, l * 2.5);
+    });
+    const routes = count === 3 ? [safe, ...actionLanes.filter(l => l !== safe)] :
+      this.hash(row, 13) < 0.55 && actionLanes.length ? [safe, actionLanes[0], ...available.slice(1)] : available;
+    for (const l of routes.slice(0, coinCount)) {
+      const type = obstacles.get(l);
+      this.groundCoins(l, z, base, type === "log" ? "jump" : "flat");
+    }
+    if (!available.length || this.hash(row, 3) >= CONFIG.pickupChance) return;
+    for (let previous = landAnchor(anchor - CONFIG.pickupMinSpacing + 1); previous < anchor;
+      previous = landAnchor(previous + landGrid(previous).spacing)) {
+      const key = previous < 10000 ? (previous - 65) / CONFIG.rowSpacing : previous;
+      if (this.hash(key, 3) < CONFIG.pickupChance) return;
+    }
+    this.emit(this.hash(row, 4) < 0.5 ? "magnet" : "shield", safe, z, 1, base + 8);
+  }
+  private groundCoins(lane: number, z: number, base: number, shape: "jump" | "flat") {
+    for (let i = 0; i < 5; i++) {
+      const offset = (i - 2) * (shape === "jump" ? 2.2 : 3.5);
+      const y = shape === "jump" ? 0.95 + 2 * (1 - ((i - 2) / 3.2) ** 2) : 0.95;
+      if (obstacleAllowed(z + offset, this.seed, this.track))
+        this.emit("coin", lane, z + offset, y, base + 16 + (lane + 1) * 5 + i);
+    }
+  }
+  // Each block has a bypass. An occasional full-width ice row is jumpable
+  // and its bypass stays clear for players who skid instead.
   private snowRow(z: number) {
     const section = this.track.at(z);
-    const block = Math.floor((z - section.start - 64) / CONFIG.snowWarmSpacing);
+    const block = Math.floor((z - section.start - 48) / CONFIG.snowWarmSpacing);
     if (block < 0) return;
     const key = section.cycle * 100 + block;
     if (this.generatedSnow.has(key)) return;
     this.generatedSnow.add(key);
-    const start = section.start + 64 + block * CONFIG.snowWarmSpacing;
-    if (start + 60 > section.end - CONFIG.exitSafety) return;
+    const start = section.start + 48 + block * CONFIG.snowWarmSpacing;
+    if (start + 66 >= section.end - CONFIG.exitSafety) return;
     const base = 500000000000 + key * 100;
     const safe = Math.floor(this.hash(section.cycle, 70) * 3) - 1;
     const others = [-1, 0, 1].filter(l => l !== safe);
     const lane = others[block % 2];
-    this.emit("liquor", safe, start + 50, 0.95, base + 1);
-    // First encounter is always ice + soft snow, before any lethal combination.
-    const kind = block === 0 ? 0 : Math.floor(this.hash(key, 71) * 5);
-    if (kind < 3) {
-      this.emit("ice", lane, start, 0, base + 2);
-      this.emit(kind === 0 ? (block % 2 ? "snowman" : "snowdrift") : kind === 1 ? "pool" : "fire",
-        lane, start + 16, 0, base + 3);
-      if (block > 0) this.emit("fire", others.find(l => l !== lane)!, start + 60, 0, base + 4);
-    } else if (kind === 3) {
-      this.emit("snow-log", 0, start + 12, 0, base + 5);
-    } else {
-      this.emit("stump", lane, start + 12, 0, base + 6);
-      this.emit("snowman", others.find(l => l !== lane)!, start + 12, 0, base + 7);
-      this.emit("fire", lane, start + 60, 0, base + 4);
+    const other = others[1 - block % 2];
+    const first = block === 0;
+    const aftermath = ["snowdrift", "snowman", "stump", "fire", "pool"] as const;
+    this.emit("liquor", safe, start + 46, 0.95, base + 1);
+    const ice = first || this.hash(key, 71) < 0.78;
+    if (ice) {
+      for (const l of others) this.emit("ice", l, start, 0, base + 2 + l + 1);
+      if (!first && this.hash(key, 76) < 0.22) this.emit("ice", safe, start, 0, base + 2 + safe + 1);
     }
-    const count = this.hash(key, 72) < CONFIG.coinSingleRatio ? 1 : this.hash(key, 72) < CONFIG.coinSingleRatio + CONFIG.coinDoubleRatio ? 2 : 3;
-    for (const l of [safe, ...others].slice(0, count))
-      for (let i = 0; i < 5; i++) this.emit("coin", l, start + 42 + i * 3, 0.95, base + 16 + (l + 1) * 5 + i);
+    for (const l of others) {
+      const type = first ? (l === lane ? "snowdrift" : "snowman") :
+        aftermath[Math.floor(this.hash(key, 73 + l) * aftermath.length)];
+      this.emit(type, l, start + 18, 0, base + 6 + l + 1);
+    }
+    this.groundCoins(safe, start + 46, base, "flat");
+    if (!first && this.hash(key, 78) < 0.24) {
+      this.emit("snow-log", 0, start + 65, 0, base + 12);
+      this.groundCoins(safe, start + 65, base + 20, "jump");
+    } else {
+      this.emit(this.hash(key, 79) < 0.5 ? "stump" : "fire", lane, start + 65, 0, base + 12);
+      this.emit(this.hash(key, 80) < 0.5 ? "snowman" : "snowdrift", other, start + 65, 0, base + 13);
+      this.groundCoins(lane, start + 65, base + 20, "jump");
+    }
   }
   private changeCold(amount: number) {
     this.cold = Math.max(0, this.cold + amount);
@@ -731,6 +767,7 @@ export class RunnerGame {
       65 +
       Math.max(0, Math.floor((this.distance - 30 - 65) / CONFIG.rowSpacing)) *
         CONFIG.rowSpacing;
+    this.nextLandRow = landAnchor(this.distance - 38);
     this.fillTrack();
   }
   private collect(item: TrackItem) {
@@ -948,7 +985,7 @@ export class RunnerGame {
         if (this.iceRemaining === 0) this.iceRecover = CONFIG.iceRecovery;
       } else this.iceRecover = Math.max(0, this.iceRecover - step);
       if (!this.inSnow) this.iceRemaining = this.iceRecover = 0;
-      if (this.inSnow && !flying && this.coldGrace === 0) this.cold += step * CONFIG.coldRate;
+      if (this.inSnow && !flying && this.coldGrace === 0) this.cold += step * CONFIG.coldRate * (this.blizzard > 0 ? CONFIG.blizzardColdMultiplier : 1);
       if (!wasSwimming && this.swimming) {
         this.waterLevel = 1; this.waterY = CONFIG.waterHeights[1]; this.lane = 0;
         this.y = this.velocity = this.slideTime = 0; this.fastFalling = false;

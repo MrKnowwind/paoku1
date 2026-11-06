@@ -1921,14 +1921,20 @@ export class ForestScene {
     });
     if (running && openingReady) this.openingMistTime += dt;
     const mist = ready || introducing ? 1 : openingFog(this.openingMistTime);
-    const terrainFog = 0.009 + darkness * 0.012 + immersed * 0.008;
+    const terrainFog = 0.009 + darkness * 0.012 + immersed * 0.008 + game.blizzard * 0.015;
     this.scene.fogDensity = terrainFog + (CONFIG.openingFogDensity - terrainFog) * mist;
     this.sky.intensity = 0.75 - darkness * 0.3;
     this.sun.intensity = 0.85 - darkness * 0.65;
     const inlandGround = Color3.Lerp(Color3.FromHexString("#698463"), Color3.FromHexString("#a88a67"), canyonBlend);
     this.sky.groundColor = Color3.Lerp(inlandGround, Color3.FromHexString("#a8b9ce"), snowLight);
     this.forestVisible = canyonBlend < 0.5 && snowLight < 0.55;
-    const forestHorizon = (1 - canyonBlend) * (1 - smooth(snowLight)) * (1 - coastalSky) * (1 - immersed);
+    let forestSnowFade = snowLight;
+    if (section.biome === "snow-transition" && section.from === "forest")
+      forestSnowFade = (cameraDistance - section.start) / (CONFIG.snowTransition + 90);
+    if (section.biome === "snow" && section.from === "forest")
+      forestSnowFade = (cameraDistance - section.start + CONFIG.snowTransition) / (CONFIG.snowTransition + 90);
+    const forestHorizon = (1 - canyonBlend) * (1 - smooth(forestSnowFade)) * (1 - coastalSky) * (1 - immersed);
+    this.forestBackdrop.position.y = -12 * smooth(forestSnowFade);
     this.forestBackdrop.setEnabled(forestHorizon > 0.005);
     for (const hill of this.forestBackdrop.getChildMeshes()) hill.visibility = forestHorizon;
     this.chunks.forEach((root, i) => {

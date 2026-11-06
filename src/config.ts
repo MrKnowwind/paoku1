@@ -7,6 +7,7 @@ export const CONFIG = {
   terrainUnlock: { forest: 0, canyon: 600, water: 1600, snow: 2600 },
   coldMax: 100,
   coldRate: 1.5,
+  blizzardColdMultiplier: 1.5,
   snowdriftCold: 15,
   snowmanCold: 25,
   fireWarmth: 25,

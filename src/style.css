@@ -1756,7 +1756,14 @@ html[lang="ko-KR"] .intro h1 {
 .cold-hud.warming .cold-track i { background: #cc904b; }
 .cold-hud.teaching { position: relative; z-index: auto; inset: auto; transform: none; width: min(210px, 100%); margin: 0 0 14px; background: #e8f2f6; }
 .cold-hud.teaching .cold-track i { transition: none; }
-.frost-edge { position: fixed; z-index: 3; inset: 0; pointer-events: none; box-shadow: inset 0 0 35px 9px #c5e5ff94; }
+#snow-weather, .frost-edge { position: fixed; z-index: 3; inset: 0; pointer-events: none; }
+#snow-weather { width: 100%; height: 100%; }
+.frost-edge {
+  background:
+    radial-gradient(ellipse at 50% 54%, transparent 44%, #90c1ed42 76%, #d7edffc9 100%),
+    linear-gradient(115deg, #d2efff59, transparent 20% 79%, #d2efff59);
+  box-shadow: inset 0 0 42px 10px #d8f2ffaf;
+}
 .terrain-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .terrain-selector button { border: 1px solid #b8c8bb; border-radius: 8px; padding: 9px 4px; background: #e5eade; }
 .terrain-selector .selected { background: #526e5b; color: white; }
