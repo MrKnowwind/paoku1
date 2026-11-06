@@ -1,4 +1,16 @@
 export const CONFIG = {
+  daylight: 180,
+  dusk: 30,
+  night: 90,
+  nightCombat: {
+    ammo: 6, damage: 1, refillFraction: 0.1, refillInterval: 10,
+    cooldown: 0.55, stoneSpeed: 64,
+    packMin: 3, packMax: 5, wolfHealth: 2, packInterval: 25, packDuration: 17,
+    entrance: 0.8, exit: 0.65, windup: 0.3, warning: 1.1,
+    lunge: 0.24, bite: 0.16, recovery: 0.55, attackInterval: 3.1,
+    attackRetry: 0.3, firstAttackDelay: 0.65, laneChangeTime: 0.44,
+    biteHalfWidth: 0.96, biteHalfLength: 2.6, jumpClearance: 0.92,
+  },
   openingFogDensity: 0.095,
   openingFogHold: 0.6,
   openingFogFade: 4.2,

@@ -8,6 +8,7 @@ import { Economy } from "./economy.ts";
 import { coreBiomes } from "./track.ts";
 import type { CoreBiome } from "./track.ts";
 import { CONFIG } from "./config.ts";
+import { DAY_LENGTH, NIGHT_START, dayNumber, dayTime } from "./daylight.ts";
 import { Tutorial } from "./tutorial.ts";
 import type { GuideId, LessonId } from "./tutorial.ts";
 import { SnowWeather } from "./snow-weather.ts";
@@ -91,9 +92,19 @@ const t = (key: MessageKey) => messages[language][key];
 const n = (value: number) => numberFormatter.format(Math.floor(value));
 const text = (key: MessageKey, tag = "span", cls = "") =>
   `<${tag} class="${cls}" data-i18n="${key}">${t(key)}</${tag}>`;
+const clockSegments = [
+  {phase: "day", length: CONFIG.daylight, start: 0},
+  {phase: "dusk", length: CONFIG.dusk, start: CONFIG.daylight},
+  {phase: "night", length: CONFIG.night, start: NIGHT_START},
+].map(({phase, length, start}) => `<circle class="dial-${phase}" cx="24" cy="24" r="19" pathLength="${DAY_LENGTH}"
+  stroke-dasharray="${length} ${DAY_LENGTH - length}" stroke-dashoffset="${-start}" transform="rotate(-90 24 24)"/>`).join("");
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <canvas id="world" aria-label="3D"></canvas>
+  <aside id="night-hud" class="night-hud" hidden>
+    <div class="night-weapon"><span class="weapon-icon"></span><div class="shot-meter"><i></i></div></div>
+    <div><div class="ammo-slots"></div><small class="ammo-status"></small></div>
+  </aside>
   <canvas id="snow-weather" aria-hidden="true" hidden></canvas>
   <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="${CONFIG.coldMax}">
     <svg class="cold-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M3.34 7l17.32 10M3.34 17 20.66 7M9 5l3 3 3-3M9 19l3-3 3 3M4.44 11l4.09-1.1-1.1-4.1M19.56 13l-4.09 1.1 1.1 4.1M7.43 18.2l1.1-4.1-4.09-1.1M16.57 5.8l-1.1 4.1 4.09 1.1"/></svg>
@@ -135,6 +146,17 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
           <span class="distance-counter" data-label="distance">${icon("route")}<span><b id="distance">0</b><small>m</small></span></span>
           <span class="coin-counter" data-label="coins">${icon("coin")}<b id="coins">0</b></span>
         </div>
+        <div id="day-clock" class="day-clock" role="img">
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <circle class="dial-face" cx="24" cy="24" r="23"/>
+            <g class="dial-arcs">${clockSegments}</g>
+            <g class="phase-glyph glyph-day"><circle cx="24" cy="20" r="3.4"/><path d="M24 12.8v2.2m0 10v2.2m-7.2-7.2H19m10 0h2.2m-12.3-5.1 1.5 1.5m7.2 7.2 1.5 1.5m-10.2 0 1.5-1.5m7.2-7.2 1.5-1.5"/></g>
+            <g class="phase-glyph glyph-dusk"><path d="M17 24h14m-11-3a4 4 0 0 1 8 0m-4-9v2m-6.2 1.5 1.5 1.5m9.4 0 1.5-1.5"/></g>
+            <g class="phase-glyph glyph-night"><path d="M26.7 13.6a6.4 6.4 0 1 0 4.2 9.7 6.4 6.4 0 0 1-4.2-9.7Z"/></g>
+            <text id="clock-day" x="24" y="34" text-anchor="middle">1</text>
+            <circle id="clock-dot" cx="24" cy="5" r="2.9"/>
+          </svg>
+        </div>
       </section>
       <div class="header-actions">
         <button class="icon-button pause-button" data-action="pause" data-label="pause" hidden>${icon("pause")}</button>
@@ -163,6 +185,15 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
   <div id="countdown" class="countdown" hidden aria-live="polite" aria-atomic="true"></div>
 `;
+
+const worldCanvas = document.querySelector<HTMLCanvasElement>("#world")!;
+const dayClock = document.querySelector<HTMLElement>("#day-clock")!;
+const clockDay = document.querySelector<SVGTextElement>("#clock-day")!;
+const clockDot = document.querySelector<SVGCircleElement>("#clock-dot")!;
+const nightHud = document.querySelector<HTMLElement>("#night-hud")!;
+const ammoSlots = nightHud.querySelector<HTMLElement>(".ammo-slots")!;
+const ammoStatus = nightHud.querySelector<HTMLElement>(".ammo-status")!;
+const shotMeter = nightHud.querySelector<HTMLElement>(".shot-meter i")!;
 
 function beep(kind: Sound) {
   audio.play(kind);
@@ -208,7 +239,8 @@ function renderDialog() {
       : economy.state.hourglasses === 0
         ? "noHourglass"
         : "reviveHint";
-    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div>${usable ? "" : `<p class="revive-copy">${t(hint)}</p>`}<div class="revive-stock" aria-label="${t("stock")}">${icon("hourglass")}×${n(economy.state.hourglasses)}</div><button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
+    const wolfHit = game.lastHit === "wolf" ? `<p class="revive-copy">${t("wolfHit")}</p>` : "";
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div>${wolfHit}${usable ? "" : `<p class="revive-copy">${t(hint)}</p>`}<div class="revive-stock" aria-label="${t("stock")}">${icon("hourglass")}×${n(economy.state.hourglasses)}</div><button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
   } else if (activeDialog === "settings") {
     const selected = languages.find((item) => item.code === language)!;
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("settings")}</span><h2 id="dialog-title">${t("settings")}</h2></div>
@@ -242,6 +274,7 @@ function renderDialog() {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
     const hint =
+      game.lastHit === "wolf" ? "wolfHit" :
       game.lastHit === "cold" ? "coldHint" : ["pool", "fire"].includes(game.lastHit ?? "") ? "snowDeathHint" :
       ["bubble", "coral", "volcano", "fish"].includes(game.lastHit ?? "")
         ? "lessonSwim"
@@ -373,6 +406,7 @@ function showToast(message: string) {
   }, 3200);
 }
 const lessonTitles: Record<LessonId, MessageKey> = {
+  wolf: "wolfTip",
   snow: "snowGuide",
   ocean: "oceanGuide",
   move: "lessonMove",
@@ -499,6 +533,37 @@ function updateTutorialUi() {
   overlay.hidden = !lesson || !!tutorial.guide || game.mode !== "running" || !!activeDialog;
   if (lesson) document.querySelector("#tutorial-title")!.textContent = t(lessonTitles[lesson.id]);
 }
+function updateNightUi() {
+  const time = game.worldTime;
+  const phase = game.phase;
+  const day = n(dayNumber(time));
+  const label = `${t("clockDay").replace("{day}", day)} · ${t(phase === "day" ? "phaseDay" : phase === "dusk" ? "phaseDusk" : "phaseNight")}`;
+  if (dayClock.getAttribute("aria-label") !== label) {
+    dayClock.setAttribute("aria-label", label);
+    dayClock.dataset.phase = phase;
+    clockDay.textContent = day;
+  }
+  clockDot.setAttribute("transform", `rotate(${360 * dayTime(time) / DAY_LENGTH} 24 24)`);
+  nightHud.hidden = phase !== "night" || game.mode === "over" || !!tutorial.guide;
+  if (nightHud.hidden) return;
+  if (!ammoSlots.childElementCount) {
+    nightHud.querySelector(".weapon-icon")!.innerHTML = icon("slingshot");
+    ammoSlots.innerHTML = Array.from({length: CONFIG.nightCombat.ammo}, () => icon("stone")).join("");
+  }
+  const combat = game.nightCombat;
+  const ammo = `${n(combat.ammo)} / ${n(CONFIG.nightCombat.ammo)}`;
+  nightHud.setAttribute("aria-label", `${t("slingshot")} · ${t("ammo")} ${ammo}`);
+  Array.from(ammoSlots.children).forEach((slot, index) => slot.classList.toggle("spent", index >= combat.ammo));
+  nightHud.classList.toggle("refilled", combat.refillFlash > 0);
+  shotMeter.style.transform = `scaleX(${1 - combat.cooldown / CONFIG.nightCombat.cooldown})`;
+  ammoStatus.textContent = combat.refillFlash > 0 ? t("ammoRefill") :
+    combat.ammo === 0 ? t("ammoEmpty") : combat.cooldown > 0 ? t("shotCooldown") : ammo;
+  if (game.mode === "running" && !activeDialog && !tutorial.active &&
+    combat.hunt.wolves.length && !tutorial.knows("wolf")) {
+    tutorial.complete("wolf");
+    showToast(t("wolfTip"));
+  }
+}
 function updateFeatureUi() {
   const state = economy.state;
   document.querySelectorAll<HTMLElement>(".wallet-count").forEach(element => {
@@ -530,6 +595,7 @@ function updateFeatureUi() {
   button.classList.toggle("tool-live", game.boosting);
   document.querySelector("#booster-status")!.textContent = game.boosting ? "" :
     game.boostCooldown > 0 ? `${Math.ceil(game.boostCooldown)}s` : `×${n(state.boosters)}`;
+  updateNightUi();
 }
 function act(action: string) {
   if (tutorial.guide && !activeDialog) { guideAction(action); return; }
@@ -811,6 +877,7 @@ let gesture: {
   x: number;
   y: number;
   id: number;
+  tap: boolean;
   threshold: number;
   direction: "left" | "right" | "jump" | "slide" | null;
 } | null = null;
@@ -826,6 +893,7 @@ window.addEventListener("pointerdown", (event) => {
     game.mode !== "running" ||
     game.transitioning || game.icy || tutorial.guide ||
     gesture ||
+    !event.isPrimary ||
     (event.pointerType === "mouse" && event.button !== 0) ||
     activeDialog ||
     (event.target as HTMLElement).closest("button,a,dialog")
@@ -835,6 +903,7 @@ window.addEventListener("pointerdown", (event) => {
     x: event.clientX,
     y: event.clientY,
     id: event.pointerId,
+    tap: event.target === worldCanvas,
     threshold: event.pointerType === "mouse" ? 56 : Math.max(40, Math.min(64, Math.min(innerWidth, innerHeight) * 0.1)),
     direction: null,
   };
@@ -842,6 +911,7 @@ window.addEventListener("pointerdown", (event) => {
 window.addEventListener("pointermove", (event) => {
   if (game.icy || tutorial.guide) { gesture = null; return; }
   if (!gesture || gesture.id !== event.pointerId) return;
+  if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 12) gesture.tap = false;
   // Track the swipe's furthest point so a reversal works without lifting.
   if (gesture.direction === "left")
     gesture.x = Math.min(gesture.x, event.clientX);
@@ -877,7 +947,15 @@ window.addEventListener("pointerup", (event) => {
       guideAction(dx < 0 ? "guide-next" : "guide-prev");
     return;
   }
-  if (gesture?.id === event.pointerId) gesture = null;
+  if (gesture?.id !== event.pointerId) return;
+  const tap = gesture.tap && !gesture.direction &&
+    Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) <= 12;
+  gesture = null;
+  if (!tap || activeDialog || tutorial.active || game.mode !== "running" || game.phase !== "night" ||
+    game.boosting || game.icy || document.elementFromPoint(event.clientX, event.clientY) !== worldCanvas) return;
+  const canvas = worldCanvas.getBoundingClientRect();
+  const id = world?.pickWolf(event.clientX - canvas.left, event.clientY - canvas.top);
+  if (id !== undefined) game.nightCombat.fire(id, game);
 });
 window.addEventListener("pointercancel", (event) => {
   if (guideSwipe?.id === event.pointerId) guideSwipe = null;

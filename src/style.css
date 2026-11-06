@@ -297,6 +297,60 @@ h1 span {
   min-width: 100px;
   gap: 2px;
 }
+.day-clock {
+  flex: none;
+  width: 46px;
+  margin-left: auto;
+}
+.day-clock svg { display: block; width: 100%; }
+.dial-face { fill: #334a3f; stroke: #d5d4a5; }
+.dial-arcs { fill: none; stroke-width: 4; }
+.dial-arcs circle { opacity: 0.56; }
+.dial-day { stroke: #f2cf76; }
+.dial-dusk { stroke: #ef9768; }
+.dial-night { stroke: #a3baff; }
+[data-phase="day"] .dial-day,
+[data-phase="dusk"] .dial-dusk,
+[data-phase="night"] .dial-night { opacity: 1; }
+.phase-glyph { display: none; fill: none; stroke-width: 1.45; stroke-linecap: round; }
+[data-phase="day"] .glyph-day { display: block; stroke: #ffe3a0; }
+[data-phase="dusk"] .glyph-dusk { display: block; stroke: #ffc39f; }
+[data-phase="night"] .glyph-night { display: block; stroke: #c9d6ff; }
+#clock-day { fill: #f8f0d5; font-size: 8px; font-weight: 700; }
+#clock-dot { fill: #fffbe5; stroke: #415447; stroke-width: 1; }
+#hud, #cold-hud, #run-status, #night-hud, #notice-toast { pointer-events: auto; touch-action: none; }
+.night-hud {
+  position: fixed;
+  z-index: 5;
+  left: max(14px, calc(env(safe-area-inset-left) + 8px));
+  bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 1px solid #8b9b9f;
+  border-radius: 11px;
+  color: #f5ead4;
+  background: #253634ed;
+}
+.night-weapon .art-icon { display: block; width: 30px; height: 30px; }
+.shot-meter { height: 3px; background: #172624; border-radius: 3px; overflow: hidden; }
+.shot-meter i { display: block; height: 100%; background: #eec778; transform-origin: left; }
+.ammo-slots { display: flex; gap: 2px; }
+.ammo-slots .art-icon { width: 15px; height: 15px; }
+.ammo-slots .spent { opacity: 0.28; }
+.ammo-status { display: block; min-height: 14px; font-size: 10px; line-height: 1.4; }
+.night-hud.refilled { border-color: #b6e097; }
+.night-hud.refilled .ammo-status { color: #cbefa8; }
+@media (max-width: 420px) {
+  .day-clock { width: 38px; }
+  .playing .header-actions .icon-button { width: 37px; height: 37px; }
+  #hud { gap: 6px; }
+  #hud .hud-main { min-width: 0; }
+}
+@media (max-height: 520px) {
+  .day-clock { width: 38px; }
+}
 .hud-main small {
   font-size: 12px;
   letter-spacing: 1px;

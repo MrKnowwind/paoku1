@@ -20,7 +20,8 @@ export type LessonId =
   | "wallEntry"
   | "wallHeight"
   | "booster"
-  | "hourglass";
+  | "hourglass"
+  | "wolf";
 type Direction = "left" | "right" | "jump" | "slide";
 export interface Lesson {
   id: LessonId;

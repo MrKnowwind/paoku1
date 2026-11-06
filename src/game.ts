@@ -3,6 +3,9 @@ import type { FishCrossing } from "./fish.ts";
 import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
 import type { CoralPlan } from "./coral.ts";
 import { CONFIG } from "./config.ts";
+import { DAY_LENGTH, dayNumber, dayPhase, dayTime } from "./daylight.ts";
+import { NightCombat } from "./night-combat.ts";
+import type { Hunt } from "./night-combat.ts";
 import { WINTER_HAZARD_HALF_WIDTH } from "./snow-layout.ts";
 import { underRockShelf } from "./rock-shelf.ts";
 import type { RockShelf } from "./rock-shelf.ts";
@@ -40,6 +43,7 @@ export type ItemType =
   | "rock"
   | "magnet"
   | "shield"
+  | "ammo"
   | "wall-rock"
   | "ice" | "pool" | "snowdrift" | "snowman" | "fire" | "liquor" | "stump" | "snow-log"
   | "bubble" | "coral" | "volcano" | "fish";
@@ -61,6 +65,7 @@ export interface TrackItem {
   fish?: FishCrossing;
 }
 interface Snapshot {
+  hunt: Hunt;
   cold: number;
   iceRemaining: number;
   iceRecover: number;
@@ -107,6 +112,8 @@ export class RunnerGame {
   waterLevel = 1;
   waterY: number = CONFIG.waterHeights[1];
   worldTime = 0;
+  nightCombat = new NightCombat();
+  get phase() { return dayPhase(this.worldTime); }
   get swimming() { return this.terrain.biome === "water"; }
   get waterBlend() { return waterBlend(this.distance, this.track); }
   get transitioning() { return waterTransition(this.distance, this.track); }
@@ -146,7 +153,7 @@ export class RunnerGame {
   introTime = 0;
   openingPrepared = false;
   coins = 0;
-  lastHit: ItemType | "gap" | "cold" | null = null;
+  lastHit: ItemType | "gap" | "cold" | "wolf" | null = null;
   items: TrackItem[] = [];
   magnetTime = 0;
   shieldTime = 0;
@@ -283,6 +290,7 @@ export class RunnerGame {
     this.waterLevel = 1;
     this.waterY = CONFIG.waterHeights[1];
     this.worldTime = 0;
+    this.nightCombat = new NightCombat();
     this.idBase = ++this.runSerial * 1000000000000;
     this.nextId = 800000000000;
     this.mode = "running";
@@ -770,6 +778,51 @@ export class RunnerGame {
         CONFIG.rowSpacing;
     this.nextLandRow = landAnchor(this.distance - 38);
     this.fillTrack();
+    for (const item of snapshot?.items ?? []) {
+      if (item.type === "ammo" && this.phase === "night" && !this.collected.has(item.id))
+        this.items.push({...item, z: item.worldZ - this.distance});
+    }
+  }
+  private fillAmmo() {
+    const hunt = this.nightCombat.hunt;
+    const interval = CONFIG.nightCombat.refillInterval;
+    const slot = (dayNumber(this.worldTime) - 1) * Math.ceil(DAY_LENGTH / interval) +
+      Math.floor(dayTime(this.worldTime) / interval);
+    if (!this.autoSpawn || this.boosting || slot < hunt.nextRefillSlot) return;
+    const id = 600000000000 + slot;
+    if (this.collected.has(this.idBase + id)) {
+      hunt.nextRefillSlot = slot + 1;
+      return;
+    }
+    const section = this.terrain;
+    const swimming = this.swimming;
+    const lead = Math.max(22, this.speed * 1.2);
+    for (let offset = lead; offset <= lead + 24; offset += 4) {
+      const worldZ = this.distance + offset;
+      if (worldZ >= section.end || !obstacleAllowed(worldZ, this.seed, this.track)) continue;
+      const nearby = this.items.filter(item => Math.abs(item.worldZ - worldZ) <=
+        (item.type === "pool" ? CONFIG.poolLength / 2 + 8 : item.type === "ice" ? CONFIG.iceDistance + 6 : 7));
+      const lane = [this.lane, ...[-1, 0, 1].filter(lane => lane !== this.lane)].find(lane =>
+        nearby.every(item => {
+          if (item.type === "coin") return Math.abs(item.worldZ - worldZ) > 1.5 || item.lane !== lane;
+          if (swimming || item.type === "snow-log") return false;
+          return item.shelf ? !underRockShelf(item.shelf, lane * 2.5) : item.lane !== lane;
+        }));
+      if (lane === undefined) continue;
+      this.emit("ammo", lane, worldZ, swimming ? CONFIG.waterHeights[this.waterLevel] + 0.95 : 0.95,
+        id, "ground", this.waterLevel);
+      hunt.nextRefillSlot = slot + 1;
+      return;
+    }
+  }
+  private wolfEscapeLanes(reach: number, landing: number) {
+    const from = Math.round(this.x / 2.5);
+    const obstacles = this.items.filter(item => item.route !== "wall" &&
+      (item.type === "log" || item.type === "rock" || item.type === "arch") &&
+      !this.cleared.has(item.id) && item.worldZ >= this.distance - 1.2 &&
+      item.worldZ <= landing + CONFIG.nightCombat.biteHalfLength + this.speed * 0.35);
+    return [-1, 0, 1].filter(lane => Math.abs(lane - from) <= 1 &&
+      obstacles.every(item => item.lane !== lane && (item.lane !== from || item.worldZ > reach)));
   }
   private collect(item: TrackItem) {
     if (this.collected.has(item.id)) return;
@@ -777,6 +830,8 @@ export class RunnerGame {
     if (item.type === "coin") {
       this.coins++;
       this.onCoins(1);
+    } else if (item.type === "ammo") {
+      this.nightCombat.refill();
     } else if (item.type === "magnet" || item.type === "shield") {
       if (item.type === "magnet") this.magnetTime = CONFIG.magnetDuration;
       else this.shield = true;
@@ -784,16 +839,16 @@ export class RunnerGame {
       this.pickupSerial++;
     }
   }
-  private collide(item: TrackItem) {
+  private collide(hit: TrackItem | "wolf") {
     if (this.protectionTime > 0 || this.boosting) return;
     if (this.shield) {
       this.shield = false;
       this.protectionTime = CONFIG.shieldProtection;
-      this.cleared.add(item.id);
+      if (hit !== "wolf") this.cleared.add(hit.id);
       this.shieldBreakSerial++;
     } else {
       this.mode = "over";
-      this.lastHit = item.type;
+      this.lastHit = hit === "wolf" ? hit : hit.type;
     }
   }
   private safeLanding() {
@@ -828,6 +883,7 @@ export class RunnerGame {
   }
   private snapshot(): Snapshot {
     return {
+      hunt: this.nightCombat.snapshot(),
       cold: this.cold, iceRemaining: this.iceRemaining, iceRecover: this.iceRecover, iceX: this.iceX,
       triggeredIce: [...this.triggeredIce], firePasses: [...this.firePasses], drinkTime: this.drinkTime,
       waterLevel: this.waterLevel, waterY: this.waterY, worldTime: this.worldTime,
@@ -882,6 +938,7 @@ export class RunnerGame {
     this.rewindElapsed = 0;
     this.rewindFromTime = this.runClock;
     this.history.push(this.snapshot());
+    this.nightCombat.clearShots();
     this.mode = "rewinding";
     return true;
   }
@@ -921,11 +978,14 @@ export class RunnerGame {
     const blend = b.time === a.time ? 0 : (time - a.time) / (b.time - a.time);
     this.restoreMovement(a);
     this.distance = a.distance + (b.distance - a.distance) * blend;
+    this.worldTime = a.worldTime + (b.worldTime - a.worldTime) * blend;
+    this.nightCombat.restore(a.hunt, this.worldTime, false);
     this.x = a.x + (b.x - a.x) * blend;
     this.y = a.y + (b.y - a.y) * blend;
     this.rebuildTrack(a);
     if (p < 1) return;
     this.restoreMovement(target);
+    this.nightCombat.restore(target.hunt, this.worldTime, true);
     this.rebuildTrack(target);
     this.shattered = this.items.filter(
       (item) =>
@@ -1036,6 +1096,8 @@ export class RunnerGame {
         }
       }
       if (this.autoSpawn) this.fillTrack();
+      const night = this.phase === "night";
+      if (night) this.fillAmmo();
       for (const item of this.items) item.z = item.worldZ - this.distance;
       if (this.boosting) {
         this.boostRemaining = Math.max(0, this.boostRemaining - travel);
@@ -1106,6 +1168,9 @@ export class RunnerGame {
             closeHeight
           )
             this.collect(item);
+        } else if (item.type === "ammo") {
+          if (night && !flying && Math.abs(item.z) < 0.85 && closeRoute && closeHeight)
+            this.collect(item);
         } else if (item.type === "magnet" || item.type === "shield") {
           if (!flying && Math.abs(item.z) < 0.65 && closeRoute && closeHeight)
             this.collect(item);
@@ -1124,10 +1189,14 @@ export class RunnerGame {
       }
       this.items = this.items.filter(
         (item) =>
+          (item.type !== "ammo" || night) &&
           (item.z > -24 || item.attraction !== undefined || item.fish && this.worldTime < item.fish.startTime + CONFIG.fishHalfSpan * 2 / CONFIG.fishSpeed) &&
           !this.collected.has(item.id) &&
           !this.cleared.has(item.id),
       );
+      if (this.mode === "running") this.nightCombat.update(this, step,
+        (key, salt) => this.hash(key, salt),
+        (reach, landing) => this.wolfEscapeLanes(reach, landing), () => this.collide("wolf"));
       if (this.mode === "running") this.capture();
       dt -= step;
     }
