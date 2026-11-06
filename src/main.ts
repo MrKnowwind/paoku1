@@ -104,7 +104,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <article class="guide-card">
       <header class="guide-card-heading">
         <div><span id="guide-kicker"></span><h2 id="guide-page-title"></h2></div>
-        <button id="guide-review-close" class="icon-button" data-action="guide-review-close" hidden>${icon("close")}</button>
+        <button id="guide-review-close" class="guide-close" data-action="guide-review-close" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
       </header>
       <div class="guide-stage">
         <div id="guide-viewport" aria-hidden="true"></div>

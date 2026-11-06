@@ -137,8 +137,6 @@ export class ForestScene {
   private snow?: SnowProps;
   private guidePreviews = new Map<number, TerrainPreview>();
   private previewGuide: GuideId | null = null;
-  private previewStep = 0;
-  private previewStarted = 0;
   private drinkBottle?: TransformNode;
   private lastSnowHit = 0;
   private lastIceRemaining = 0;
@@ -2457,11 +2455,6 @@ export class ForestScene {
       for (const preview of this.guidePreviews.values()) preview.dispose();
       this.guidePreviews.clear();
       this.previewGuide = guide;
-      this.previewStep = 0;
-    }
-    if (this.previewStep !== guideStep) {
-      this.previewStep = guideStep;
-      this.previewStarted = performance.now();
     }
     let preview = this.guidePreviews.get(guideStep);
     if (guide && !preview) {
@@ -2477,7 +2470,7 @@ export class ForestScene {
       const rect = viewport.getBoundingClientRect();
       const canvasRect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
       if (rect.width < 1 || rect.height < 1) return;
-      preview.frame(rect, canvasRect, (performance.now() - this.previewStarted) / 1000);
+      preview.frame(rect, canvasRect);
       const sx = this.engine.getRenderWidth() / canvasRect.width, sy = this.engine.getRenderHeight() / canvasRect.height;
       const fogEnabled = this.scene.fogEnabled, shadowsEnabled = this.scene.shadowsEnabled;
       const autoClearDepth = this.scene.autoClearDepthAndStencil;
@@ -2486,7 +2479,7 @@ export class ForestScene {
         this.scene.activeCamera = preview.camera;
         this.scene.autoClear = false; this.scene.autoClearDepthAndStencil = false;
         this.scene.fogEnabled = false; this.scene.shadowsEnabled = false;
-        this.engine.clear(Color4.FromHexString(guide === "snow" ? "#dce7ecff" : "#c2e5e8ff"), true, true, true);
+        this.engine.clear(Color4.FromHexString(guide === "snow" ? "#e1e8ebff" : "#d8e6dfff"), true, true, true);
         this.scene.render();
       } finally {
         this.engine.disableScissor(); this.scene.autoClear = true; this.scene.autoClearDepthAndStencil = autoClearDepth;

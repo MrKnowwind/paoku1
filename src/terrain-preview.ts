@@ -21,7 +21,6 @@ export class TerrainPreview {
   private frameHeight = 3.55;
   private overhead = 0.41;
   private targetY = 0.9;
-  private demo?: (time: number) => void;
 
   constructor(
     scene: Scene, source: TransformNode, readonly guide: GuideId, readonly step: number,
@@ -48,29 +47,46 @@ export class TerrainPreview {
         if (node.name.endsWith("torso")) { node.position.y = 0; node.scaling.setAll(1); }
         if (/(hips|shoulder|elbow|hip-joint|knee|ankle|torso|head-joint)$/.test(node.name)) node.rotation.set(0, 0, 0);
         if (node.name.endsWith("elbow")) node.rotation.x = -0.25;
+        if (guide === "ocean") {
+          const side = node.position.x || (node.parent instanceof TransformNode ? node.parent.position.x : 0);
+          if (node.name.endsWith("shoulder")) node.rotation.set(side < 0 ? -2.5 : -0.92, 0, side < 0 ? -0.24 : 0.46);
+          if (node.name.endsWith("elbow")) node.rotation.x = side < 0 ? -0.38 : -1.16;
+          if (node.name.endsWith("hip-joint")) node.rotation.x = side < 0 ? -0.25 : 0.12;
+          if (node.name.endsWith("knee")) node.rotation.x = 0.28;
+          if (node.name.endsWith("ankle")) node.rotation.x = 0.19;
+          if (node.name.endsWith("head-joint")) node.rotation.x = -0.22;
+        }
       }
       if (guide === "ocean") {
-        this.frameWidth = 5.6;
-        this.frameHeight = 5.3;
-        this.overhead = 0.03;
+        this.frameWidth = 6.1;
+        this.frameHeight = 4.65;
+        this.overhead = 0.18;
         this.targetY = 2.26;
         const lines: Vector3[][] = [];
-        for (let i = 0; i < 4; i++) {
-          lines.push([new Vector3(-2.1, i * 1.4 + 0.15, 0.75), new Vector3(2.1, i * 1.4 + 0.15, 0.75)]);
-          lines.push([new Vector3((i - 1.5) * 1.4, 0.15, 0.75), new Vector3((i - 1.5) * 1.4, 4.35, 0.75)]);
+        for (let row = 0; row < 3; row++) for (let col = -1; col <= 1; col++) {
+          const x = col * 1.4, y = 0.86 + row * 1.4, half = 0.63;
+          lines.push([
+            new Vector3(x - half, y - half, 1), new Vector3(x + half, y - half, 1),
+            new Vector3(x + half, y + half, 1), new Vector3(x - half, y + half, 1),
+            new Vector3(x - half, y - half, 1),
+          ]);
         }
         const grid = CreateLineSystem("guide-swim-grid", {lines}, scene);
-        grid.color = Color3.FromHexString("#57868f");
+        grid.color = Color3.FromHexString("#759c9a");
         grid.parent = this.root;
-        explorer.scaling.setAll(0.48);
-        explorer.rotation.set(0.8, Math.PI + 0.55, 0.06);
-        const cells = [[0, 1], [-1, 1], [-1, 2], [0, 2], [1, 2], [1, 1], [1, 0], [0, 0], [0, 1]];
-        this.demo = time => {
-          const phase = time * 0.91, index = Math.floor(phase) % (cells.length - 1);
-          const t = Math.min(1, (phase % 1) * 2.4);
-          const [x, y] = cells[index], [nx, ny] = cells[index + 1];
-          explorer.position.set((x + (nx - x) * t) * 1.4, 0.44 + (y + (ny - y) * t) * 1.4, 0.12);
-        };
+        const arrows: Vector3[][] = [];
+        for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const point = (along: number, across = 0) =>
+            new Vector3(x * along - y * across, 2.26 + y * along + x * across, 0.65);
+          arrows.push([point(0.69), point(1.3)], [point(1.09, -0.13), point(1.3), point(1.09, 0.13)]);
+        }
+        const steps = CreateLineSystem("guide-swim-arrows", {lines: arrows}, scene);
+        steps.color = Color3.FromHexString("#176b64");
+        steps.parent = this.root;
+        // Match the live runner's forward (+Z) swim pitch, viewed from behind.
+        explorer.scaling.setAll(0.65);
+        explorer.position.set(0, 1.95, -0.08);
+        explorer.rotation.set(1.05, 0, 0);
       }
     } else if (guide === "snow" && step === 2) {
       this.frameWidth = 8.9;
@@ -108,7 +124,6 @@ export class TerrainPreview {
       bottle.parent = this.root;
       bottle.position.set(1.45, 0.68, 0);
       bottle.scaling.setAll(2.7);
-      this.demo = time => snow().animate(fire, time);
     } else {
       this.frameWidth = step === 2 ? 8.8 : 7.6;
       this.frameHeight = 4.7;
@@ -132,43 +147,34 @@ export class TerrainPreview {
         const plume = vent.getChildMeshes().find(mesh => mesh.name === "thermal-plume")!;
         const bubbles = vent.getChildMeshes().filter(mesh => mesh.name.startsWith("vent-steam-"));
         const plumeHeight = CONFIG.waterSurface - CONFIG.seabedHeight - 1.3;
-        this.demo = time => {
-          bubble.position.y = 1.3 + 0.12 * Math.sin(time * 2);
-          const phase = time % 4;
-          const erupting = phase >= 2.25;
-          plume.setEnabled(phase > 1);
-          plume.scaling.y = erupting ? 1 : 0.08;
-          plume.position.y = 0.65 + plumeHeight / 2 * plume.scaling.y;
-          plume.visibility = erupting ? 0.84 : 0.28 + Math.sin(time * 14) * 0.13;
-          for (const [i, steam] of bubbles.entries()) {
-            steam.setEnabled(phase > 1);
-            const lift = (time * (erupting ? 1.4 : 0.35) + i * 0.37) % 1;
-            steam.position.set(Math.sin(i * 2.4) * 0.3, 0.65 + lift * (erupting ? plumeHeight : 0.45), Math.cos(i * 2.4) * 0.3);
-            steam.scaling.setAll(0.35 + Math.sin(lift * Math.PI) * 0.8);
-          }
-        };
+        plume.setEnabled(true);
+        plume.visibility = 0.66;
+        for (const [i, steam] of bubbles.entries()) {
+          steam.setEnabled(true);
+          steam.position.set(Math.sin(i * 2.4) * 0.3, 0.65 + (i + 0.4) / bubbles.length * plumeHeight, Math.cos(i * 2.4) * 0.3);
+          steam.scaling.setAll(0.72);
+        }
       } else {
         const crossing = model("fish");
         const school = crossing.getChildTransformNodes(true).find(node => node.name === "fish-school")!;
         const sign = crossing.getChildMeshes().find(mesh => mesh.name === "fish-entry-sign")!;
-        const tails = school.getChildMeshes().filter(mesh => mesh.name === "fish-fan-tail");
         const lines: Vector3[][] = [];
         for (const y of [1.1, 2.12, 3.14]) lines.push([new Vector3(-3.1, y, 1), new Vector3(3.1, y, 1)]);
         const lanes = CreateLineSystem("guide-fish-depths", {lines}, scene);
         lanes.parent = this.root;
         lanes.color = Color3.FromHexString("#75a2a9");
-        this.demo = time => {
-          const cycle = Math.floor(time / 3.8), phase = (time % 3.8) / 3.8;
-          const side = cycle % 2 ? 1 : -1;
-          crossing.position.y = 1.1 + cycle % 3 * 1.02;
-          sign.setEnabled(phase < 0.5);
-          sign.position.x = side * 2.6;
-          sign.material = warningMaterial(Math.min(1, phase * 2));
-          school.setEnabled(phase > 0.24);
-          school.position.x = side * (3.8 - 7.6 * Math.max(0, (phase - 0.25) / 0.75));
-          school.rotation.y = -side * Math.PI / 2;
-          for (const tail of tails) tail.rotation.y = Math.sin(time * 7) * 0.3;
-        };
+        crossing.position.y = 2.12;
+        sign.setEnabled(true);
+        sign.position.x = -2.75;
+        sign.material = warningMaterial(0.78);
+        school.position.x = 0.35;
+        school.rotation.y = Math.PI / 2;
+        const path = CreateLineSystem("guide-fish-direction", {lines: [
+          [new Vector3(-1.8, 1.76, 0.42), new Vector3(2.65, 1.76, 0.42)],
+          [new Vector3(2.36, 1.55, 0.42), new Vector3(2.65, 1.76, 0.42), new Vector3(2.36, 1.97, 0.42)],
+        ]}, scene);
+        path.color = Color3.FromHexString("#176b64");
+        path.parent = this.root;
       }
     }
     const stage = CreateCylinder("lesson-display-plinth", {diameter: this.frameWidth, height: 0.12, tessellation: 48}, scene);
@@ -182,8 +188,7 @@ export class TerrainPreview {
     for (const mesh of this.root.getChildMeshes()) mesh.layerMask = 0x10000000;
   }
 
-  frame(rect: DOMRect, canvas: DOMRect, time: number) {
-    this.demo?.(time);
+  frame(rect: DOMRect, canvas: DOMRect) {
     this.camera.viewport = new Viewport((rect.left - canvas.left) / canvas.width, (canvas.bottom - rect.bottom) / canvas.height, rect.width / canvas.width, rect.height / canvas.height);
     const aspect = Math.max(0.5, rect.width / Math.max(1, rect.height));
     const distance = Math.max(this.frameHeight, this.frameWidth / aspect) / (2 * Math.tan(this.camera.fov / 2)) * 1.07;
