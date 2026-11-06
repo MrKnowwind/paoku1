@@ -2,6 +2,7 @@ import { CoastSurface } from "./coast-surface.ts";
 import { coastFloor, coastWeights, coastSandUV } from "./coast-layout.ts";
 import type { Material } from "@babylonjs/core/Materials/material";
 import { coastGridIndices } from "./ocean-geometry.ts";
+import { canyonRidgeGeometry, canyonRidgeStrength } from "./canyon-landform.ts";
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
@@ -193,15 +194,6 @@ export class TerrainScene {
     this.pendingSurfaces.set(mesh, preferred);
   }
 
-  private canyonProfile(world: number, distance: number) {
-    const section = this.plan.at(world + 0.1);
-    const exit = this.plan.at(section.end).biome;
-    const entry = this.plan.at(section.start - 1).biome;
-    const leave = exit === "beach" || exit === "snow-transition" ? smooth((section.end - distance) / 80) : 1;
-    const enter = entry === "snow-transition" || entry === "shore" ? smooth((distance - section.start) / 80) : 1;
-    return Math.max(0.004, leave * enter);
-  }
-
   private winterCell(world: number, index: number, root: TransformNode, pools: readonly TrackItem[]) {
     const section = this.plan.at(world + 5);
     const canyonSide = section.biome === "snow-transition" && (section.from === "canyon" || section.to === "canyon");
@@ -347,53 +339,6 @@ export class TerrainScene {
     ribbon.isPickable = false;
     ribbon.visibility = 0;
     return ribbon;
-  }
-
-  private cliffWall(side: number, world: number, parent: TransformNode) {
-    const positions: number[] = [],
-      indices: number[] = [],
-      uvs: number[] = [],
-      colors: number[] = [];
-    const rows = 24,
-      columns = 10;
-    for (let z = 0; z <= columns; z++) {
-      const absolute = world + z;
-      const crest =
-        13 +
-        Math.sin(absolute * 0.037 + side) * 2.4 +
-        Math.sin(absolute * 0.11) * 0.6;
-      const taper = this.canyonProfile(world, absolute);
-      for (let row = 0; row <= rows; row++) {
-        const y = (-18 + (row / rows) * (crest + 18)) * taper;
-        // Keep the three playable wall heights close to the collision surface.
-        const relief =
-          0.07 + smooth((y - 4.5) / 4) * 0.7 + smooth((-y - 1) / 8) * 0.6;
-        const contour =
-          Math.sin(absolute * 0.13 + y * 0.58) * 0.6 +
-          Math.cos(y * 2.2 + absolute * 0.06) * 0.18;
-        const x = side * (5.46 + contour * relief + smooth((y - 7) / 6) * 2.4);
-        positions.push(x, y, z);
-        uvs.push(absolute / 5.5, y / 5.5);
-        const shade = 0.69 + smooth((y + 12) / 22) * 0.31;
-        const stratum = 0.95 + Math.sin(y * 2.2 + absolute * 0.012) * 0.05;
-        colors.push(shade * stratum, shade * stratum * 0.96, shade * 0.9, 1);
-        if (z < columns && row < rows) {
-          const a = z * (rows + 1) + row,
-            b = a + rows + 1;
-          if (side < 0) indices.push(a, a + 1, b, a + 1, b + 1, b);
-          else indices.push(a, b, a + 1, a + 1, b, b + 1);
-        }
-      }
-    }
-    this.surface(
-      "eroded-continuous-cliff",
-      positions,
-      indices,
-      uvs,
-      colors,
-      parent,
-      this.cliff,
-    );
   }
 
   private arch(
@@ -584,13 +529,8 @@ export class TerrainScene {
     }
     if (!underwater) {
       const t = (world + 5 - section.start) / (section.end - section.start);
-      const rockBlend = section.biome === "shore" && section.to === "canyon" ? smooth((t - 0.5) * 2) : 0;
       const snow = section.to === "snow" ? smooth(t) : section.from === "snow" ? 1 - smooth(t) : 0;
       for (const side of [-1, 1]) {
-        if (rockBlend > 0) {
-          const shoulder = this.props.sandstone("coast-canyon-rise", [10, 14 * rockBlend, 11], world + side, root);
-          shoulder.position.set(side * 13, 4 * rockBlend, 5);
-        }
         if (snow > 0.26) {
           const pine = this.snowProps().pine(root, snow);
           pine.position.set(side * 10, this.coastHeight(side * 10, world + 5), 5);
@@ -626,6 +566,13 @@ export class TerrainScene {
     const world = index * 10,
       section = sectionAt(world + 5, this.plan);
     const root = new TransformNode(`terrain-${index}`, this.scene);
+    const ridgeStrength = (distance: number) => canyonRidgeStrength(section, distance, this.plan);
+    if (ridgeStrength(world) > 0 || ridgeStrength(world + 10) > 0) {
+      for (const side of [-1, 1]) {
+        const {positions, indices, uvs, colors} = canyonRidgeGeometry(side, world, ridgeStrength);
+        this.surface("eroded-continuous-cliff", positions, indices, uvs, colors, root, this.cliff);
+      }
+    }
     if (["beach", "water", "shore"].includes(section.biome)) {
       this.coastCell(world, index, root);
       return root;
@@ -698,39 +645,7 @@ export class TerrainScene {
     } else {
       this.ground(90, 10, 0, -18, 5, root, this.stone, world);
       for (const side of [-1, 1]) {
-        this.cliffWall(side, world, root);
-        // Solid land behind each wall supports the ridge and distant mesas.
-        // Its inner edge stays behind the playable wall, including across chasms.
-        const plateau = CreateBox("canyon-outer-rock-mass", {
-          width: 38, height: 26.5, depth: 10,
-        }, this.scene);
-        const plateauPositions = plateau.getVerticesData(VertexBuffer.PositionKind)!;
-        const plateauNormals = plateau.getVerticesData(VertexBuffer.NormalKind)!;
-        const plateauUvs: number[] = [];
-        for (let v = 0; v < plateauPositions.length; v += 3) {
-          const [x, y, z] = plateauPositions.slice(v, v + 3);
-          plateauUvs.push(
-            (Math.abs(plateauNormals[v]) > 0.5 ? z : x) / 5.5,
-            (Math.abs(plateauNormals[v + 1]) > 0.5 ? z : y) / 5.5,
-          );
-        }
-        plateau.setVerticesData(VertexBuffer.UVKind, plateauUvs);
-        plateau.parent = root;
-        plateau.material = this.cliff;
-        plateau.position.set(side * 24.7, -4.75, 5);
-        plateau.receiveShadows = true;
-        const shoulder = this.props.sandstone(
-          "eroded-ridge-crown",
-          [5.5, 3.2, 10.8],
-          world + side,
-          root,
-        );
-        shoulder.position.set(
-          side * 9.7,
-          9.6 + Math.sin(world * 0.037 + side) * 0.4,
-          5,
-        );
-        if (index % 3 === 0) {
+        if (index % 3 === 0 && ridgeStrength(world + 5) >= 0.75) {
           const mesaHeight = 17 + (index % 5);
           const mesa = this.props.sandstone(
             "distant-layered-mesa",
@@ -738,7 +653,7 @@ export class TerrainScene {
             world * side,
             root,
           );
-          mesa.position.set(side * 24, 8 + mesaHeight / 2, 5);
+          mesa.position.set(side * 24, mesaHeight / 2, 5);
         }
         if (!gap) {
           for (let n = 0; n < 3; n++) {
@@ -803,7 +718,7 @@ export class TerrainScene {
       }
     }
     if (section.biome === "canyon") {
-      const taper = this.canyonProfile(world, world + 5);
+      const taper = ridgeStrength(world + 5);
       for (const mesh of root.getChildMeshes()) {
         if (mesh.name.includes("road") || mesh.name === "terrain-surface" || mesh.name === "eroded-continuous-cliff") continue;
         mesh.position.y *= taper; mesh.scaling.y *= Math.max(0.03, taper);

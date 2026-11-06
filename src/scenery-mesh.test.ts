@@ -1,4 +1,6 @@
 import { coastGridIndices, reefRockGeometry } from "./ocean-geometry.ts";
+import { canyonRidgeGeometry, canyonRidgeStrength } from "./canyon-landform.ts";
+import type { TrackSection } from "./track.ts";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -50,6 +52,31 @@ test("coast surfaces face upward so sand and seabed textures remain visible", ()
   const normals: number[] = [];
   VertexData.ComputeNormals(positions, coastGridIndices(1, 1), normals);
   for (let i = 1; i < normals.length; i += 3) assert.ok(normals[i] > 0.8);
+});
+
+test("canyon ridges meet their coastal and winter approaches with a continuous rock shoulder", () => {
+  const canyon: TrackSection = {biome: "canyon", start: 800, end: 1600, cycle: 1};
+  const forest: TrackSection = {biome: "forest", start: 0, end: 720, cycle: 0};
+  const approaches: TrackSection[] = [
+    {biome: "snow-transition", start: 740, end: 800, cycle: 1, from: "snow", to: "canyon"},
+    {biome: "shore", start: 720, end: 800, cycle: 1, from: "water", to: "canyon"},
+  ];
+  for (const approach of approaches) {
+    const plan = {at: (distance: number) => distance < canyon.start ? approach : distance < canyon.end ? canyon : forest};
+    for (const side of [-1, 1]) {
+      const before = canyonRidgeGeometry(side, 790, d => canyonRidgeStrength(approach, d, plan));
+      const after = canyonRidgeGeometry(side, 800, d => canyonRidgeStrength(canyon, d, plan));
+      const columnSize = after.positions.length / 11;
+      const seam = after.positions.slice(0, columnSize);
+      assert.deepEqual(before.positions.slice(-columnSize).map((v, i) => i % 3 === 2 ? v - 10 : v), seam);
+      const highest = Math.max(...seam.filter((_, i) => i % 3 === 1));
+      assert.ok(highest > 0.5);
+      assert.ok(side * (seam.at(-3)! - seam[0]) > 25, "the shoulder extends outward behind the wall");
+      const normals: number[] = [];
+      VertexData.ComputeNormals(after.positions, after.indices, normals);
+      assert.ok(normals.slice(0, columnSize).some((n, i) => i % 3 === 1 && n > 0.75), "the rock has an upward-facing top");
+    }
+  }
 });
 
 test("reef rocks face outward at their sides and closed end caps", () => {
