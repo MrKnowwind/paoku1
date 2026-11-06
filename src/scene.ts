@@ -1922,7 +1922,9 @@ export class ForestScene {
       : section.biome === "shore" ? 1 - smooth((cameraDistance - section.start - 50) / 30)
       : section.biome === "canyon" && this.track.at(section.end).biome === "beach" ? smooth((cameraDistance - section.end + 80) / 80) : 0;
     const snowLight = snowBlend(cameraDistance, this.track);
-    const outside = Color3.Lerp(Color3.Lerp(inlandSky, Color3.FromHexString("#b8dce7"), coastalSky), Color3.FromHexString("#d6e7f4"), snowLight);
+    const storm = game.blizzard;
+    const snowSky = Color3.Lerp(Color3.FromHexString("#d6e7f4"), Color3.FromHexString("#8da5bd"), storm * 0.84);
+    const outside = Color3.Lerp(Color3.Lerp(inlandSky, Color3.FromHexString("#b8dce7"), coastalSky), snowSky, snowLight);
     const immersed = game.waterBlend;
     const fog = Color3.Lerp(outside.scale(1 - darkness * 0.78), Color3.FromHexString("#247f98"), immersed);
 
@@ -1934,7 +1936,7 @@ export class ForestScene {
     });
     if (running && openingReady) this.openingMistTime += dt;
     const mist = ready || introducing ? 1 : openingFog(this.openingMistTime);
-    const terrainFog = 0.009 + darkness * 0.012 + immersed * 0.008 + game.blizzard * (0.0058 + Math.sin(game.worldTime * 2) * 0.0012);
+    const terrainFog = 0.009 + darkness * 0.012 + immersed * 0.008 + storm * (0.0072 + Math.sin(game.worldTime * 2) * 0.0012);
     this.scene.fogDensity = terrainFog + (CONFIG.openingFogDensity - terrainFog) * mist;
     this.sky.intensity = 0.75 - darkness * 0.3;
     this.sun.intensity = 0.85 - darkness * 0.65;

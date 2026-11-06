@@ -297,15 +297,21 @@ export class TerrainScene {
     if (!this.snowWind) {
       const texture = new DynamicTexture("blown-snow", {width: 128, height: 32}, this.scene, true);
       const ctx = texture.getContext();
-      ctx.save();
-      ctx.translate(64, 16);
-      ctx.scale(1, 0.18);
-      const fade = ctx.createRadialGradient(0, 0, 0, 0, 0, 64);
-      fade.addColorStop(0, "#e5f5ffb0");
-      fade.addColorStop(1, "#e5f5ff00");
-      ctx.fillStyle = fade;
-      ctx.fillRect(-64, -89, 128, 178);
-      ctx.restore();
+      for (const [x, y, stretch, color] of [
+        [58, 18, 0.17, "#d7edffc0"],
+        [71, 12, 0.09, "#eff9ffae"],
+        [76, 22, 0.08, "#b5d6eea0"],
+      ] as const) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(1, stretch);
+        const fade = ctx.createRadialGradient(0, 0, 0, 0, 0, 52);
+        fade.addColorStop(0, color);
+        fade.addColorStop(1, "#d7edff00");
+        ctx.fillStyle = fade;
+        ctx.fillRect(-52, -52, 104, 104);
+        ctx.restore();
+      }
       texture.hasAlpha = true;
       texture.update();
       const mat = this.snowWind = new StandardMaterial("blown-snow", this.scene);
@@ -316,7 +322,7 @@ export class TerrainScene {
       mat.specularColor.setAll(0);
       mat.backFaceCulling = false;
     }
-    const ribbon = CreateGround("ground-spindrift", {width: 11, height: 3}, this.scene);
+    const ribbon = CreateGround("ground-spindrift", {width: 16, height: 3.6}, this.scene);
     ribbon.parent = root;
     ribbon.position.set(-12, 0.31, 4.5);
     ribbon.rotation.y = -0.32;
@@ -861,10 +867,10 @@ export class TerrainScene {
       root.position.z = index * 10 - distance;
       const wind = this.windRibbons.get(index);
       if (wind) {
-        const phase = time * 0.43 + index * 0.618;
+        const phase = time * 0.5 + index * 0.618;
         const t = phase - Math.floor(phase);
-        wind.position.x = -15 + 30 * t;
-        wind.visibility = (0.045 + storm * (0.22 + Math.sin(time * 2.1 + index) * 0.07)) * Math.sin(t * Math.PI) ** 2;
+        wind.position.x = -18 + 36 * t;
+        wind.visibility = (0.045 + storm * (0.39 + Math.sin(time * 2.1 + index) * 0.13)) * Math.sin(t * Math.PI) ** 2;
       }
     }
     this.coastSurface?.update(distance);
