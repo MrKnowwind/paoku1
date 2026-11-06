@@ -58,7 +58,6 @@ let activeDialog:
   | "shop"
   | "revive"
   | null = null;
-let guideReviewFrom: "settings" | "guide" = "guide";
 let runFinalized = false;
 let buyBusyUntil = 0;
 let toastTimer = 0;
@@ -255,8 +254,7 @@ function renderDialog() {
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${t("terrainOverride")}</span><small>${t("terrainOverrideHint")}</small></div><button class="toggle ${terrainOverride ? "is-on" : ""}" data-action="terrain-override" role="switch" aria-checked="${terrainOverride}" aria-label="${t("terrainOverride")}"><span></span></button></div>
       <div class="terrain-selector" role="radiogroup" aria-label="${t("terrainOverride")}">${coreBiomes.map(b => `<button role="radio" aria-checked="${terrainTarget === b}" data-terrain="${b}" ${terrainOverride ? "" : "disabled"} class="${terrainTarget === b ? "selected" : ""}">${t(b)}</button>`).join("")}</div>
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${t("startAtNight")}</span><small>${t("terrainOverrideHint")}</small></div><button class="toggle ${startAtNight ? "is-on" : ""}" data-action="start-at-night" role="switch" aria-checked="${startAtNight}" aria-label="${t("startAtNight")}"><span></span></button></div>
-      <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>
-      <button class="secondary-button full-width" data-action="night-guide">${t("nightGuide")}</button>`;
+      <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>`;
   } else if (activeDialog === "guide") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("help")}</span><h2 id="dialog-title">${t("howTo")}</h2></div><div class="guide-list">
       ${(
@@ -514,7 +512,7 @@ function updateGuideUi() {
 }
 
 function returnFromGuideReview(guide: GuideId) {
-  activeDialog = guideReviewFrom;
+  activeDialog = "guide";
   updateGuideUi();
   renderDialog();
   dialog.showModal();
@@ -607,7 +605,6 @@ function act(action: string) {
     terrainOverride = !terrainOverride; save("terrain-override", String(terrainOverride)); renderDialog(); return;
   }
   if (action === "snow-guide" || action === "ocean-guide" || action === "night-guide") {
-    guideReviewFrom = activeDialog === "settings" ? "settings" : "guide";
     dialog.close();
     activeDialog = null;
     tutorial.reviewGuide(action === "snow-guide" ? "snow" : action === "ocean-guide" ? "ocean" : "night");
