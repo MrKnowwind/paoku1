@@ -41,9 +41,13 @@ export class NightSky {
       const strength = rand(i * 3 + 2);
       const radius = (0.58 + strength ** 3 * 1.3) * scale;
       ctx.fillStyle = `rgba(218, 234, 255, ${(0.2 + strength * 0.7) * (1 - y / 320)})`;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(1 / aspect, 1);
       ctx.beginPath();
-      ctx.ellipse(x, y, radius / aspect, radius, 0, 0, Math.PI * 2);
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
     ctx.save();
     ctx.translate(size * 0.72, size * 0.17);
@@ -63,9 +67,14 @@ export class NightSky {
     ctx.fill();
     ctx.fillStyle = "rgba(83, 117, 164, 0.18)";
     for (const [x, y, width, height] of [[-5, 2, 5, 3], [5, 7, 3, 2], [2, -6, 4, 2], [-9, -4, 2, 2]]) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-0.38);
+      ctx.scale(width, height);
       ctx.beginPath();
-      ctx.ellipse(x, y, width, height, -0.38, 0, Math.PI * 2);
+      ctx.arc(0, 0, 1, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
     ctx.restore();
     this.texture.update();
