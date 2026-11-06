@@ -340,7 +340,6 @@ h1 span {
 .ammo-slots .art-icon { width: 15px; height: 15px; }
 .ammo-slots .spent { opacity: 0.28; }
 .ammo-status { display: block; min-height: 14px; font-size: 10px; line-height: 1.4; }
-.wolf-exit-status { display: block; font-size: 10px; color: #ffd29d; }
 .night-hud.refilled { border-color: #b6e097; }
 .night-hud.refilled .ammo-status { color: #cbefa8; }
 @media (max-width: 420px) {

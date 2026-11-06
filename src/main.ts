@@ -104,7 +104,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <canvas id="world" aria-label="3D"></canvas>
   <aside id="night-hud" class="night-hud" hidden>
     <div class="night-weapon"><span class="weapon-icon"></span><div class="shot-meter"><i></i></div></div>
-    <div><div class="ammo-slots"></div><small class="ammo-status"></small><small class="wolf-exit-status" hidden></small></div>
+    <div><div class="ammo-slots"></div><small class="ammo-status"></small></div>
   </aside>
   <canvas id="snow-weather" aria-hidden="true" hidden></canvas>
   <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="${CONFIG.coldMax}">
@@ -194,7 +194,6 @@ const clockDot = document.querySelector<SVGCircleElement>("#clock-dot")!;
 const nightHud = document.querySelector<HTMLElement>("#night-hud")!;
 const ammoSlots = nightHud.querySelector<HTMLElement>(".ammo-slots")!;
 const ammoStatus = nightHud.querySelector<HTMLElement>(".ammo-status")!;
-const wolfExitStatus = nightHud.querySelector<HTMLElement>(".wolf-exit-status")!;
 const shotMeter = nightHud.querySelector<HTMLElement>(".shot-meter i")!;
 
 function beep(kind: Sound) {
@@ -554,9 +553,6 @@ function updateNightUi() {
     ammoSlots.innerHTML = Array.from({length: CONFIG.nightCombat.ammo}, () => icon("stone")).join("");
   }
   const combat = game.nightCombat;
-  const wolves = combat.remaining;
-  wolfExitStatus.hidden = wolves === 0;
-  if (wolves) wolfExitStatus.textContent = t("wolfExitLock").replace("{count}", n(wolves));
   const ammo = `${n(combat.ammo)} / ${n(CONFIG.nightCombat.ammo)}`;
   nightHud.setAttribute("aria-label", `${t("slingshot")} · ${t("ammo")} ${ammo}`);
   Array.from(ammoSlots.children).forEach((slot, index) => slot.classList.toggle("spent", index >= combat.ammo));
