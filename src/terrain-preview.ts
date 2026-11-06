@@ -183,7 +183,10 @@ export class TerrainPreview {
     this.stageMaterial.specularColor.setAll(0.03);
     stage.material = this.stageMaterial;
     stage.setEnabled(guide === "snow" || guide === "ocean" && step === 2);
-    for (const mesh of this.root.getChildMeshes()) mesh.layerMask = TerrainPreview.layerMask;
+    for (const mesh of this.root.getChildMeshes()) {
+      mesh.layerMask = TerrainPreview.layerMask;
+      mesh.receiveShadows = false;
+    }
   }
 
   private createNightStage(step: number, makeItem: (item: TrackItem) => TransformNode) {

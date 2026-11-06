@@ -1,7 +1,7 @@
 # 专用沙滩贴图 v2
 
 - 工具：内置 ImageGen，2026-11-03生成，非CLI。
-- 文件：`beach-sand-v2.png`，原始输出直接复制入项目，未二次重绘。
+- 源文件：`art-source/textures/beach-sand-v2.png`，保留原始输出。
 - 用途：海岸、海床及两端地面材质混合。固定世界尺度每3米一片，坡面按弧长展开，镜像平铺处理边缘接缝。
 - 原始生成图保留在 Codex generated_images 目录；项目仅引用本地 public/art 副本，保留 `/paoku1/` 基础路径。
 
@@ -12,4 +12,4 @@ Create one seamless tileable square albedo texture for the sandy beach and seabe
 
 ## 加载优化
 
-运行时改用 `beach-sand-v2.webp`（同尺寸、quality 86 的WebP编码），从3,249,500字节降至362,462字节。PNG原始资产保留供后续美术修改；没有重绘或改变纹理内容。海岸纹理延迟至接近海岸时创建，不再阻塞森林首页启动。
+运行时使用 1024 × 1024、质量 79 的 `beach-sand-v2.webp`，大小为 166,550 字节。原始 PNG 存放在部署目录外。海岸纹理在接近海岸时加载。

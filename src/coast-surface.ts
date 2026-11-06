@@ -8,7 +8,8 @@ import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 export class CoastSurface {
   readonly material: ShaderMaterial;
   readonly fallback: StandardMaterial;
-  constructor(scene: Scene, forest: ForestProps) {
+  private snowReady = false;
+  constructor(private scene: Scene, private forest: ForestProps) {
     this.fallback = new StandardMaterial("coastal-ground-fallback", scene);
     this.fallback.specularColor.setAll(0);
     this.material = new ShaderMaterial("world-scale-coastal-surface", scene, {
@@ -49,13 +50,20 @@ export class CoastSurface {
         texture.wrapU = texture.wrapV = Texture.MIRROR_ADDRESSMODE;
         texture.onLoadObservable.addOnce(() => { this.fallback.diffuseTexture = texture; });
       }
+      if (name === "grass") this.material.setTexture("packedSnow", texture);
       this.material.setTexture(name, texture);
     }
-    this.material.setTexture("packedSnow", snowMaterial(scene, "snow", forest).diffuseTexture!);
     this.material.onBindObservable.add(() => {
       if (scene.activeCamera) this.material.setVector3("eye", scene.activeCamera.globalPosition);
       this.material.setColor3("fogColor", scene.fogColor).setFloat("fogDensity", scene.fogDensity);
     });
   }
+
+  useSnow() {
+    if (this.snowReady) return;
+    this.material.setTexture("packedSnow", snowMaterial(this.scene, "snow", this.forest).diffuseTexture!);
+    this.snowReady = true;
+  }
+
   update(distance: number) { this.material.setFloat("scroll", distance); }
 }

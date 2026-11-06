@@ -16,7 +16,15 @@ export class SnowWeather {
 
   update(visible: boolean, storm: number, time: number, cold: number, high: boolean, dt: number, rewinding: boolean) {
     this.canvas.hidden = !visible;
-    if (!visible) { this.lastFrame = ""; this.chill = 0; return; }
+    if (!visible) {
+      if (this.lastFrame) {
+        this.canvas.width = this.canvas.height = 1;
+        this.frost = undefined;
+        this.lastFrame = "";
+      }
+      this.chill = 0;
+      return;
+    }
     const ctx = this.paint;
     if (!ctx) return;
     const frostResponse = cold < this.chill ? 7 : 9;

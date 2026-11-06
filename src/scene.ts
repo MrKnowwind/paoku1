@@ -20,6 +20,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
@@ -85,7 +86,8 @@ export class ForestScene {
   scene: Scene;
   private camera: FreeCamera;
   private lookTarget = new Vector3(0, 1, 1.5);
-  private shadows: ShadowGenerator;
+  private shadows?: ShadowGenerator;
+  private shadowCasters: AbstractMesh[] = [];
   private props: ForestProps;
   private ocean: OceanProps;
   private restStop: TransformNode;
@@ -102,6 +104,8 @@ export class ForestScene {
   private shockLife = 0;
   private motion = new RunnerMotion();
   private chunks: TransformNode[] = [];
+  private chunkStarts: number[] = [];
+  private chunkRevision = -1;
   private swayingTrees: TransformNode[] = [];
   private leaves: InstancedMesh[] = [];
   private itemMeshes = new Map<number, TransformNode>();
@@ -151,6 +155,9 @@ export class ForestScene {
   private shake = 0;
   private mode = "";
   private high = true;
+  private renderScale = 0;
+  private slowFrameTime = 0;
+  private frameSamples = 0;
   private track = defaultTrack;
   private openingMistTime = 0;
   private snow?: SnowProps;
@@ -241,7 +248,11 @@ export class ForestScene {
 
   constructor(canvas: HTMLCanvasElement, highQuality: boolean, progress: (percent: number) => void = () => {}) {
     this.engine = new Engine(canvas, true, { stencil: false }, false);
+    this.engine.renderEvenInBackground = false;
     this.scene = new Scene(this.engine);
+    this.scene.skipPointerMovePicking = true;
+    this.scene.skipPointerDownPicking = true;
+    this.scene.skipPointerUpPicking = true;
     this.scene.clearColor = Color4.FromHexString("#d9e9dbff");
     this.scene.fogMode = Scene.FOGMODE_EXP2;
     this.scene.fogDensity = 0.009;
@@ -268,25 +279,17 @@ export class ForestScene {
     this.sun = sun;
     sun.intensity = 0.85;
     sun.diffuse = Color3.FromHexString("#fff0d4");
-    this.shadows = new ShadowGenerator(1024, sun);
-    this.shadows.usePercentageCloserFiltering = true;
-    this.shadows.filteringQuality = ShadowGenerator.QUALITY_LOW;
-    this.shadows.bias = 0.001;
-    this.shadows.normalBias = 0.02;
-    this.shadows.setDarkness(0.3);
     this.props = new ForestProps(this.scene);
     this.ocean = new OceanProps(this.scene);
     this.restStop = this.props.createRestStop();
     this.restStop.position.set(REST_X, 0, REST_Z);
-    for (const mesh of this.restStop.getChildMeshes())
-      this.shadows.addShadowCaster(mesh);
+    this.shadowCasters.push(...this.restStop.getChildMeshes());
     this.createSoftTexture();
     this.createWorld();
     progress(75);
     this.createRunner();
     progress(81);
-    for (const mesh of this.runner.getChildMeshes())
-      this.shadows.addShadowCaster(mesh);
+    this.shadowCasters.push(...this.runner.getChildMeshes());
     this.contact = CreateGround(
       "contact-shadow",
       { width: 1.7, height: 1.3 },
@@ -309,27 +312,22 @@ export class ForestScene {
     this.shock.setEnabled(false);
     this.createRunEffects();
     this.setQuality(highQuality);
-    window.addEventListener("resize", () => this.resize());
-    this.resize();
+    window.addEventListener("resize", this.resize);
   }
 
   isPlayable() {
-    return this.scene.getActiveMeshes().length > 0 &&
-      this.runner.getChildMeshes().every(mesh => mesh.isReady());
+    const active = this.scene.getActiveMeshes();
+    const runner = this.runner.getChildMeshes().filter(mesh => mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0);
+    return runner.some(mesh => active.contains(mesh)) && runner.every(mesh => mesh.isReady(true));
   }
 
   useTextureFallback() {
-    for (const material of this.scene.materials) {
-      if (!(material instanceof StandardMaterial)) continue;
-      const texture = material.diffuseTexture;
-      if (!(texture instanceof Texture) || texture.isReady() || !texture.url?.includes("/art/") || texture.url.includes("icons-")) continue;
-      const color = material.diffuseColor.clone();
-      material.diffuseTexture = null;
-      material.diffuseColor = Color3.FromHexString(texture.url.includes("grass") ? "#78946a" : "#c5af8d");
-      texture.onLoadObservable.addOnce(() => {
-        material.diffuseTexture = texture; material.diffuseColor = color;
-      });
-    }
+    this.terrainView.useForestFallback();
+  }
+
+  dispose() {
+    window.removeEventListener("resize", this.resize);
+    this.engine.dispose();
   }
 
   private mat(color: string, glow = false) {
@@ -546,12 +544,11 @@ export class ForestScene {
     );
     tree.rotation.y = variant * 0.73;
     if (Math.abs(x) < 12) this.swayingTrees.push(tree);
-    if (Math.abs(x) < 9.5) this.shadows.addShadowCaster(tree);
+    if (Math.abs(x) < 9.5) this.shadowCasters.push(tree);
   }
 
   private createWorld() {
-    this.terrainView = new TerrainScene(this.scene, this.props);
-    this.terrainView.update(0);
+    this.terrainView = new TerrainScene(this.scene, this.props, this.ocean, () => this.snowProps);
     this.forestBackdrop = new TransformNode("forest-hills", this.scene);
     for (let i = 0; i < 12; i++)
       this.part(
@@ -1552,16 +1549,45 @@ export class ForestScene {
   setQuality(high: boolean) {
     this.high = high;
     this.scene.shadowsEnabled = high;
-    this.engine.setHardwareScalingLevel(
-      high ? 1 / Math.min(devicePixelRatio, 1.5) : 1.25,
-    );
+    if (high && !this.shadows) {
+      const shadows = this.shadows = new ShadowGenerator(1024, this.sun);
+      shadows.usePercentageCloserFiltering = true;
+      shadows.filteringQuality = ShadowGenerator.QUALITY_LOW;
+      shadows.bias = 0.001;
+      shadows.normalBias = 0.02;
+      shadows.setDarkness(0.3);
+      for (const mesh of this.shadowCasters) shadows.addShadowCaster(mesh, false);
+    } else if (!high && this.shadows) {
+      this.shadows.dispose();
+      this.shadows = undefined;
+    }
+    this.renderScale = 0;
+    this.adjustResolution(0);
+    this.resize();
     this.leaves.forEach((leaf) => leaf.setEnabled(high));
   }
 
-  resize() {
-    this.camera.fov = innerWidth < 700 ? 1.02 : 0.8;
-    this.engine.resize();
+  adjustResolution(frameTime: number) {
+    if (!this.high || frameTime <= 0 || frameTime > 250) {
+      this.slowFrameTime = this.frameSamples = 0;
+      return;
+    }
+    this.slowFrameTime += frameTime;
+    this.frameSamples++;
+    if (this.slowFrameTime < 1500) return;
+    if (this.slowFrameTime / this.frameSamples > 24 && this.renderScale < 3) {
+      this.renderScale++;
+      this.resize();
+    }
+    this.slowFrameTime = this.frameSamples = 0;
   }
+
+  resize = () => {
+    this.camera.fov = innerWidth < 700 ? 1.02 : 0.8;
+    const pixelLimit = Math.sqrt(innerWidth * innerHeight / 2_000_000);
+    const highScale = 1 / Math.min(devicePixelRatio, 1.5) + this.renderScale * 0.2;
+    this.engine.setHardwareScalingLevel(Math.max(pixelLimit, this.high ? highScale : 1.25));
+  };
 
   private createRunEffects() {
     this.shieldAura = new TransformNode("orbiting-shields", this.scene);
@@ -2053,7 +2079,8 @@ export class ForestScene {
   }
 
   update(game: RunnerGame, dt: number, showWallEntryMarkers = false, guide: GuideId | null = null, guideStep = 0) {
-    if (this.track !== game.track) {
+    const newTrack = this.track !== game.track;
+    if (newTrack) {
       this.openingMistTime = 0;
       this.lastShotAt = this.lastWolfImpact = -Infinity;
     }
@@ -2097,8 +2124,7 @@ export class ForestScene {
     const waterBefore = this.runner.position.y;
     const pose = this.motion.update(game, dt);
     const scroll = ready || introducing ? 0 : game.distance;
-    this.terrainView.update(scroll, game.worldTime, game.trackSeed, this.track,
-      game.items.filter(item => item.type === "pool"), game.blizzard);
+    this.terrainView.update(scroll, game.worldTime, game.trackSeed, this.track, game.items, game.blizzard);
     // Exposure follows the lens crossing the mouth, not the runner seven metres ahead.
     const cameraDistance = Math.max(0, scroll + this.camera.position.z);
     const darkness = tunnelDarkness(cameraDistance, this.track);
@@ -2141,11 +2167,10 @@ export class ForestScene {
     const skyOpacity = light.night * (1 - darkness) ** 2 * (1 - immersed) ** 3 * (1 - storm * 0.85);
     if (skyOpacity > 0.002) this.nightSky ??= new NightSky(this.scene);
     this.nightSky?.update(skyOpacity, Math.max(0.1, this.engine.getAspectRatio(this.camera)));
-    const openingReady = game.openingPrepared && game.items.every(item => {
-      const model = this.itemMeshes.get(item.id);
-      return model && model.getChildMeshes().every(mesh => mesh.isReady());
-    });
-    if (running && openingReady) this.openingMistTime += dt;
+    if (running && game.openingPrepared && this.openingMistTime < CONFIG.openingFogHold + CONFIG.openingFogFade &&
+      (this.openingMistTime > 0 || game.items.every(item =>
+        this.itemMeshes.get(item.id)?.getChildMeshes().every(mesh => mesh.isReady()))))
+      this.openingMistTime += dt;
     const mist = ready || introducing ? 1 : openingFog(this.openingMistTime);
     const terrainFog = 0.009 + light.night * 0.0018 + darkness * 0.012 + immersed * 0.008 +
       storm * (0.0072 + Math.sin(game.worldTime * 2) * 0.0012);
@@ -2158,7 +2183,7 @@ export class ForestScene {
     this.sun.intensity = (0.85 - darkness * 0.65) * (1 - moon * 0.48 - dusk * 0.09);
     this.sun.diffuse = Color3.Lerp(Color3.Lerp(SUN, SUNSET, dusk), MOON, moon);
     this.sun.direction.set(-0.65 + 1.13 * moon - 0.37 * dusk, -1 + 0.54 * dusk + 0.18 * moon, 0.65 - 0.25 * moon);
-    this.shadows.setDarkness(0.3 + moon * 0.16);
+    this.shadows?.setDarkness(0.3 + moon * 0.16);
     const inlandGround = Color3.Lerp(Color3.FromHexString("#698463"), Color3.FromHexString("#a88a67"), canyonBlend);
     this.sky.groundColor = Color3.Lerp(Color3.Lerp(inlandGround, Color3.FromHexString("#a8b9ce"), snowLight),
       Color3.FromHexString("#6880a3"), moon * 0.42);
@@ -2172,12 +2197,17 @@ export class ForestScene {
     this.forestBackdrop.position.y = -12 * smooth(forestSnowFade);
     this.forestBackdrop.setEnabled(forestHorizon > 0.005);
     for (const hill of this.forestBackdrop.getChildMeshes()) hill.visibility = forestHorizon;
+    const revisionChanged = this.chunkRevision !== this.track.revision;
     this.chunks.forEach((root, i) => {
-      root.position.z = ((((i * 40 - scroll + 40) % 200) + 200) % 200) - 60;
+      const base = i * 40 + 40;
+      const worldStart = base - Math.floor((base - scroll) / 200) * 200 - 60;
+      root.position.z = worldStart - scroll;
+      if (!newTrack && !revisionChanged && this.chunkStarts[i] === worldStart) return;
+      this.chunkStarts[i] = worldStart;
       // Clip individual roadside objects to their section; a 40m group must not pop at the portal.
       for (const child of root.getChildren()) {
         const node = child as TransformNode;
-        const worldZ = root.position.z + scroll + node.position.z;
+        const worldZ = worldStart + node.position.z;
         const road = sectionAt(worldZ, this.track);
         const forestBridge = road.biome === "snow-transition" && (road.from === "forest" || road.to === "forest");
         const forestAmount = forestBridge ? 1 - snowBlend(worldZ, this.track) : 1;
@@ -2193,6 +2223,7 @@ export class ForestScene {
         node.setEnabled(clearMouth || (forestBridge && forestAmount > 0.035));
       }
     });
+    this.chunkRevision = this.track.revision;
     const blend = 1 - pose.slide,
       airborne = !ready && !introducing && game.y > 0;
     const stand = ready
@@ -2480,9 +2511,11 @@ export class ForestScene {
         mesh.dispose();
         this.itemMeshes.delete(id);
       }
+    let distantBuilds = 0;
     for (const item of game.items) {
       let mesh = this.itemMeshes.get(item.id);
       if (!mesh) {
+        if (item.z > 45 && distantBuilds++ >= 8) continue;
         mesh = this.createItem(item);
         this.itemMeshes.set(item.id, mesh);
       }
@@ -2707,7 +2740,7 @@ export class ForestScene {
     for (const [step, stage] of this.guidePreviews) stage.setEnabled(step === guideStep);
     this.scene.activeCamera = this.camera;
     this.scene.render();
-    const viewport = document.querySelector<HTMLElement>("#guide-viewport");
+    const viewport = preview && document.querySelector<HTMLElement>("#guide-viewport");
     if (preview && viewport) {
       const rect = viewport.getBoundingClientRect();
       const canvasRect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
@@ -2722,19 +2755,19 @@ export class ForestScene {
         backdrop.vOffset = (1 - backdrop.vScale) / 2;
       }
       const sx = this.engine.getRenderWidth() / canvasRect.width, sy = this.engine.getRenderHeight() / canvasRect.height;
-      const fogEnabled = this.scene.fogEnabled, shadowsEnabled = this.scene.shadowsEnabled;
+      const fogDensity = this.scene.fogDensity, renderTargets = this.scene.renderTargetsEnabled;
       const autoClearDepth = this.scene.autoClearDepthAndStencil;
       try {
         this.engine.enableScissor(Math.round((rect.left - canvasRect.left) * sx), Math.round((canvasRect.bottom - rect.bottom) * sy), Math.round(rect.width * sx), Math.round(rect.height * sy));
         this.scene.activeCamera = preview.camera;
         this.scene.autoClear = false; this.scene.autoClearDepthAndStencil = false;
-        this.scene.fogEnabled = false; this.scene.shadowsEnabled = false;
+        this.scene.fogDensity = 0; this.scene.renderTargetsEnabled = false;
         this.engine.clear(Color4.FromHexString(guide === "snow" ? "#31547dff" :
           guide === "night" ? "#192742ff" : "#074d62ff"), true, true, true);
         this.scene.render();
       } finally {
         this.engine.disableScissor(); this.scene.autoClear = true; this.scene.autoClearDepthAndStencil = autoClearDepth;
-        this.scene.fogEnabled = fogEnabled; this.scene.shadowsEnabled = shadowsEnabled;
+        this.scene.fogDensity = fogDensity; this.scene.renderTargetsEnabled = renderTargets;
         this.scene.activeCamera = this.camera;
       }
     }

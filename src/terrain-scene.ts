@@ -1,7 +1,6 @@
 import { CoastSurface } from "./coast-surface.ts";
 import { coastFloor, coastWeights, coastSandUV } from "./coast-layout.ts";
 import type { Material } from "@babylonjs/core/Materials/material";
-import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { coastGridIndices } from "./ocean-geometry.ts";
 import { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -10,7 +9,7 @@ import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { OceanWater } from "./ocean-water.ts";
-import { OceanProps } from "./ocean-props.ts";
+import type { OceanProps } from "./ocean-props.ts";
 import { CONFIG } from "./config.ts";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
@@ -27,7 +26,7 @@ import { snowMaterial } from "./snow-materials.ts";
 import { WINTER_VERTEX, withSnowLayer } from "./snow-layer.ts";
 import { WINTER_HAZARD_HALF_WIDTH, winterGroundHeight, winterShoulder } from "./snow-layout.ts";
 import type { TrackItem } from "./game.ts";
-import { SnowProps } from "./snow-props.ts";
+import type { SnowProps } from "./snow-props.ts";
 import { mergeSceneryMeshes } from "./scenery-mesh";
 import type { ForestProps } from "./props.ts";
 
@@ -41,77 +40,94 @@ export class TerrainScene {
   private seed = 0;
   private plan = defaultTrack;
   private planRevision = 0;
-  private snow?: SnowProps;
   private pendingSurfaces = new Map<Mesh, Material>();
   private cells = new Map<number, TransformNode>();
   private poolCuts = new Map<number, string>();
   private windRibbons = new Map<number, Mesh>();
   private snowWind?: StandardMaterial;
   private coastSurface?: CoastSurface;
-  private get sand(): ShaderMaterial {
-    this.coastSurface ??= new CoastSurface(this.scene, this.props);
-    return this.coastSurface.material;
-  }
-  private water: OceanWater;
-  private ocean: OceanProps;
+  private water?: OceanWater;
   private grass: StandardMaterial;
   private trail: StandardMaterial;
-  private stone: StandardMaterial;
-  private cliff: StandardMaterial;
-  private tunnel: StandardMaterial;
-  private tunnelTrail: StandardMaterial;
-  private tunnelStone: StandardMaterial;
+  private canyonRoad?: StandardMaterial;
+  private canyonCliff?: StandardMaterial;
+  private cave?: StandardMaterial;
+  private caveTrail?: StandardMaterial;
+  private caveRoad?: StandardMaterial;
+  private textures = new Map<string, Texture>();
   private guide: StandardMaterial;
   constructor(
     private scene: Scene,
     private props: ForestProps,
+    private ocean: OceanProps,
+    private snowProps: () => SnowProps,
   ) {
-    const material = (name: string, color: string, file?: string) => {
-      const mat = new StandardMaterial(name, scene);
-      mat.diffuseColor = Color3.FromHexString(color).toLinearSpace();
-      mat.specularColor = Color3.Black();
-      if (file) {
-        mat.diffuseTexture = new Texture(
-          import.meta.env.BASE_URL + "art/" + file,
-          scene,
-        );
-        mat.diffuseTexture.anisotropicFilteringLevel = 8;
-        if (mat.diffuseTexture instanceof Texture) mat.diffuseTexture.isBlocking = false;
-      }
-      return mat;
-    };
-    this.ocean = new OceanProps(scene);
-    this.water = new OceanWater(scene);
-
-    this.grass = material("grass-floor", "#ffffff", "woodland-grass.webp");
-    this.trail = material("forest-trail", "#e3dccc", "woodland-trail.webp");
-    this.stone = material("canyon-road", "#ffffff", "canyon-trail.webp");
-    this.cliff = material(
-      "layered-sandstone",
-      "#ffffff",
-      "canyon-sandstone.webp",
-    );
-    this.cliff.backFaceCulling = false;
-    this.cliff.twoSidedLighting = true;
-    this.tunnel = material("cave-interior", "#9e9586", "canyon-sandstone.webp");
-    this.tunnel.backFaceCulling = false;
-    this.tunnel.twoSidedLighting = true;
-    this.tunnelTrail = material(
-      "cave-trail-floor",
-      "#e3dccc",
-      "woodland-trail.webp",
-    );
-    this.tunnelStone = material(
-      "cave-canyon-floor",
-      "#ffffff",
-      "canyon-trail.webp",
-    );
-    this.guide = material("chalk-wall-route", "#ead8ac");
+    this.grass = this.material("grass-floor", "#ffffff", "woodland-grass.webp", true);
+    this.trail = this.material("forest-trail", "#e3dccc", "woodland-trail.webp", true);
+    this.guide = this.material("chalk-wall-route", "#ead8ac");
     this.guide.backFaceCulling = false;
-    // Exterior surfaces remain faintly readable through a dark cave mouth.
-    for (const mat of [this.grass, this.trail, this.stone, this.cliff]) {
+  }
+
+  private material(name: string, color: string, file?: string, exterior = false) {
+    const mat = new StandardMaterial(name, this.scene);
+    mat.diffuseColor = Color3.FromHexString(color).toLinearSpace();
+    mat.specularColor.setAll(0);
+    if (file) {
+      let texture = this.textures.get(file);
+      if (!texture) {
+        texture = new Texture(import.meta.env.BASE_URL + "art/" + file, this.scene);
+        texture.anisotropicFilteringLevel = 8;
+        texture.isBlocking = false;
+        this.textures.set(file, texture);
+      }
+      mat.diffuseTexture = texture;
+    }
+    if (exterior) {
+      // Exterior surfaces remain faintly readable through a dark cave mouth.
       mat.emissiveTexture = mat.diffuseTexture;
       mat.emissiveColor.setAll(0.09);
+    }
+    return mat;
+  }
+
+  private get stone() {
+    return this.canyonRoad ??= this.material("canyon-road", "#ffffff", "canyon-trail.webp", true);
+  }
+
+  private wallMaterial(name: string, color: string, exterior: boolean) {
+    const mat = this.material(name, color, "canyon-sandstone.webp", exterior);
+    mat.backFaceCulling = false;
+    mat.twoSidedLighting = true;
+    return mat;
+  }
+
+  private get cliff() {
+    return this.canyonCliff ??= this.wallMaterial("layered-sandstone", "#ffffff", true);
+  }
+
+  private get tunnel() {
+    return this.cave ??= this.wallMaterial("cave-interior", "#9e9586", false);
+  }
+
+  private get tunnelTrail() {
+    return this.caveTrail ??= this.material("cave-trail-floor", "#e3dccc", "woodland-trail.webp");
+  }
+
+  private get tunnelStone() {
+    return this.caveRoad ??= this.material("cave-canyon-floor", "#ffffff", "canyon-trail.webp");
+  }
+
+  useForestFallback() {
+    for (const [material, fallback] of [[this.grass, "#78946a"], [this.trail, "#c5af8d"]] as const) {
+      const texture = material.diffuseTexture;
+      if (!(texture instanceof Texture) || texture.isReady()) continue;
+      const color = material.diffuseColor;
+      material.diffuseTexture = material.emissiveTexture = null;
+      material.diffuseColor = Color3.FromHexString(fallback).toLinearSpace();
+      texture.onLoadObservable.addOnce(() => {
+        material.diffuseTexture = material.emissiveTexture = texture;
+        material.diffuseColor = color;
+      });
     }
   }
 
@@ -159,7 +175,7 @@ export class TerrainScene {
     const tile =
       material === this.grass
         ? 2.5
-        : material === this.trail || material === this.tunnelTrail
+        : material === this.trail || material === this.caveTrail
           ? 8
           : 6;
     for (let i = 0; i < uv.length; i += 2) {
@@ -236,7 +252,7 @@ export class TerrainScene {
       mesh.setVerticesData(WINTER_VERTEX, coverage, false, 3);
       this.prepareSurface(mesh, mesh.material!, base);
     }
-    this.snow ??= new SnowProps(this.scene, this.props);
+    const snowProps = this.snowProps();
     for (const side of [-1, 1]) {
       const seed = index * 17 + this.seed * 0.618 + side * 93;
       const pick = (salt: number) => {
@@ -251,20 +267,20 @@ export class TerrainScene {
       };
       const grove = Math.sin(world * 0.027 + side * 1.8 + this.seed * 0.19);
       if (pick(2) < 0.63 + grove * 0.32) {
-        const tree = this.snow.pine(root, snow, seed);
+        const tree = snowProps.pine(root, snow, seed);
         place(tree, 8 + pick(3) * 9 + (1 - snow) * 3, z);
         const scale = (0.64 + pick(4) * 0.72) * (0.32 + 0.68 * smooth(snow / 0.66));
         tree.scaling.set(scale * (0.74 + pick(5) * 0.5), scale, scale);
       }
       if (snow > 0.28 && pick(7) > 0.22) {
-        const bank = this.snow.drift(root);
+        const bank = snowProps.drift(root);
         place(bank, 5.7 + pick(8) * 2.1, 10 - z);
         bank.rotation.y = 0.4 + pick(9) * 0.9;
         bank.scaling.set(0.8 + pick(4) * 1.3, 0.32 + pick(5) * 0.65, 1.4 + pick(3) * 0.9);
-        if (pick(10) > 0.53) this.snow.vergeDetails(bank, seed);
+        if (pick(10) > 0.53) snowProps.vergeDetails(bank, seed);
       }
       if (snow > 0.32 && pick(11) > 0.67) {
-        const rock = this.snow.outcrop(root, seed, snow);
+        const rock = snowProps.outcrop(root, seed, snow);
         place(rock, 12 + pick(12) * 15, 5);
         rock.scaling.set(1.3 + pick(5), 0.9 + pick(4) * 0.6, 1);
       }
@@ -510,13 +526,16 @@ export class TerrainScene {
 
       }
     }
-    const material = this.sand;
+    const coast = this.coastSurface ??= new CoastSurface(this.scene, this.props);
+    if (section.from === "snow" || section.to === "snow") coast.useSnow();
+    const material = coast.material;
     const seabed = this.surface("rippled-coastal-contours", positions, coastGridIndices(columns, rows), uvs, new Array(colors.length).fill(1), root, material);
     seabed.setVerticesData("coastWeights", colors, false, 4);
-    this.prepareSurface(seabed, material, this.coastSurface!.fallback);
-    if (underwater) this.water.caustics(root, seabed);
+    this.prepareSurface(seabed, material, coast.fallback);
+    const water = this.water ??= new OceanWater(this.scene);
+    if (underwater) water.caustics(root, seabed);
     // Dry land occludes the full-width sea; shoreline depth controls surf and transparency.
-    this.water.cell(root, world, (x, d) => this.coastHeight(x, d));
+    water.cell(root, world, (x, d) => this.coastHeight(x, d));
     for (const side of [-1, 1]) {
       for (let cluster = 0; cluster < 2; cluster++) {
         const x = side * (7 + cluster * 7 + Math.sin(world * 0.13 + side) * 0.8);
@@ -574,8 +593,7 @@ export class TerrainScene {
           shoulder.position.set(side * 13, 4 * rockBlend, 5);
         }
         if (snow > 0.26) {
-          this.snow ??= new SnowProps(this.scene, this.props);
-          const pine = this.snow.pine(root, snow);
+          const pine = this.snowProps().pine(root, snow);
           pine.position.set(side * 10, this.coastHeight(side * 10, world + 5), 5);
           pine.scaling.setAll(0.4 + snow * 0.6);
         }
@@ -835,22 +853,31 @@ export class TerrainScene {
     }
     return root;
   }
-  update(distance: number, time = 0, seed = 0, plan = defaultTrack, pools: readonly TrackItem[] = [], storm = 0) {
+  update(distance: number, time = 0, seed = 0, plan = defaultTrack, items: readonly TrackItem[] = [], storm = 0) {
     const changed = this.seed !== seed || this.plan !== plan || plan.revision - this.planRevision > 1;
     // Portal walls reach 30 metres back into the old forest.
     const changedFrom = this.planRevision !== plan.revision ? plan.changedFrom - 30 : Infinity;
     this.plan = plan;
     this.planRevision = plan.revision;
     this.seed = seed;
-    this.water.update(distance, time);
+    this.water?.update(distance, time);
     const first = Math.floor((distance - 50) / 10),
       last = Math.ceil((distance + 180) / 10);
-    const cuts = (index: number) => pools.filter(pool =>
-      pool.worldZ - CONFIG.poolLength / 2 < index * 10 + 10 &&
-      pool.worldZ + CONFIG.poolLength / 2 > index * 10);
+    const cuts = new Map<number, TrackItem[]>();
+    for (const pool of items) {
+      if (pool.type !== "pool") continue;
+      const start = Math.max(first, Math.floor((pool.worldZ - CONFIG.poolLength / 2) / 10));
+      const end = Math.min(last, Math.ceil((pool.worldZ + CONFIG.poolLength / 2) / 10) - 1);
+      for (let index = start; index <= end; index++) {
+        const list = cuts.get(index);
+        if (list) list.push(pool);
+        else cuts.set(index, [pool]);
+      }
+    }
     const key = (cut: readonly TrackItem[]) => cut.map(pool => `${pool.lane}/${pool.worldZ}`).sort().join(";");
-    for (const [index, root] of this.cells)
-      if (changed || index * 10 + 10 >= changedFrom || index < first || index > last || this.poolCuts.get(index) !== key(cuts(index))) {
+    for (const [index, root] of this.cells) {
+      const cut = cuts.get(index);
+      if (changed || index * 10 + 10 >= changedFrom || index < first || index > last || this.poolCuts.get(index) !== (cut ? key(cut) : "")) {
         const batches = new Set(
           root.getChildMeshes().map((mesh) => mesh.material),
         );
@@ -862,10 +889,11 @@ export class TerrainScene {
         this.poolCuts.delete(index);
         this.windRibbons.delete(index);
       }
+    }
     for (let index = first; index <= last; index++) {
       let root = this.cells.get(index);
       if (!root) {
-        const cut = cuts(index);
+        const cut = cuts.get(index) ?? [];
         root = this.build(index, cut);
         this.cells.set(index, root);
         this.poolCuts.set(index, key(cut));

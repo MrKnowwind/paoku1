@@ -1182,12 +1182,16 @@ export class RunnerGame {
       if (this.mode === "running" && this.inSnow && this.cold >= CONFIG.coldMax) {
         this.cold = CONFIG.coldMax; this.mode = "over"; this.lastHit = "cold";
       }
-      this.items = this.items.filter(
-        (item) =>
-          (item.z > -24 || item.attraction !== undefined || item.fish && this.worldTime < item.fish.startTime + CONFIG.fishHalfSpan * 2 / CONFIG.fishSpeed) &&
-          !this.collected.has(item.id) &&
-          !this.cleared.has(item.id),
-      );
+      this.items = this.items.filter(item => {
+        if (item.z <= -24 && item.attraction === undefined &&
+          (!item.fish || this.worldTime >= item.fish.startTime + CONFIG.fishHalfSpan * 2 / CONFIG.fishSpeed)) {
+          // Earlier rewind snapshots retain their own copies for these retired hazards.
+          if (item.type === "ice") this.triggeredIce.delete(item.id);
+          if (item.type === "fire") this.firePasses.delete(item.id);
+          return false;
+        }
+        return !this.collected.has(item.id) && !this.cleared.has(item.id);
+      });
       if (this.mode === "running") this.nightCombat.update(this, step,
         (key, salt) => this.hash(key, salt), () => this.collide("wolf"));
       if (this.mode === "running") this.capture();

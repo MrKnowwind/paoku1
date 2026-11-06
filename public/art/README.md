@@ -16,7 +16,15 @@ Final prompt:
 
 ## Web delivery
 
-Runtime terrain textures use WebP quality 82 at the original resolution. Original JPEGs are preserved in `art-source/textures/` outside the deployed public directory. To regenerate, open each original with Pillow and save to `public/art/<stem>.webp` with `quality=82, method=6`.
+Runtime terrain textures use mipmapped WebP. Source images are in `art-source/textures/`, outside the deployed public directory. The following Pillow settings use Lanczos resizing and WebP `method=6`.
+
+| Texture | Size | WebP quality |
+| --- | ---: | ---: |
+| Woodland grass | 512 × 512 | 80 |
+| Woodland trail | 1024 × 1024 | 78 |
+| Canyon trail | 1024 × 1024 | 75 |
+| Canyon sandstone | 1024 × 1024 | 76 |
+| Beach sand v2 | 1024 × 1024 | 79 |
 
 ## Terrain guide backgrounds
 

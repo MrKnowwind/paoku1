@@ -91,6 +91,9 @@ const tutorial = new Tutorial(
 );
 const t = (key: MessageKey) => messages[language][key];
 const n = (value: number) => numberFormatter.format(Math.floor(value));
+const setText = (element: Element, value: string) => {
+  if (element.textContent !== value) element.textContent = value;
+};
 const text = (key: MessageKey, tag = "span", cls = "") =>
   `<${tag} class="${cls}" data-i18n="${key}">${t(key)}</${tag}>`;
 const clockSegments = [
@@ -505,9 +508,11 @@ function updateGuideUi() {
   document.body.classList.toggle("cold-visible", !cold.hidden && !guide);
   cold.classList.toggle("critical", !sample && game.cold >= 75);
   const value = sample ? 40 : game.cold;
-  cold.setAttribute("aria-label", t(sample ? "snowMeterSample" : "cold"));
-  cold.setAttribute("aria-valuenow", String(Math.floor(value)));
-  document.querySelector<HTMLElement>("#cold-fill")!.style.width = `${value / CONFIG.coldMax * 100}%`;
+  if (!cold.hidden) {
+    cold.setAttribute("aria-label", t(sample ? "snowMeterSample" : "cold"));
+    cold.setAttribute("aria-valuenow", String(Math.floor(value)));
+    document.querySelector<HTMLElement>("#cold-fill")!.style.width = `${value / CONFIG.coldMax * 100}%`;
+  }
   cold.classList.toggle("warming", !sample && game.coldFeedback > 0 && game.coldDelta < 0);
 }
 
@@ -538,7 +543,7 @@ function updateTutorialUi() {
   const overlay = document.querySelector<HTMLElement>("#tutorial-overlay")!;
   const lesson = tutorial.active;
   overlay.hidden = !lesson || !!tutorial.guide || game.mode !== "running" || !!activeDialog;
-  if (lesson) document.querySelector("#tutorial-title")!.textContent = t(lessonTitles[lesson.id]);
+  if (lesson) setText(document.querySelector("#tutorial-title")!, t(lessonTitles[lesson.id]));
 }
 function updateNightUi() {
   const time = game.worldTime;
@@ -568,8 +573,9 @@ function updateNightUi() {
 }
 function updateFeatureUi() {
   const state = economy.state;
+  const wallet = n(state.wallet);
   document.querySelectorAll<HTMLElement>(".wallet-count").forEach(element => {
-    element.textContent = n(state.wallet);
+    setText(element, wallet);
   });
   const status = document.querySelector<HTMLElement>("#run-status")!;
   const rewind = game.mode === "rewinding";
@@ -595,8 +601,8 @@ function updateFeatureUi() {
   button.disabled = state.boosters <= 0 || game.mode !== "running" || game.boosting || game.icy ||
     !!tutorial.guide || game.boostCooldown > 0;
   button.classList.toggle("tool-live", game.boosting);
-  document.querySelector("#booster-status")!.textContent = game.boosting ? "" :
-    game.boostCooldown > 0 ? `${Math.ceil(game.boostCooldown)}s` : `×${n(state.boosters)}`;
+  setText(document.querySelector("#booster-status")!, game.boosting ? "" :
+    game.boostCooldown > 0 ? `${Math.ceil(game.boostCooldown)}s` : `×${n(state.boosters)}`);
   updateNightUi();
 }
 function act(action: string) {
@@ -985,21 +991,29 @@ reportLoading({phase: "scene", percent: 68});
 await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 try {
   world = new ForestScene(
-    document.querySelector<HTMLCanvasElement>("#world")!,
+    worldCanvas,
     quality,
     percent => reportLoading({phase: "scene", percent}),
   );
   let previous = performance.now();
   let lastCoins = 0;
+  let lastHudUpdate = -Infinity;
+  const countdown = document.querySelector<HTMLElement>("#countdown")!;
+  const counter = document.querySelector<HTMLElement>(".coin-counter")!;
+  const score = document.querySelector("#score")!;
+  const distance = document.querySelector("#distance")!;
+  const coins = document.querySelector("#coins")!;
   const loadingStarted = performance.now();
   let textureFallback = false;
   let maximumPending = Math.max(1, world.scene.getWaitingItemsCount());
   reportLoading({phase: "textures", percent: 83});
   world.engine.runRenderLoop(() => {
     try {
-      const now = performance.now(),
-        dt = Math.min((now - previous) / 1000, 0.06);
-      if (!loaded && !textureFallback && now - loadingStarted > 8000) {
+      const now = performance.now();
+      if (document.hidden) { previous = now; return; }
+      const frameTime = now - previous;
+      const dt = Math.min(frameTime / 1000, 0.06);
+      if (!loaded && !textureFallback && now - loadingStarted > 2500) {
         world!.useTextureFallback(); textureFallback = true;
       }
       previous = now;
@@ -1027,7 +1041,6 @@ try {
       if (transitionBefore || game.transitioning || game.icy) gesture = null;
       if (swimBefore !== game.swimming) beep("splash");
       if (game.mode !== previousMode) syncView();
-      const countdown = document.querySelector<HTMLElement>("#countdown")!;
       const count = game.mode === "intro" && !activeDialog ? game.countdown : "";
       if (countdown.textContent !== count) {
         countdown.textContent = count;
@@ -1040,6 +1053,11 @@ try {
       }
       updateGuideUi();
       const guide = !activeDialog ? tutorial.guide : null;
+      const idle = game.mode === "ready" || game.mode === "paused" || !!guide ||
+        (game.mode === "over" && !!activeDialog);
+      const maxFPS = loaded && idle ? 30 : undefined;
+      if (world!.engine.maxFPS !== maxFPS) world!.engine.maxFPS = maxFPS;
+      world!.adjustResolution(loaded && wasRunning && game.mode === "running" && !guide ? frameTime : 0);
       world!.update(game, guide ? 0 : game.mode === "over" ? dt : simulationDt,
         tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"), guide,
         guide ? tutorial.guideStep : 0);
@@ -1048,7 +1066,7 @@ try {
         maximumPending = Math.max(maximumPending, pending);
         reportLoading({phase: "textures", percent: 83 + (1 - pending / maximumPending) * 12});
         // A drawn, ready character is required. Slow decorative textures may finish in the background.
-        if (world!.isPlayable() && (pending === 0 || now - loadingStarted > 8000)) {
+        if ((pending === 0 || textureFallback) && world!.isPlayable()) {
           loaded = true;
           reportLoading({phase: "ready", percent: 100});
           document.querySelector<HTMLButtonElement>('[data-action="start"]')!.disabled = false;
@@ -1057,19 +1075,21 @@ try {
       updateTutorialUi();
       if (game.coins > lastCoins) {
         beep("coin");
-        const counter = document.querySelector<HTMLElement>(".coin-counter")!;
         counter.classList.remove("pulse");
         void counter.offsetWidth;
         counter.classList.add("pulse");
       }
-      updateFeatureUi();
+      if (now - lastHudUpdate >= 50 || game.mode !== previousMode || game.coins !== lastCoins) {
+        lastHudUpdate = now;
+        updateFeatureUi();
+        setText(score, n(game.score));
+        setText(distance, n(game.distance));
+        setText(coins, n(game.coins));
+      }
       weather.update(game.inSnow && game.mode !== "ready" && !tutorial.guide,
         game.blizzard, game.worldTime, Math.min(1, game.cold / CONFIG.coldMax), quality,
         game.mode === "running" ? simulationDt : 0, game.mode === "rewinding");
       lastCoins = game.coins;
-      document.querySelector("#score")!.textContent = n(game.score);
-      document.querySelector("#distance")!.textContent = n(game.distance);
-      document.querySelector("#coins")!.textContent = n(game.coins);
       if (wasRunning && game.mode === "over") {
         beep("hit");
         resultDelay = game.lastHit === "pool" ? 1.8 : game.lastHit === "cold" ? 1.2 : 0.65;
@@ -1081,7 +1101,10 @@ try {
       }
     } catch (error) {
       console.error("3D rendering failed", error);
-      world?.engine.stopRenderLoop();
+      const failedWorld = world;
+      failedWorld?.engine.stopRenderLoop();
+      world = null;
+      queueMicrotask(() => failedWorld?.dispose());
       reportLoading({phase: "error", percent: 95, reason: "graphics"});
     }
   });
@@ -1090,8 +1113,12 @@ try {
   reportLoading({phase: "error", percent: 68, reason: "graphics"});
 }
 
-window.addEventListener("pagehide", () => {
+window.addEventListener("pagehide", event => {
   audio.silence();
   if (game.mode === "over") finishRun();
   economy.flush();
+  if (!event.persisted) {
+    world?.dispose();
+    world = null;
+  }
 });

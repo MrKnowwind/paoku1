@@ -9,7 +9,7 @@ import type { ForestProps } from "./props.ts";
 type WinterSurface = "snow" | "ice" | "water" | "glass" | "label" | "cloth" | "needles";
 const cache = new WeakMap<Scene, Map<WinterSurface, StandardMaterial>>();
 
-// Shared 1024px mipmapped surfaces are baked only on first snow/lesson use.
+// Shared mipmapped surfaces are baked only on first snow/lesson use.
 // Wood, end grain, rocks and woven cloth reuse the earlier terrain's materials.
 export function snowMaterial(scene: Scene, surface: WinterSurface, forest: ForestProps) {
   let materials = cache.get(scene);
@@ -33,9 +33,11 @@ export function snowMaterial(scene: Scene, surface: WinterSurface, forest: Fores
     return material;
   }
   const size = 1024;
-  const texture = new DynamicTexture("winter-detail-" + surface, size, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
-  texture.anisotropicFilteringLevel = 16;
+  const resolution = 512;
+  const texture = new DynamicTexture("winter-detail-" + surface, resolution, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
+  texture.anisotropicFilteringLevel = 8;
   const ctx = texture.getContext() as CanvasRenderingContext2D;
+  ctx.scale(resolution / size, resolution / size);
   let seed = 738219;
   const random = () => { seed = Math.imul(seed, 1664525) + 1013904223 | 0; return (seed >>> 0) / 4294967296; };
   ctx.fillStyle = {snow: "#e5eef5", ice: "#85b8cf", water: "#173e51", label: "#ead7a8"}[surface];
@@ -49,7 +51,7 @@ export function snowMaterial(scene: Scene, surface: WinterSurface, forest: Fores
         ctx.fillStyle = glow; ctx.fillRect(x + dx - radius, y + dy - radius, radius * 2, radius * 2);
       }
     }
-    for (let i = 0; i < 32000; i++) {
+    for (let i = 0; i < 12000; i++) {
       const x = random() * size, y = random() * size, r = 0.4 + random() * 1.9;
       ctx.fillStyle = i % 3 ? "#ffffff" : "#89a7be"; ctx.globalAlpha = 0.08 + random() * 0.18;
       ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.6, random() * 6.28, 0, Math.PI * 2); ctx.fill();
@@ -65,7 +67,7 @@ export function snowMaterial(scene: Scene, surface: WinterSurface, forest: Fores
       ctx.stroke();
     }
   } else if (surface === "ice") {
-    for (let i = 0; i < 8500; i++) {
+    for (let i = 0; i < 4200; i++) {
       ctx.globalAlpha = 0.05 + random() * 0.13; ctx.fillStyle = i % 2 ? "#ddf5ff" : "#3b789a";
       ctx.fillRect(random() * size, random() * size, 1 + random() * 3, 2 + random() * 10);
     }
@@ -89,7 +91,7 @@ export function snowMaterial(scene: Scene, surface: WinterSurface, forest: Fores
     }
     material.specularColor.setAll(0.7); material.specularPower = 112;
   } else {
-    for (let i = 0; i < 16000; i++) { ctx.globalAlpha = random() * 0.12; ctx.fillStyle = i % 2 ? "#ffffff" : "#9a794b"; ctx.fillRect(random() * size, random() * size, 1, 1); }
+    for (let i = 0; i < 4800; i++) { ctx.globalAlpha = random() * 0.12; ctx.fillStyle = i % 2 ? "#ffffff" : "#9a794b"; ctx.fillRect(random() * size, random() * size, 1, 1); }
     ctx.globalAlpha = 1; ctx.strokeStyle = "#795d36"; ctx.lineWidth = 6; ctx.strokeRect(35, 55, 954, 914);
     ctx.lineWidth = 2; ctx.strokeRect(48, 68, 928, 888);
     ctx.fillStyle = "#af6e36"; ctx.beginPath(); ctx.arc(512, 340, 95, 0, Math.PI * 2); ctx.fill();
@@ -99,18 +101,19 @@ export function snowMaterial(scene: Scene, surface: WinterSurface, forest: Fores
   }
   ctx.globalAlpha = 1; texture.update(); material.diffuseTexture = texture;
   if (surface === "snow" || surface === "ice") {
-    const bump = new DynamicTexture("winter-micro-normal-" + surface, 512, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
+    const normalSize = 256;
+    const bump = new DynamicTexture("winter-micro-normal-" + surface, normalSize, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
     const context = bump.getContext() as CanvasRenderingContext2D;
-    const data = context.createImageData(512, 512);
-    for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) {
-      const u = x / 512 * Math.PI * 2, v = y / 512 * Math.PI * 2;
-      const i = (y * 512 + x) * 4;
+    const data = context.createImageData(normalSize, normalSize);
+    for (let y = 0; y < normalSize; y++) for (let x = 0; x < normalSize; x++) {
+      const u = x / normalSize * Math.PI * 2, v = y / normalSize * Math.PI * 2;
+      const i = (y * normalSize + x) * 4;
       data.data[i] = 128 + Math.round(11 * Math.sin(u * 19 + v * 13) + 5 * Math.cos(u * 43 - v * 22));
       data.data[i + 1] = 128 + Math.round(10 * Math.cos(v * 19 - u * 11) + 4 * Math.sin(v * 31 + u * 17));
       data.data[i + 2] = 254; data.data[i + 3] = 255;
     }
     context.putImageData(data, 0, 0); bump.update(); bump.level = surface === "snow" ? 0.22 : 0.35;
-    bump.anisotropicFilteringLevel = 16; material.bumpTexture = bump;
+    bump.anisotropicFilteringLevel = 8; material.bumpTexture = bump;
   }
   return material;
 }
