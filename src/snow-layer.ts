@@ -42,3 +42,12 @@ export function withSnowLayer(base: StandardMaterial, snow: BaseTexture) {
   }
   return material;
 }
+
+export function refreshSnowLayer(base: StandardMaterial) {
+  const material = winterMaterials.get(base);
+  if (!material) return;
+  material.diffuseTexture = base.diffuseTexture;
+  material.emissiveTexture = base.emissiveTexture;
+  material.diffuseColor.copyFrom(base.diffuseColor);
+  material.emissiveColor.copyFrom(base.emissiveColor);
+}

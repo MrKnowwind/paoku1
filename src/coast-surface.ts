@@ -4,6 +4,7 @@ import { Scene } from "@babylonjs/core/scene";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 
 export class CoastSurface {
   readonly material: ShaderMaterial;
@@ -11,6 +12,7 @@ export class CoastSurface {
   private snowReady = false;
   constructor(private scene: Scene, private forest: ForestProps) {
     this.fallback = new StandardMaterial("coastal-ground-fallback", scene);
+    this.fallback.diffuseColor = Color3.FromHexString("#c5af8d").toLinearSpace();
     this.fallback.specularColor.setAll(0);
     this.material = new ShaderMaterial("world-scale-coastal-surface", scene, {
       vertexSource: `precision highp float;
@@ -48,7 +50,12 @@ export class CoastSurface {
       texture.anisotropicFilteringLevel = 8;
       if (name === "sand") {
         texture.wrapU = texture.wrapV = Texture.MIRROR_ADDRESSMODE;
-        texture.onLoadObservable.addOnce(() => { this.fallback.diffuseTexture = texture; });
+        const applySand = () => {
+          this.fallback.diffuseTexture = texture;
+          this.fallback.diffuseColor.setAll(1);
+        };
+        if (texture.isReady()) applySand();
+        else texture.onLoadObservable.addOnce(applySand);
       }
       if (name === "grass") this.material.setTexture("packedSnow", texture);
       this.material.setTexture(name, texture);

@@ -26,6 +26,8 @@ import type { ItemType } from "./game.ts";
 export class SnowProps {
   private materials = new Map<string, StandardMaterial>();
   private hearthGlow?: StandardMaterial;
+  private fires = new WeakMap<TransformNode, {glow: Mesh; flames: Mesh[]}>();
+  private poolTexture?: DynamicTexture;
   constructor(private scene: Scene, private forest: ForestProps) {}
   private mat(color: string, glow = false) {
     const key = color + glow;
@@ -238,7 +240,10 @@ export class SnowProps {
       const length = pool ? CONFIG.poolLength : 6;
       const surface = CreateGround(pool ? "open-dark-water" : "reflective-ice", {width: 2 * halfWidth, height: length, subdivisions: pool ? 12 : 16}, this.scene);
       surface.parent = root;
-      surface.material = snowMaterial(this.scene, pool ? "water" : "ice", this.forest);
+      const material = snowMaterial(this.scene, pool ? "water" : "ice", this.forest);
+      surface.material = material;
+      if (pool && material.diffuseTexture instanceof DynamicTexture)
+        this.poolTexture = material.diffuseTexture;
       const profile = (z: number) => 1 + 0.025 * Math.sin(z * 1.65) + 0.018 * Math.cos(z * 4.1);
       const wave = surface.getVerticesData(VertexBuffer.PositionKind)!;
       for (let i = 0; i < wave.length; i += 3) {
@@ -294,12 +299,15 @@ export class SnowProps {
       const glow = CreateGround("hearth-snow-glow", {width: 2.9, height: 3.3}, this.scene);
       glow.parent = root; glow.position.y = WINTER_ROAD_Y + 0.008;
       glow.material = this.firelight();
+      const flames: Mesh[] = [];
       for (let i = 0; i < 7; i++) {
         const flame = CreateLathe("living-flame", {shape: [[0,0],[0.14,0.08],[0.18,0.22],[0.11,0.44],[0.08,0.6],[0,0.78]].map(([r,y]) => new Vector3(r,y,0)), tessellation: 24, cap: 3}, this.scene);
         flame.parent = root; flame.position.set(Math.sin(i * 2) * 0.24, 0.18, Math.cos(i * 2) * 0.24);
         flame.scaling.set(0.86 + i % 3 * 0.18, 0.9 - (i % 3) * 0.08, 0.48 + i % 3 * 0.12);
         flame.material = this.mat(i % 2 ? "#ffdb74" : "#f18a3a", true);
+        flames.push(flame);
       }
+      this.fires.set(root, {glow, flames});
       for (let i = 0; i < 6; i++) this.ball("glowing-ember", root, [0.08, 0.04, 0.08], [Math.sin(i * 2) * 0.35, 0.18, Math.cos(i * 2) * 0.35], "#f18a3a").material = this.mat("#f18a3a", true);
     } else if (type === "stump" || type === "snow-log") {
       const log = type === "snow-log";
@@ -338,14 +346,18 @@ export class SnowProps {
     }
     return root;
   }
-  animate(root: TransformNode, time: number) {
-    for (const m of root.getChildMeshes()) {
-      if (m.name === "living-flame") { m.scaling.y = 0.85 + Math.sin(time * 12 + m.position.x * 8) * 0.15; m.rotation.z = Math.sin(time * 8 + m.position.z * 9) * 0.13; }
-      if (m.name === "hearth-snow-glow") m.visibility = 0.79 + Math.sin(time * 9) * 0.1 + Math.sin(time * 16) * 0.07;
-      if (m.name === "open-dark-water" && m.material instanceof StandardMaterial && m.material.diffuseTexture) {
-        const texture = m.material.diffuseTexture as import("@babylonjs/core/Materials/Textures/texture").Texture;
-        texture.uOffset = Math.sin(time * 0.04) * 0.03; texture.vOffset = time * 0.012;
-      }
+  animateFire(root: TransformNode, time: number) {
+    const {glow, flames} = this.fires.get(root)!;
+    glow.visibility = 0.79 + Math.sin(time * 9) * 0.1 + Math.sin(time * 16) * 0.07;
+    for (const flame of flames) {
+      flame.scaling.y = 0.85 + Math.sin(time * 12 + flame.position.x * 8) * 0.15;
+      flame.rotation.z = Math.sin(time * 8 + flame.position.z * 9) * 0.13;
     }
+  }
+
+  animateWater(time: number) {
+    if (!this.poolTexture) return;
+    this.poolTexture.uOffset = Math.sin(time * 0.04) * 0.03;
+    this.poolTexture.vOffset = time * 0.012;
   }
 }

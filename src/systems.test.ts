@@ -133,10 +133,10 @@ test("route boundaries, dark tunnel interiors and gap approach buffers use one p
 });
 
 test("magnet collects all routes and refreshes duration; pause freezes effects", () => {
-  let credited = 0;
+  const credits: number[] = [];
   const game = new RunnerGame({
     autoSpawn: false,
-    onCoins: (count) => (credited += count),
+    onCoins: count => { credits.push(count); },
   });
   game.start();
   game.addItem("magnet", 0, 1);
@@ -145,7 +145,7 @@ test("magnet collects all routes and refreshes duration; pause freezes effects",
   wallCoin.route = "wall";
   wallCoin.side = 1;
   game.update(0.1);
-  assert.equal(credited, 0, "coins must travel to the runner before crediting");
+  assert.deepEqual(credits, [], "coins must travel to the runner before crediting");
   assert.ok(game.items.some((item) => item.attraction !== undefined));
   game.pause();
   const attraction = game.items.find(
@@ -159,7 +159,7 @@ test("magnet collects all routes and refreshes duration; pause freezes effects",
   game.resume();
   game.update(0.5);
   assert.equal(game.coins, 4);
-  assert.equal(credited, 4);
+  assert.deepEqual(credits, [4]);
   assert.ok(game.magnetTime > 9.3 && game.magnetTime <= 10);
   game.addItem("magnet", 0, 1);
   game.update(0.1);
@@ -416,6 +416,7 @@ test("procedurally generated coins retain identity across rewind and never credi
     onCoins: (n) => (credited += n),
   });
   game.start();
+  const historicalRock = game.addItem("rock", 1, 120);
   game.update(0.8);
   const coin = game.items.find(item => item.type === "coin")!;
   assert.ok(coin);
@@ -428,7 +429,13 @@ test("procedurally generated coins retain identity across rewind and never credi
   game.update(0.1);
   assert.equal(game.mode, "over");
   assert.equal(game.useHourglass(() => true), true);
-  game.update(CONFIG.rewindDuration + 0.01);
+  game.update(0.03);
+  assert.equal(game.mode, "rewinding");
+  const replayRock = game.items.find(item => item.id === historicalRock.id);
+  assert.ok(replayRock);
+  assert.equal(replayRock.z, historicalRock.worldZ - game.distance);
+  assert.ok(!game.items.some(item => item.id === coin.id));
+  game.update(CONFIG.rewindDuration);
   game.lane = coin.lane; game.x = coin.lane * 2.5;
   game.distance = coin.worldZ - 0.3;
   game.update(0.05);
@@ -754,6 +761,16 @@ test("seeded canyon gaps vary per run, remain stable for rewind and leave approa
     }
   }
   assert.ok(layouts.size > 25);
+});
+
+test("cached canyon gaps move when night combat extends the preceding forest", () => {
+  const seed = 14;
+  const plan = new TrackPlan(seed, "canyon");
+  const before = gapsNear(800, seed, plan);
+  assert.ok(before.length > 0);
+  plan.extendForest(plan.sections[0], 120);
+  const after = gapsNear(920, seed, plan);
+  assert.deepEqual(after, before.map(gap => ({...gap, start: gap.start + 120, end: gap.end + 120})));
 });
 
 

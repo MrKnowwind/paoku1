@@ -23,7 +23,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { defaultTrack, gapsNear, roadSpans, sectionAt, snowBlend } from "./track.ts";
 import { snowMaterial } from "./snow-materials.ts";
-import { WINTER_VERTEX, withSnowLayer } from "./snow-layer.ts";
+import { WINTER_VERTEX, refreshSnowLayer, withSnowLayer } from "./snow-layer.ts";
 import { WINTER_HAZARD_HALF_WIDTH, winterGroundHeight, winterShoulder } from "./snow-layout.ts";
 import type { TrackItem } from "./game.ts";
 import type { SnowProps } from "./snow-props.ts";
@@ -35,6 +35,12 @@ const smooth = (value: number) => {
   return t * t * (3 - 2 * t);
 };
 const TUNNEL_HALF_WIDTH = 5.65;
+const terrainFallback = {
+  "woodland-grass.webp": "#78946a",
+  "woodland-trail.webp": "#c5af8d",
+  "canyon-trail.webp": "#ba9879",
+  "canyon-sandstone.webp": "#a88a70",
+};
 
 export class TerrainScene {
   private seed = 0;
@@ -68,9 +74,9 @@ export class TerrainScene {
     this.guide.backFaceCulling = false;
   }
 
-  private material(name: string, color: string, file?: string, exterior = false) {
+  private material(name: string, color: string, file?: keyof typeof terrainFallback, exterior = false) {
     const mat = new StandardMaterial(name, this.scene);
-    mat.diffuseColor = Color3.FromHexString(color).toLinearSpace();
+    mat.diffuseColor = Color3.FromHexString(file ? terrainFallback[file] : color).toLinearSpace();
     mat.specularColor.setAll(0);
     if (file) {
       let texture = this.textures.get(file);
@@ -80,12 +86,19 @@ export class TerrainScene {
         texture.isBlocking = false;
         this.textures.set(file, texture);
       }
-      mat.diffuseTexture = texture;
-    }
-    if (exterior) {
-      // Exterior surfaces remain faintly readable through a dark cave mouth.
-      mat.emissiveTexture = mat.diffuseTexture;
-      mat.emissiveColor.setAll(0.09);
+      const loadedTexture = texture;
+      const applyTexture = () => {
+        mat.diffuseTexture = loadedTexture;
+        mat.diffuseColor = Color3.FromHexString(color).toLinearSpace();
+        // Exterior surfaces remain faintly readable through a dark cave mouth.
+        if (exterior) {
+          mat.emissiveTexture = loadedTexture;
+          mat.emissiveColor.setAll(0.09);
+        }
+        refreshSnowLayer(mat);
+      };
+      if (texture.isReady()) applyTexture();
+      else texture.onLoadObservable.addOnce(applyTexture);
     }
     return mat;
   }
@@ -115,20 +128,6 @@ export class TerrainScene {
 
   private get tunnelStone() {
     return this.caveRoad ??= this.material("cave-canyon-floor", "#ffffff", "canyon-trail.webp");
-  }
-
-  useForestFallback() {
-    for (const [material, fallback] of [[this.grass, "#78946a"], [this.trail, "#c5af8d"]] as const) {
-      const texture = material.diffuseTexture;
-      if (!(texture instanceof Texture) || texture.isReady()) continue;
-      const color = material.diffuseColor;
-      material.diffuseTexture = material.emissiveTexture = null;
-      material.diffuseColor = Color3.FromHexString(fallback).toLinearSpace();
-      texture.onLoadObservable.addOnce(() => {
-        material.diffuseTexture = material.emissiveTexture = texture;
-        material.diffuseColor = color;
-      });
-    }
   }
 
   private surface(

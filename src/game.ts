@@ -197,6 +197,7 @@ export class RunnerGame {
   private history: Snapshot[] = [];
   private lastSnapshot = -1;
   private rewindTarget?: Snapshot;
+  private rewindFrame?: Snapshot;
   private rewindElapsed = 0;
   private rewindFromTime = 0;
   constructor(
@@ -333,6 +334,7 @@ export class RunnerGame {
     this.lastSnapshot = -1;
     this.history = [];
     this.rewindTarget = undefined;
+    this.rewindFrame = undefined;
     this.capture();
   }
   move(direction: number) {
@@ -761,13 +763,14 @@ export class RunnerGame {
       phase, eruption, warning,
     };
   }
-  private rebuildTrack(snapshot?: Snapshot) {
+  private restoreItems(snapshot: Snapshot) {
+    this.items = snapshot.items
+      .filter(item => !this.collected.has(item.id) && !this.cleared.has(item.id))
+      .map(item => ({...item, z: item.worldZ - this.distance}));
+  }
+  private rebuildTrack(snapshot: Snapshot) {
     if (!this.autoSpawn) {
-      this.items = (snapshot?.items ?? this.items)
-        .filter(
-          (item) => !this.collected.has(item.id) && !this.cleared.has(item.id),
-        )
-        .map((item) => ({ ...item, z: item.worldZ - this.distance }));
+      this.restoreItems(snapshot);
       return;
     }
     this.items = [];
@@ -779,7 +782,7 @@ export class RunnerGame {
         CONFIG.rowSpacing;
     this.nextLandRow = landAnchor(this.distance - 38);
     this.fillTrack();
-    for (const item of snapshot?.items ?? []) {
+    for (const item of snapshot.items) {
       if (item.type === "ammo" && !this.collected.has(item.id))
         this.items.push({...item, z: item.worldZ - this.distance});
     }
@@ -818,7 +821,6 @@ export class RunnerGame {
     this.collected.add(item.id);
     if (item.type === "coin") {
       this.coins++;
-      this.onCoins(1);
     } else if (item.type === "ammo") {
       this.nightCombat.refill();
     } else if (item.type === "magnet" || item.type === "shield") {
@@ -921,8 +923,9 @@ export class RunnerGame {
     return this.mode === "over" && !this.hourglassUsed && !!this.revivalPoint();
   }
   useHourglass(consume: () => boolean) {
+    if (this.mode !== "over" || this.hourglassUsed) return false;
     const target = this.revivalPoint();
-    if (!this.canRewind || !target || !consume()) return false;
+    if (!target || !consume()) return false;
     this.hourglassUsed = true;
     this.rewindTarget = target;
     this.rewindElapsed = 0;
@@ -960,20 +963,26 @@ export class RunnerGame {
     this.magnetTime = Math.max(0, this.magnetTime - dt);
     this.shieldTime = Math.max(0, this.shieldTime - dt);
     const p = Math.min(1, this.rewindElapsed / CONFIG.rewindDuration);
-    const time =
-      this.rewindFromTime +
-      (target.time - this.rewindFromTime) * (p * p * (3 - 2 * p));
-    const a = [...this.history].reverse().find((s) => s.time <= time) ?? target;
-    const b = this.history.find((s) => s.time >= time) ?? a;
-    const blend = b.time === a.time ? 0 : (time - a.time) / (b.time - a.time);
-    this.restoreMovement(a);
-    this.distance = a.distance + (b.distance - a.distance) * blend;
-    this.worldTime = a.worldTime + (b.worldTime - a.worldTime) * blend;
-    this.nightCombat.restore(a.hunt, this.worldTime, false);
-    this.x = a.x + (b.x - a.x) * blend;
-    this.y = a.y + (b.y - a.y) * blend;
-    this.rebuildTrack(a);
-    if (p < 1) return;
+    if (p < 1) {
+      const time = this.rewindFromTime + (target.time - this.rewindFromTime) * (p * p * (3 - 2 * p));
+      let index = this.history.length - 1;
+      while (index > 0 && this.history[index].time > time) index--;
+      const a = this.history[index];
+      const b = a.time === time ? a : this.history[index + 1] ?? a;
+      const blend = b.time === a.time ? 0 : (time - a.time) / (b.time - a.time);
+      if (a !== this.rewindFrame) {
+        this.rewindFrame = a;
+        this.restoreMovement(a);
+        this.restoreItems(a);
+        this.nightCombat.restore(a.hunt, a.worldTime, false);
+      }
+      this.distance = a.distance + (b.distance - a.distance) * blend;
+      this.worldTime = a.worldTime + (b.worldTime - a.worldTime) * blend;
+      this.x = a.x + (b.x - a.x) * blend;
+      this.y = a.y + (b.y - a.y) * blend;
+      for (const item of this.items) item.z = item.worldZ - this.distance;
+      return;
+    }
     this.restoreMovement(target);
     this.nightCombat.restore(target.hunt, this.worldTime, true);
     this.rebuildTrack(target);
@@ -989,6 +998,7 @@ export class RunnerGame {
     this.coldGrace = CONFIG.coldGrace;
     this.protectionTime = CONFIG.rewindProtection;
     this.lastHit = null;
+    this.rewindFrame = this.rewindTarget = undefined;
     this.history = [];
     this.lastSnapshot = -1;
     this.mode = "running";
@@ -1013,6 +1023,7 @@ export class RunnerGame {
       return;
     }
     if (this.mode === "running") this.prepareOpening();
+    const coinsBefore = this.coins;
     while (dt > 0 && this.mode === "running") {
       const step = Math.min(dt, 1 / 120);
       this.runClock += step;
@@ -1197,5 +1208,7 @@ export class RunnerGame {
       if (this.mode === "running") this.capture();
       dt -= step;
     }
+    const earned = this.coins - coinsBefore;
+    if (earned > 0) this.onCoins(earned);
   }
 }

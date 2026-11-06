@@ -109,6 +109,8 @@ export class ForestScene {
   private swayingTrees: TransformNode[] = [];
   private leaves: InstancedMesh[] = [];
   private itemMeshes = new Map<number, TransformNode>();
+  private fishParts = new WeakMap<TransformNode, {school: TransformNode; sign: Mesh; tails: AbstractMesh[]}>();
+  private volcanoParts = new WeakMap<TransformNode, {plume: Mesh; bubbles: Mesh[]}>();
   private wolves = new Map<number, WolfModel>();
   private stones: {core: Mesh; trail: Mesh}[] = [];
   private wolfWarnings = new Map<number, {area: Mesh; fill: Mesh; slash: Mesh; strike: number}>();
@@ -319,10 +321,6 @@ export class ForestScene {
     const active = this.scene.getActiveMeshes();
     const runner = this.runner.getChildMeshes().filter(mesh => mesh.isEnabled() && mesh.isVisible && mesh.visibility > 0);
     return runner.some(mesh => active.contains(mesh)) && runner.every(mesh => mesh.isReady(true));
-  }
-
-  useTextureFallback() {
-    this.terrainView.useForestFallback();
   }
 
   dispose() {
@@ -1374,6 +1372,7 @@ export class ForestScene {
           fish.position.set((i % 3 - 1) * 0.5, (Math.floor(i / 3) - 0.5) * 0.4, (i % 2) * 0.18);
           fish.scaling.setAll(0.85);
         }
+        this.fishParts.set(root, {school, sign, tails: school.getChildMeshes(false, mesh => mesh.name === "fish-fan-tail")});
       } else if (item.type === "volcano") {
         this.ocean.vent(root);
         const plumeHeight = CONFIG.waterSurface - CONFIG.seabedHeight - 1.3;
@@ -1381,10 +1380,13 @@ export class ForestScene {
         plume.parent = root; plume.position.y = 0.65 + plumeHeight / 2;
         const steam = this.ocean.material("steam", "#f4c083");
         steam.alpha = 0.3; plume.material = steam; plume.setEnabled(false);
+        const bubbles: Mesh[] = [];
         for (let i = 0; i < 9; i++) {
           const bubble = CreateSphere(`vent-steam-${i}`, {diameter: 0.15 + i * 0.035, segments: 10}, this.scene);
           bubble.parent = root; bubble.material = this.mat("#ffe3ac", true); bubble.setEnabled(false);
+          bubbles.push(bubble);
         }
+        this.volcanoParts.set(root, {plume, bubbles});
       } else {
         if (item.coral) this.ocean.grownCoral(root, item.coral);
       }
@@ -2512,6 +2514,7 @@ export class ForestScene {
         this.itemMeshes.delete(id);
       }
     let distantBuilds = 0;
+    let hasPool = false;
     for (const item of game.items) {
       let mesh = this.itemMeshes.get(item.id);
       if (!mesh) {
@@ -2525,17 +2528,17 @@ export class ForestScene {
         const reveal = 1 - smooth((item.z - 98) / 28);
         for (const part of mesh.getChildMeshes()) part.visibility = reveal;
       }
-      if (item.type === "pool" || item.type === "fire") this.snow?.animate(mesh, game.worldTime);
+      if (item.type === "pool") hasPool = true;
+      if (item.type === "fire") this.snow?.animateFire(mesh, game.worldTime);
       if (["bubble", "coral", "volcano", "fish"].includes(item.type)) {
         const b = game.waterBounds(item);
         mesh.position.set(b.x, item.type === "volcano" ? item.y : b.y, item.z);
         if (item.type === "fish") {
           mesh.position.x = 0;
-          const school = mesh.getChildTransformNodes(true).find(node => node.name === "fish-school")!;
+          const {school, sign, tails} = this.fishParts.get(mesh)!;
           school.position.x = b.x;
           school.rotation.y = b.direction * Math.PI / 2;
           school.setEnabled(b.active);
-          const sign = mesh.getChildMeshes().find(node => node.name === "fish-entry-sign")!;
           const warning = item.fish && fishWarning(item.fish, game.worldTime);
           const visible = game.swimming && !game.transitioning && item.z >= -1.15 &&
             item.z <= CONFIG.fishWarningDistance && !!warning;
@@ -2545,20 +2548,22 @@ export class ForestScene {
             sign.material = this.fishSignMaterial(warning.urgency);
             sign.scaling.setAll(1 + Math.max(0, item.z) * 0.019);
           }
-          for (const tail of mesh.getChildMeshes().filter(m => m.name === "fish-fan-tail"))
-            tail.rotation.y = Math.sin(game.worldTime * 7 + item.id) * 0.3;
+          const tailSwing = Math.sin(game.worldTime * 7 + item.id) * 0.3;
+          for (const tail of tails) tail.rotation.y = tailSwing;
         }
         if (item.type === "volcano") {
-          const plume = mesh.getChildMeshes().find(m => m.name === "thermal-plume");
-          plume?.setEnabled(b.eruption || b.warning);
-          if (plume) {
+          const {plume, bubbles} = this.volcanoParts.get(mesh)!;
+          const ventActive = b.eruption || b.warning;
+          plume.setEnabled(ventActive);
+          if (ventActive) {
             plume.scaling.y = b.eruption ? 1 : 0.08;
             plume.position.y = 0.65 + (CONFIG.waterSurface - CONFIG.seabedHeight - 1.3) / 2 * plume.scaling.y;
             plume.visibility = b.eruption ? 0.7 : 0.4 + Math.sin(game.worldTime * 12) * 0.2;
           }
-          for (const steam of mesh.getChildMeshes().filter(m => m.name.startsWith("vent-steam-"))) {
-            const i = Number(steam.name.split("-").pop());
-            steam.setEnabled(b.eruption || b.warning);
+          for (let i = 0; i < bubbles.length; i++) {
+            const steam = bubbles[i];
+            steam.setEnabled(ventActive);
+            if (!ventActive) continue;
             const lift = ((game.worldTime * (b.eruption ? 1.4 : 0.35) + i * 0.37) % 1);
             steam.position.set(Math.sin(i * 2.4) * 0.3, 0.65 + lift * (b.eruption ? CONFIG.waterSurface - CONFIG.seabedHeight - 1.3 : 0.45), Math.cos(i * 2.4) * 0.3);
             steam.scaling.setAll(0.35 + Math.sin(lift * Math.PI) * 0.8);
@@ -2607,6 +2612,7 @@ export class ForestScene {
         mesh.rotation.y = Math.sin(this.time * 1.5 + item.id) * 0.15;
       }
     }
+    if (hasPool) this.snow?.animateWater(game.worldTime);
     if (running && game.coins > this.lastCoins)
       this.burst(
         this.runner.position.add(new Vector3(0, 1.15, 0)),

@@ -1003,9 +1003,6 @@ try {
   const score = document.querySelector("#score")!;
   const distance = document.querySelector("#distance")!;
   const coins = document.querySelector("#coins")!;
-  const loadingStarted = performance.now();
-  let textureFallback = false;
-  let maximumPending = Math.max(1, world.scene.getWaitingItemsCount());
   reportLoading({phase: "textures", percent: 83});
   world.engine.runRenderLoop(() => {
     try {
@@ -1013,9 +1010,6 @@ try {
       if (document.hidden) { previous = now; return; }
       const frameTime = now - previous;
       const dt = Math.min(frameTime / 1000, 0.06);
-      if (!loaded && !textureFallback && now - loadingStarted > 2500) {
-        world!.useTextureFallback(); textureFallback = true;
-      }
       previous = now;
       const wasRunning = game.mode === "running";
       const previousMode = game.mode;
@@ -1061,16 +1055,11 @@ try {
       world!.update(game, guide ? 0 : game.mode === "over" ? dt : simulationDt,
         tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"), guide,
         guide ? tutorial.guideStep : 0);
-      if (!loaded) {
-        const pending = world!.scene.getWaitingItemsCount();
-        maximumPending = Math.max(maximumPending, pending);
-        reportLoading({phase: "textures", percent: 83 + (1 - pending / maximumPending) * 12});
-        // A drawn, ready character is required. Slow decorative textures may finish in the background.
-        if ((pending === 0 || textureFallback) && world!.isPlayable()) {
-          loaded = true;
-          reportLoading({phase: "ready", percent: 100});
-          document.querySelector<HTMLButtonElement>('[data-action="start"]')!.disabled = false;
-        }
+      // A drawn, ready character is required. Terrain starts with solid colors.
+      if (!loaded && world!.isPlayable()) {
+        loaded = true;
+        reportLoading({phase: "ready", percent: 100});
+        document.querySelector<HTMLButtonElement>('[data-action="start"]')!.disabled = false;
       }
       updateTutorialUi();
       if (game.coins > lastCoins) {

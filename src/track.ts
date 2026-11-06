@@ -29,6 +29,8 @@ export function connection(from: CoreBiome, to: CoreBiome): {biome: Biome; lengt
 // Queries append sections. Forest combat can move an exit forward before the runner reaches it.
 export class TrackPlan {
   readonly sections: TrackSection[] = [{biome: "forest", start: 0, end: CONFIG.forestLength, cycle: 0}];
+  private canyons: TrackSection[] = [];
+  get canyonSections(): readonly TrackSection[] { return this.canyons; }
   readonly seed: number;
   readonly forced: CoreBiome | null;
   revision = 0;
@@ -50,9 +52,17 @@ export class TrackPlan {
         this.sections.push({biome: bridge.biome, start, end: start + bridge.length, cycle: ordinal, from: current, to: next});
         start += bridge.length;
       }
-      this.sections.push({biome: next, start, end: start + lengths[next], cycle: ordinal, from: current, to: next});
+      const section: TrackSection = {biome: next, start, end: start + lengths[next], cycle: ordinal, from: current, to: next};
+      this.sections.push(section);
+      if (next === "canyon") this.canyons.push(section);
     }
-    return this.sections.find(s => d >= s.start && d < s.end)!;
+    let first = 0, end = this.sections.length;
+    while (first < end) {
+      const mid = (first + end) >>> 1;
+      if (this.sections[mid].end <= d) first = mid + 1;
+      else end = mid;
+    }
+    return this.sections[first];
   }
   extendForest(section: TrackSection, length: number) {
     // Commit the next biome first so an extension cannot change the seeded choice.
@@ -86,13 +96,27 @@ export function snowBlend(distance: number, plan = defaultTrack): number {
   return 0;
 }
 
-export function gapsNear(distance: number, seed = 0, plan = defaultTrack): TrackGap[] {
-  plan.at(distance + CONFIG.trackLookahead);
+const gapWindows = new WeakMap<TrackPlan, {
+  first: number; end: number; seed: number; revision: number; gaps: TrackGap[];
+}>();
+
+export function gapsNear(distance: number, seed = 0, plan = defaultTrack): readonly TrackGap[] {
+  const limit = distance + CONFIG.trackLookahead;
+  plan.at(limit);
+  const canyons = plan.canyonSections;
+  let first = 0, end = canyons.length;
+  while (first < end) {
+    const mid = (first + end) >>> 1;
+    if (canyons[mid].end < distance - 60) first = mid + 1;
+    else end = mid;
+  }
+  while (end < canyons.length && canyons[end].start <= limit) end++;
+  const cached = gapWindows.get(plan);
+  if (cached && cached.first === first && cached.end === end && cached.seed === seed && cached.revision === plan.revision)
+    return cached.gaps;
   const gaps: TrackGap[] = [];
-  const canyons = plan.sections.filter(s => s.biome === "canyon");
-  for (let c = 0; c < canyons.length; c++) {
+  for (let c = first; c < end; c++) {
     const canyon = canyons[c].start;
-    if (canyon > distance + CONFIG.trackLookahead || canyon + CONFIG.canyonLength < distance - 60) continue;
     const random = (salt: number) => {
       let n = Math.imul(seed ^ Math.imul(c + 1, 374761393) ^ salt, 668265263);
       n = Math.imul(n ^ (n >>> 13), 1274126177);
@@ -114,6 +138,7 @@ export function gapsNear(distance: number, seed = 0, plan = defaultTrack): Track
       });
     });
   }
+  gapWindows.set(plan, {first, end, seed, revision: plan.revision, gaps});
   return gaps;
 }
 export function gapAt(distance: number, seed = 0, plan = defaultTrack): TrackGap | undefined {
