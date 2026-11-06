@@ -121,7 +121,6 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       </header>
       <div class="guide-stage">
         <div id="guide-viewport" aria-hidden="true"></div>
-        <div id="night-guide-demo" class="night-guide-demo" aria-hidden="true" hidden></div>
         <div id="guide-stage-top" class="guide-stage-labels" aria-hidden="true"></div>
         <div id="guide-stage-bottom" class="guide-stage-labels" aria-hidden="true"></div>
       </div>
@@ -432,21 +431,6 @@ const guidePrev = document.querySelector<HTMLButtonElement>("#guide-prev")!;
 const guideNext = document.querySelector<HTMLButtonElement>("#guide-next")!;
 const guideDone = document.querySelector<HTMLButtonElement>("#guide-done")!;
 const guideClose = document.querySelector<HTMLButtonElement>("#guide-review-close")!;
-const nightGuideDemo = document.querySelector<HTMLElement>("#night-guide-demo")!;
-const nightGuideScenes = [
-  () => `<svg class="night-guide-moon" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="none" stroke="#819bc5" stroke-dasharray="3 7"/><path d="M58 21a31 31 0 1 0 20 48A30 30 0 0 1 58 21Z" fill="#ffe9b2"/><path d="m74 23 2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#c5d8ff"/></svg>${icon("slingshot")}${icon("stone", "night-demo-stone")}`,
-  () => `<svg class="night-guide-paths" viewBox="0 0 340 142">
-    <defs><path id="night-guide-wolf" d="M-18-17l11 6h14l11-6-2 18-7 10L0 17l-9-6-7-10Z"/></defs>
-    <rect x="88" y="3" width="164" height="136" rx="10" fill="#3c4d63" stroke="#7792ad"/>
-    <path d="M143 6v130m54-130v130" stroke="#899bb6" stroke-dasharray="5 7"/>
-    <path d="M48 39 170 101m121-66-68 64" fill="none" stroke="#e8465c" stroke-width="17" opacity=".74"/>
-    <path d="M48 39 170 101m121-66-68 64" fill="none" stroke="#ff9b8e" stroke-width="3" stroke-dasharray="6 4"/>
-    <use href="#night-guide-wolf" x="47" y="32" fill="#acbedc"/><use href="#night-guide-wolf" x="291" y="28" fill="#acbedc"/>
-    <path d="M34 11h26m218-4h26" stroke="#ff6678" stroke-width="5" stroke-linecap="round"/>
-    <circle cx="170" cy="107" r="9" fill="#ffe8aa"/><path d="m132 108-12 0m3-5-5 5 5 5" fill="none" stroke="#ffe8aa" stroke-width="3" stroke-linecap="round"/>
-  </svg>`,
-  () => `${icon("ammo-pouch")}<span class="night-guide-gain">+${n(Math.ceil(CONFIG.nightCombat.ammo * CONFIG.nightCombat.refillFraction))}</span>${icon("stone", "night-demo-stone")}${icon("stone", "night-demo-stone")}`,
-];
 const weather = new SnowWeather(document.querySelector<HTMLCanvasElement>("#snow-weather")!);
 const guideNumbers: Record<string, number> = {
   base: CONFIG.coldRate,
@@ -456,8 +440,6 @@ const guideNumbers: Record<string, number> = {
   snowman: CONFIG.snowmanCold,
   fire: CONFIG.fireWarmth,
   liquor: CONFIG.liquorWarmth,
-  refillPercent: CONFIG.nightCombat.refillFraction * 100,
-  refill: Math.ceil(CONFIG.nightCombat.ammo * CONFIG.nightCombat.refillFraction),
 };
 const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?: MessageKey; top?: MessageKey[]; bottom?: MessageKey[]}[]> = {
   snow: [
@@ -472,8 +454,8 @@ const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?:
   ],
   night: [
     {title: "nightShooting", copy: "nightShootingCopy"},
-    {title: "nightAttacks", copy: "nightAttacksCopy", detail: "wolfTip"},
-    {title: "nightSupplies", copy: "nightSuppliesCopy", detail: "nightExitCopy"},
+    {title: "nightAttacks", copy: "nightAttacksCopy"},
+    {title: "nightSupplies", copy: "nightSuppliesCopy"},
   ],
 };
 
@@ -483,7 +465,6 @@ function updateGuideUi() {
   const key = `${guide}/${step}/${language}`;
   const newlyOpened = guidePanel.hidden && !!guide;
   guidePanel.hidden = !guide;
-  nightGuideDemo.hidden = guide !== "night";
   document.body.classList.toggle("terrain-teaching", !!guide);
   if (guide && (newlyOpened || guidePanel.dataset.page !== key)) {
     gesture = guideSwipe = null;
@@ -504,7 +485,6 @@ function updateGuideUi() {
     document.querySelector("#guide-progress")!.textContent = `${n(step)} / ${n(3)}`;
     document.querySelector("#guide-kicker")!.textContent = t(lessonTitles[guide]);
     const page = guidePages[guide][step - 1];
-    if (guide === "night") nightGuideDemo.innerHTML = nightGuideScenes[step - 1]();
     document.querySelector("#guide-page-title")!.textContent = t(page.title);
     const decimals = new Intl.NumberFormat(languageTags[language], {maximumFractionDigits: 3});
     document.querySelector("#guide-copy")!.textContent = t(page.copy)
@@ -1064,7 +1044,7 @@ try {
       updateGuideUi();
       const guide = !activeDialog ? tutorial.guide : null;
       world!.update(game, guide ? 0 : game.mode === "over" ? dt : simulationDt,
-        tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"), guide === "night" ? null : guide,
+        tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"), guide,
         guide ? tutorial.guideStep : 0);
       if (!loaded) {
         const pending = world!.scene.getWaitingItemsCount();

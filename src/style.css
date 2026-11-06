@@ -1922,20 +1922,6 @@ html[lang="ko-KR"] .intro h1 {
   pointer-events: none;
 }
 #guide-viewport { width: 100%; height: 100%; pointer-events: none; }
-.night-guide-demo {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: clamp(6px, 3cqw, 17px);
-  padding: 12px;
-  background: radial-gradient(ellipse at 72% 16%, #465a86, #293a5b 46%, #14213b 89%);
-}
-.night-guide-demo .art-icon, .night-guide-moon { width: clamp(42px, 20cqw, 100px); height: auto; }
-.night-guide-demo .night-demo-stone { width: clamp(20px, 10cqw, 51px); }
-.night-guide-paths { width: min(100%, 390px); max-height: 100%; }
-.night-guide-gain { color: #c5f59c; font-weight: 850; font-size: clamp(17px, 6cqw, 32px); }
 .guide-stage-labels {
   position: absolute;
   z-index: 1;
@@ -2014,3 +2000,6 @@ html[lang="ko-KR"] .intro h1 {
   .guide-card-footer { padding-block: 4px 8px; }
   .guide-pagination { grid-template-rows: auto; grid-template-columns: auto minmax(0, 170px); justify-content: center; column-gap: 10px; }
 }
+
+.terrain-guide[data-terrain="night"] .guide-card-copy { scrollbar-width: none; }
+.terrain-guide[data-terrain="night"] .guide-card-copy::-webkit-scrollbar { display: none; }

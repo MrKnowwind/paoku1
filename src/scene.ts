@@ -46,7 +46,7 @@ import { defaultTrack, sectionAt, tunnelDarkness, snowBlend } from "./track.ts";
 import { SnowProps } from "./snow-props.ts";
 import { ICE_IMPACT_METRES, iceFallPose, sipPose } from "./winter-motion.ts";
 import { TerrainPreview } from "./terrain-preview.ts";
-import type { TerrainGuideId } from "./tutorial.ts";
+import type { GuideId } from "./tutorial.ts";
 import { POOL_WATER_Y } from "./snow-layout.ts";
 import { iconAsset } from "./art.ts";
 
@@ -156,7 +156,7 @@ export class ForestScene {
   private snow?: SnowProps;
   private guidePreviews = new Map<number, TerrainPreview>();
   private guideBackdrop?: Layer;
-  private previewGuide: TerrainGuideId | null = null;
+  private previewGuide: GuideId | null = null;
   private drinkBottle?: TransformNode;
   private lastSnowHit = 0;
   private lastIceRemaining = 0;
@@ -2052,7 +2052,7 @@ export class ForestScene {
     });
   }
 
-  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, guide: TerrainGuideId | null = null, guideStep = 0) {
+  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, guide: GuideId | null = null, guideStep = 0) {
     if (this.track !== game.track) {
       this.openingMistTime = 0;
       this.lastShotAt = this.lastWolfImpact = -Infinity;
@@ -2687,7 +2687,7 @@ export class ForestScene {
       this.guidePreviews.clear();
       this.guideBackdrop?.dispose();
       this.guideBackdrop = undefined;
-      if (guide) {
+      if (guide && guide !== "night") {
         const backdrop = new Layer("guide-backdrop", null, this.scene);
         const texture = new Texture(import.meta.env.BASE_URL + `art/guide-${guide}.webp`, this.scene, true);
         texture.isBlocking = false;
@@ -2729,7 +2729,8 @@ export class ForestScene {
         this.scene.activeCamera = preview.camera;
         this.scene.autoClear = false; this.scene.autoClearDepthAndStencil = false;
         this.scene.fogEnabled = false; this.scene.shadowsEnabled = false;
-        this.engine.clear(Color4.FromHexString(guide === "snow" ? "#31547dff" : "#074d62ff"), true, true, true);
+        this.engine.clear(Color4.FromHexString(guide === "snow" ? "#31547dff" :
+          guide === "night" ? "#192742ff" : "#074d62ff"), true, true, true);
         this.scene.render();
       } finally {
         this.engine.disableScissor(); this.scene.autoClear = true; this.scene.autoClearDepthAndStencil = autoClearDepth;
