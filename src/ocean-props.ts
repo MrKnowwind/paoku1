@@ -1,19 +1,19 @@
 import { reefRockGeometry } from "./ocean-geometry.ts";
-import { Scene } from "@babylonjs/core/scene";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
-import { CreateLathe } from "@babylonjs/core/Meshes/Builders/latheBuilder";
-import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import "@babylonjs/core/Meshes/instancedMesh";
-import { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial";
-import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { Scene } from "@babylonjs/core/scene.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder.js";
+import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder.js";
+import { CreateLathe } from "@babylonjs/core/Meshes/Builders/latheBuilder.js";
+import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder.js";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture.js";
+import { Color3 } from "@babylonjs/core/Maths/math.color.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import "@babylonjs/core/Meshes/instancedMesh.js";
+import { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial.js";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer.js";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { CONFIG } from "./config.ts";
 import { makeCoral, coralPath } from "./coral.ts";
 import type { CoralPlan } from "./coral.ts";
@@ -23,7 +23,8 @@ import { mergeSceneryMeshes } from "./scenery-mesh.ts";
 export class OceanProps {
   private materials = new Map<string, StandardMaterial>();
   private fishTemplates = new Map<string, {body: Mesh; tail: Mesh}>();
-  constructor(private scene: Scene) {}
+  private scene: Scene;
+  constructor(scene: Scene) { this.scene = scene; }
 
   material(kind: string, color: string) {
     const key = kind + color;
