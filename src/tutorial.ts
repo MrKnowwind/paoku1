@@ -34,9 +34,14 @@ const basics: LessonId[] = ["move"];
 export class Tutorial {
   active: Lesson | null = null;
   guideStep = 0;
+  guideFirst = 1;
+  guideLast = 3;
+  private attackLesson?: string;
   reviewingGuide = false;
   private previousLesson: Lesson | null = null;
   private previousGuideStep = 0;
+  private previousGuideFirst = 1;
+  private previousGuideLast = 3;
   get guide(): GuideId | null {
     const id = this.active?.id;
     return id === "snow" || id === "ocean" || id === "night" ? id : null;
@@ -45,10 +50,13 @@ export class Tutorial {
     if (this.reviewingGuide) return;
     this.previousLesson = this.active;
     this.previousGuideStep = this.guideStep;
+    this.previousGuideFirst = this.guideFirst; this.previousGuideLast = this.guideLast;
     this.reviewingGuide = true;
     this.openGuide(id);
+    this.guideLast = id === "night" ? 8 : 3;
   }
   private openGuide(id: GuideId) {
+    this.guideFirst = 1; this.guideLast = 3;
     this.guideStep = 1;
     this.show({id, gesture: "tap"});
   }
@@ -58,16 +66,24 @@ export class Tutorial {
     this.previousLesson = null;
     this.reviewingGuide = false;
     this.guideStep = this.previousGuideStep;
+    this.guideFirst = this.previousGuideFirst; this.guideLast = this.previousGuideLast;
     this.previousGuideStep = 0;
   }
   turnGuide(delta: -1 | 1) {
-    if (this.guide) this.guideStep = Math.max(1, Math.min(3, this.guideStep + delta));
+    if (this.guide) this.guideStep = Math.max(this.guideFirst, Math.min(this.guideLast, this.guideStep + delta));
   }
   finishGuide() {
     const guide = this.guide;
-    if (!guide || this.guideStep !== 3) return;
+    if (!guide || this.guideStep !== this.guideLast) return;
     if (this.reviewingGuide) this.closeGuideReview();
-    else { this.guideStep = 0; this.complete(guide); }
+    else {
+      if (this.attackLesson) {
+        this.runSeen.add(this.attackLesson);
+        if (!this.testMode) this.seen.add(this.attackLesson);
+        this.attackLesson = undefined;
+      }
+      this.guideStep = 0; this.complete(guide);
+    }
   }
   private seen: Set<string>;
   private runSeen: Set<string>;
@@ -95,6 +111,7 @@ export class Tutorial {
     this.runSeen = new Set(this.testMode ? [] : this.seen);
     if (this.needsBasics) basics.forEach((id) => this.runSeen.delete(id));
     this.active = null;
+    this.attackLesson = undefined;
     this.guideStep = 0; this.reviewingGuide = false; this.previousLesson = null; this.previousGuideStep = 0;
     this.cooldown = 0;
     this.handled.clear();
@@ -182,6 +199,15 @@ export class Tutorial {
       return;
     }
     if (this.cooldown > 0 || game.boosting) return;
+    const attacks = game.nightCombat.region.state.attacks;
+    const attack = attacks.find(a => !a.spent && !this.knows(`attack-${a.kind}`));
+    if (attack) {
+      const pages = {dive: 4, dropping: 5, small: 6, charge: 7, snowball: 8};
+      this.openGuide("night");
+      this.guideStep = this.guideFirst = this.guideLast = pages[attack.kind];
+      this.attackLesson = `attack-${attack.kind}`;
+      return;
+    }
     if (game.inSnow && !this.knows("snow")) {
       this.openGuide("snow"); return;
     }

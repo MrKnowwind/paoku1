@@ -172,3 +172,22 @@ test("first encounters with ordinary obstacles never start lessons", () => {
     assert.equal(tutorial.timeScale(game), 1);
   }
 });
+
+
+test("first regional attack opens one frozen lesson, and help can review all eight night pages", () => {
+  const game = new RunnerGame({autoSpawn:false});game.start(true);
+  let saved:string[]=[];
+  const tutorial=new Tutorial(["basics","move","night"],seen=>{saved=seen;});
+  game.nightCombat.region.state.attacks.push({id:1,enemy:1,kind:"small",start:game.worldTime,
+    lockAt:game.worldTime,impactAt:game.worldTime+1.2,x:0,y:0.95,worldZ:30,side:0,
+    fromX:4,fromY:1,fromZ:8,spent:false,locked:true});
+  tutorial.update(game,0,false);
+  assert.equal(tutorial.guide,"night");assert.equal(tutorial.guideStep,6);
+  assert.equal(tutorial.timeScale(game),0);
+  tutorial.turnGuide(-1);assert.equal(tutorial.guideStep,6);
+  tutorial.finishGuide();assert.ok(saved.includes("attack-small"));
+  tutorial.update(game,1,false);assert.equal(tutorial.active,null);
+  tutorial.reviewGuide("night");
+  for(let i=0;i<9;i++)tutorial.turnGuide(1);
+  assert.equal(tutorial.guideStep,8);tutorial.finishGuide();assert.equal(tutorial.active,null);
+});

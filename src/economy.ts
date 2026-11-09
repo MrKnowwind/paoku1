@@ -1,10 +1,15 @@
 import { CONFIG } from "./config.ts";
+export type WeaponId = keyof typeof CONFIG.weapons;
+export type ProductId = "booster" | "hourglass" | "bomb" | "bow";
 
 export interface ProgressSave {
-  version: 2;
+  version: 3;
   wallet: number;
   boosters: number;
   hourglasses: number;
+  bombs: number;
+  bowOwned: boolean;
+  equipped: WeaponId;
 }
 export interface SaveStorage {
   getItem(key: string): string | null;
@@ -19,24 +24,28 @@ const integer = (value: unknown) =>
 
 export class Economy {
   private value: ProgressSave = {
-    version: 2,
+    version: 3,
     wallet: 0,
     boosters: 0,
     hourglasses: 0,
+    bombs: 0, bowOwned: false, equipped: "slingshot",
   };
   private storage: SaveStorage;
   constructor(storage: SaveStorage) {
     this.storage = storage;
     try {
       const data = JSON.parse(storage.getItem(PROGRESS_KEY) ?? "null");
-      if (data?.version === 1 || data?.version === 2)
+      if (data?.version === 1 || data?.version === 2 || data?.version === 3)
         this.value = {
-          version: 2,
+          version: 3,
           wallet: integer(data.wallet),
           boosters: data.version === 1
             ? (data.boosterUnlocked === true ? 1 : 0)
             : integer(data.boosters),
           hourglasses: integer(data.hourglasses),
+          bombs: integer(data.bombs),
+          bowOwned: data.bowOwned === true,
+          equipped: data.equipped === "bow" && data.bowOwned === true ? "bow" : "slingshot",
         };
     } catch {
       /* Old settings and best scores live under separate, untouched keys. */
@@ -67,14 +76,25 @@ export class Economy {
   flush() {
     this.commit(this.value, false);
   }
-  buy(product: "booster" | "hourglass"): PurchaseResult {
+  buy(product: ProductId): PurchaseResult {
+    if (product === "bow" && this.value.bowOwned) return "owned";
     const price =
-      product === "booster" ? CONFIG.boosterPrice : CONFIG.hourglassPrice;
+      product === "booster" ? CONFIG.boosterPrice : product === "hourglass" ? CONFIG.hourglassPrice :
+      product === "bow" ? CONFIG.weapons.bow.price : CONFIG.bomb.price;
     if (this.value.wallet < price) return "funds";
     const next = { ...this.value, wallet: this.value.wallet - price };
     if (product === "booster") next.boosters++;
-    else next.hourglasses++;
+    else if (product === "hourglass") next.hourglasses++;
+    else if (product === "bomb") next.bombs++;
+    else next.bowOwned = true;
     return this.commit(next, true) ? "ok" : "storage";
+  }
+  equip(weapon: WeaponId): boolean {
+    if (weapon !== "slingshot" && (weapon !== "bow" || !this.value.bowOwned)) return false;
+    return this.commit({...this.value, equipped: weapon}, true);
+  }
+  consumeBomb(): boolean {
+    return this.value.bombs > 0 && this.commit({...this.value, bombs: this.value.bombs - 1}, true);
   }
   consumeBooster(): boolean {
     return (

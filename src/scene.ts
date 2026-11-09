@@ -4,6 +4,7 @@ import { CONFIG } from "./config.ts";
 import { daylightBlend } from "./daylight.ts";
 import { NightSky } from "./night-sky.ts";
 import { WolfModel } from "./wolf-model.ts";
+import { RegionalCombatView } from "./regional-combat-view.ts";
 import "@babylonjs/core/Engines/thinEngine.scissor";
 import "@babylonjs/core/Culling/ray";
 import { Engine } from "@babylonjs/core/Engines/engine";
@@ -119,6 +120,8 @@ export class ForestScene {
   private lastShotAt = -Infinity;
   private lastWolfImpact = -Infinity;
   private slingshot?: TransformNode;
+  private bow?: TransformNode;
+  private regionalCombatView?: RegionalCombatView;
   private materials = new Map<string, StandardMaterial>();
   private templates = new Map<string, Mesh>();
   private particles: Particle[] = [];
@@ -1915,7 +1918,7 @@ export class ForestScene {
   }
 
   pickWolf(x: number, y: number) {
-    if (!this.wolves.size) return;
+    if (!this.wolves.size && !this.regionalCombatView?.size) return;
     const hit = this.scene.pick(x, y, mesh => mesh.isPickable && mesh.isEnabled() &&
       mesh.isVisible && mesh.visibility > 0.05 && (mesh.material?.alpha ?? 1) >= 0.98 &&
       !mesh.material?.needAlphaBlendingForMesh(mesh), false, this.camera);
@@ -2002,6 +2005,8 @@ export class ForestScene {
 
   private updateNightCombat(game: RunnerGame) {
     const combat = game.nightCombat;
+    this.regionalCombatView ??= new RegionalCombatView(this.scene, (color, glow) => this.mat(color, glow));
+    this.regionalCombatView.update(game);
     const forest = game.terrain.biome === "forest";
     const wolves = forest ? combat.hunt.wolves : [];
     for (const [id, wolf] of this.wolves) {
@@ -2040,7 +2045,7 @@ export class ForestScene {
       this.shake = Math.max(this.shake, 0.24);
       this.burst(new Vector3(game.x, game.y + 0.95, 0), "#ff5969", 17, 6, 0.35, 0.23, 4);
     }
-    const stones = forest && game.mode !== "over" ? combat.stones : [];
+    const stones = game.mode !== "over" ? combat.stones : [];
     while (this.stones.length > stones.length) {
       const {core, trail} = this.stones.pop()!;
       core.dispose();
@@ -2051,7 +2056,17 @@ export class ForestScene {
       if (!mesh) {
         const core = CreateSphere("slingshot-stone", {diameter: 0.22, segments: 6}, this.scene);
         const trail = CreateSphere("stone-trail", {diameter: 0.17, segments: 5}, this.scene);
-        core.material = this.mat("#d3e2f8", true);
+        core.material = this.mat(combat.weapon === "bow" ? "#cd9b58" : "#d3e2f8", true);
+        if (combat.weapon === "bow") {
+          const tip = CreateCylinder("arrow-head", {height:0.035,diameterBottom:0.45,diameterTop:0,tessellation:4},this.scene);
+          tip.parent=core;tip.position.z=0.12;tip.rotation.x=Math.PI/2;
+          tip.material=this.mat("#e3edf1",true);tip.isPickable=false;
+          for (const side of [-1,1]) {
+            const feather=CreatePlane("arrow-feather",{width:0.38,height:0.04,sideOrientation:Mesh.DOUBLESIDE},this.scene);
+            feather.parent=core;feather.position.set(side*0.16,0,-0.07);feather.rotation.y=side*0.12;
+            feather.material=this.mat("#fff0cd");feather.isPickable=false;
+          }
+        }
         trail.material = this.mat("#8bd3ff", true);
         core.isPickable = trail.isPickable = false;
         trail.visibility = 0.57;
@@ -2059,20 +2074,32 @@ export class ForestScene {
         mesh = {core, trail};
         this.stones.push(mesh);
       }
+      mesh.core.scaling.set(combat.weapon === "bow" ? 0.24 : 1, combat.weapon === "bow" ? 0.24 : 1, combat.weapon === "bow" ? 5 : 1);
       mesh.core.position.set(stone.x, stone.y, stone.z);
+      mesh.core.lookAt(new Vector3(stone.x + stone.dx, stone.y + stone.dy, stone.z + stone.dz));
       mesh.trail.position.set(stone.x - stone.dx * 0.85, stone.y - stone.dy * 0.85, stone.z - stone.dz * 0.85);
       mesh.trail.lookAt(mesh.core.position);
     });
 
-    const aim = forest && game.mode !== "over" && !game.boosting ? combat.aim : undefined;
-    this.slingshot?.setEnabled(!!aim);
+    const aim = game.mode !== "over" && !game.boosting ? combat.aim : undefined;
+    this.slingshot?.setEnabled(!!aim && combat.weapon === "slingshot");
+    this.bow?.setEnabled(!!aim && combat.weapon === "bow");
     if (!aim) return;
     if (combat.shotAt !== this.lastShotAt && game.mode === "running") {
       this.lastShotAt = combat.shotAt;
       this.burst(new Vector3(game.x - 0.22, game.y + (game.sliding ? 0.65 : 1.43), 0.45), "#ffe4a1", 6, 2.9, 0.18, 0.13, 0.5);
     }
     const hand = this.arms.find(arm => arm.side < 0)!;
-    if (!this.slingshot) {
+    if (combat.weapon === "bow" && !this.bow) {
+      const root = this.joint("hunting-bow", [0, -0.35, 0.08], hand.lower);
+      const limb = CreateTube("bow-wooden-limb", {path: [-0.55,-0.3,0,0.3,0.55].map(y => new Vector3(0.24 * (1 - (y / 0.55) ** 2), y, 0)), radius: 0.038, tessellation: 6}, this.scene);
+      limb.parent = root; limb.material = this.mat("#b37b38"); limb.isPickable = false;
+      const string = CreateTube("bow-string", {path: [new Vector3(0,-0.55,0),new Vector3(-0.18,0,0),new Vector3(0,0.55,0)], radius:0.012,tessellation:4},this.scene);
+      string.parent=root; string.material=this.mat("#f9dfaa");string.isPickable=false;
+      this.part("box", "bow-grip", [0.08,0.19,0.085],"#4e6033",[0.23,0,0],root);
+      this.bow = root;
+    }
+    if (combat.weapon === "slingshot" && !this.slingshot) {
       const root = this.joint("slingshot", [0, -0.35, 0.08], hand.lower);
       this.part("box", "slingshot-grip", [0.075, 0.24, 0.07], "#a36f41", [0, 0, 0], root);
       for (const side of [-1, 1]) {
@@ -2083,7 +2110,7 @@ export class ForestScene {
       this.slingshot = root;
     }
     const yaw = Math.atan2(aim.x - game.x, Math.max(0.6, aim.z));
-    const release = smooth((CONFIG.nightCombat.cooldown - combat.cooldown) / 0.09);
+    const release = smooth((combat.weaponRules.cooldown - combat.cooldown) / (combat.weapon === "bow" ? 0.2 : 0.09));
     this.torso.rotation.y = yaw * 0.68;
     this.head.rotation.y = yaw * 0.24;
     this.arms.forEach(arm => {

@@ -2003,3 +2003,8 @@ html[lang="ko-KR"] .intro h1 {
 
 .terrain-guide[data-terrain="night"] .guide-card-copy { scrollbar-width: none; }
 .terrain-guide[data-terrain="night"] .guide-card-copy::-webkit-scrollbar { display: none; }
+.shop-categories { display: flex; gap: 8px; margin: 12px 0 18px; }
+.shop-categories button { flex: 1; padding: 10px 6px; border-radius: 8px; background: #e7ecdc; color: #465740; }
+.shop-categories .selected { background: #405a38; color: #fff5dc; }
+.shop-coming-soon { display: grid; place-items: center; min-height: 200px; color: #607251; font-size: 22px; }
+.active-tool.bomb-tool { right: calc(94px + env(safe-area-inset-right, 0px)); }

@@ -14,6 +14,7 @@ import type { GuideId } from "./tutorial.ts";
 import type { TrackItem } from "./game.ts";
 import { makeCoral } from "./coral.ts";
 import { CONFIG } from "./config.ts";
+import { RegionalEnemyModel } from "./regional-enemy-model.ts";
 
 export class TerrainPreview {
   static readonly layerMask = 0x10000000;
@@ -46,7 +47,7 @@ export class TerrainPreview {
       explorer.scaling.setAll(1);
       for (const node of explorer.getDescendants()) {
         if (!(node instanceof TransformNode)) continue;
-        if (/aura|jet|pulse|booster-pod|snow-liquor|slingshot/.test(node.name)) node.setEnabled(false);
+        if (/aura|jet|pulse|booster-pod|snow-liquor|slingshot|hunting-bow/.test(node.name)) node.setEnabled(false);
         if (node.name.endsWith("hips")) node.position.set(0, 0.95, 0);
         if (node.name.endsWith("torso")) { node.position.y = 0; node.scaling.setAll(1); }
         if (/(hips|shoulder|elbow|hip-joint|knee|ankle|torso|head-joint)$/.test(node.name)) node.rotation.set(0, 0, 0);
@@ -233,12 +234,28 @@ export class TerrainPreview {
       const streak = box("night-warning-center", [0.055, 0.016, 3.65], [0.38, 0.055, 0.25], this.diagramInk("#ff9a92"));
       streak.rotation.y = warning.rotation.y;
       this.diagramArrow(-1.3, 0.32, -1, 0, 0.8, this.diagramInk("#ffe1a2"));
-    } else {
+    } else if (step === 3) {
       const supply = makeItem({type: "ammo", id: 0, lane: 0, z: 0, y: 0, worldZ: 0});
       supply.parent = this.root;
       supply.position.set(0, 1.09, -0.1);
       supply.scaling.setAll(1.46);
       box("night-supply-plinth", [1.76, 0.2, 1.4], [0, 0.1, -0.1], this.diagramInk("#67877f"));
+    } else {
+      const bat = step < 6;
+      const model = new RegionalEnemyModel(scene, 0, bat ? "bat" : "yeti", color => this.diagramInk(color));
+      model.root.parent = this.root; model.root.position.set(-1.8, bat ? 2.2 : 0, 0.6);
+      model.animate(0, bat ? 1 : 5, 0.3, step === 8 ? 0.8 : 0, 0, 0);
+      if (step === 6 || step === 7) {
+        box("guide-attack-strip", step === 6 ? [0.35,0.035,4] : [6.5,0.035,0.6], [0.4,0.04,0], this.diagramInk("#ff5269"));
+      } else {
+        const ring = Array.from({length:33},(_,i) => new Vector3(0.7+Math.cos(i*Math.PI/16),0.055,Math.sin(i*Math.PI/16)));
+        this.diagramStroke(ring, this.diagramInk(step === 5 ? "#fff2ce" : "#ff5269"), 0.055);
+      }
+      if (step === 5 || step === 6 || step === 8) {
+        const ball=CreateSphere("guide-falling-projectile",{diameter:step===8?1.25:0.35,segments:8},scene);
+        ball.parent=this.root;ball.position.set(0.7,1.45,0);ball.material=this.diagramInk("#eefaff");
+      }
+      this.diagramArrow(2.1,0.65,step===7?0:1,step===7?1:0,0.8,this.diagramInk("#ffe1a2"));
     }
   }
 

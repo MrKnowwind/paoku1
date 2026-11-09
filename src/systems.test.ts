@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { CONFIG } from "./config.ts";
 import { Economy, PROGRESS_KEY } from "./economy.ts";
 import { RunnerGame } from "./game.ts";
+import { NightCombat } from "./night-combat.ts";
 import { rockShelfSpan } from "./rock-shelf.ts";
 import {
   sectionAt,
@@ -867,4 +868,151 @@ test("late land rows add obstacles and action coin trails while wall columns ret
   }
   assert.deepEqual([...widths].sort(), [1, 2, 3]);
   assert.ok(wallDoubles > 0 && jumpTrails > 0 && slideTrails > 0);
+});
+
+
+function regionalFixture(biome: "canyon" | "snow", weapon: "bow" | "slingshot" = "slingshot") {
+  const game = new RunnerGame({autoSpawn: false});
+  game.nextTerrain = biome; game.nextWeapon = weapon; game.start(true);
+  const section = game.track.at(660);
+  game.distance = section.start + 30;
+  game.nightCombat.region.state.section = section.start;
+  game.nightCombat.region.state.nextPack = Infinity;
+  const enemy = {id: 1000000010, kind: biome === "canyon" ? "bat" as const : "yeti" as const,
+    homeX: 3, homeZ: 7, homeY: biome === "canyon" ? 3.5 : 1.25,
+    enteredAt: game.worldTime - 2, readyAt: Infinity, hitAt: -Infinity};
+  game.nightCombat.region.state.enemies.push(enemy);
+  return {game, enemy, combat: game.nightCombat};
+}
+
+test("old progress migrates to the default slingshot without changing currency or supplies", () => {
+  let raw = JSON.stringify({version: 2, wallet: 950, boosters: 3, hourglasses: 4});
+  const storage = {getItem: () => raw, setItem: (_key: string, value: string) => {raw = value;}};
+  const economy = new Economy(storage);
+  assert.equal(economy.state.equipped, "slingshot");
+  assert.equal(economy.equip("bow"), false);
+  assert.equal(economy.buy("bow"), "ok");
+  assert.equal(economy.state.equipped, "slingshot", "purchase is separate from equipping");
+  assert.equal(economy.buy("bow"), "owned");
+  assert.equal(economy.equip("bow"), true);
+  const reload = new Economy(storage);
+  assert.equal(reload.state.equipped, "bow");
+  assert.equal(reload.state.wallet, 150);
+  assert.equal(reload.state.boosters, 3);
+  assert.equal(reload.state.hourglasses, 4);
+  assert.equal(reload.buy("bomb"), "ok");
+  assert.equal(reload.state.bombs, 1);
+  assert.equal(reload.equip("slingshot"), true);
+});
+
+test("failed weapon purchase, equipment save and bomb consumption stay atomic", () => {
+  let failing = false;
+  const economy = new Economy({getItem: () => null, setItem: () => {if(failing) throw Error("full");}});
+  economy.credit(2000); failing = true;
+  assert.equal(economy.buy("bow"), "storage");
+  assert.equal(economy.state.wallet, 2000); assert.equal(economy.state.bowOwned, false);
+  failing = false; economy.buy("bow"); economy.buy("bomb"); failing = true;
+  assert.equal(economy.equip("bow"), false); assert.equal(economy.state.equipped, "slingshot");
+  assert.equal(economy.consumeBomb(), false); assert.equal(economy.state.bombs, 1);
+});
+
+test("bow arrows apply two damage to the selected yeti and refill to five", () => {
+  const {game, enemy, combat} = regionalFixture("snow", "bow");
+  assert.equal(combat.ammo, 5);
+  assert.equal(combat.fire(enemy.id, game), true);
+  const neighbor = {...enemy, id: enemy.id + 1}; combat.region.state.enemies.push(neighbor);
+  game.worldTime += 0.5; combat.update(game, 0.5, () => 0.5, () => false);
+  assert.equal(combat.health(enemy), 3); assert.equal(combat.health(neighbor), 5);
+  combat.ammo = 1; combat.refill(); assert.equal(combat.ammo, 3);
+  combat.refill(); assert.equal(combat.ammo, 5);
+  combat.refill(); assert.equal(combat.ammo, 5);
+  game.nextWeapon = "slingshot"; assert.equal(combat.weapon, "bow");
+  game.start(); assert.equal(game.nightCombat.weapon, "slingshot");
+});
+
+test("bat reinforcements stack while alive, cap at seven and keep seeded IDs on rewind", () => {
+  const {game, combat} = regionalFixture("canyon");
+  combat.region.state.enemies = []; combat.region.state.nextPack = 0;
+  game.protectionTime = 999;
+  for(let i=0;i<8;i++) {
+    combat.update(game, 0.01, () => 0.99, () => false); game.worldTime += 12;
+    assert.ok(combat.remaining <= 7);
+  }
+  assert.equal(combat.remaining, 7);
+  const before = combat.snapshot();
+  const id = combat.region.state.enemies[0].id;
+  combat.hurt(combat.region.state.enemies[0], 1, game.worldTime);
+  combat.restore(before, game.worldTime, true);
+  assert.equal(combat.region.state.enemies.some(e=>e.id===id), false);
+  assert.equal(combat.remaining, 6);
+});
+
+test("dropping slips once and cannot extend an existing slip or consume shields", () => {
+  const {game} = regionalFixture("canyon"); game.shield = true;
+  game.triggerSlip(2000000001);
+  assert.equal(game.iceRemaining, CONFIG.iceDistance);
+  game.iceRemaining = 10; game.triggerSlip(2000000001); game.triggerSlip(2000000002);
+  assert.equal(game.iceRemaining, 10); assert.equal(game.shield, true);
+  game.update(0.01); assert.ok(game.iceRemaining > 0, "canyon keeps the sliding state");
+});
+
+test("small snowballs add cold once and a shield absorbs them without cold", () => {
+  const {game} = regionalFixture("snow");
+  game.shield = true; assert.equal(game.nightHit("cold"), true);
+  assert.equal(game.cold, 0); assert.equal(game.shield, false);
+  game.protectionTime = 0; game.nightHit("cold"); assert.equal(game.cold, 15);
+  assert.equal(game.nightHit("cold"), false); assert.equal(game.cold, 15);
+});
+
+test("bomb requires a usable target and committed inventory, then rewind drops pending pulses", () => {
+  const {game, enemy, combat} = regionalFixture("snow");
+  let consumed = 0;
+  assert.equal(combat.throwBomb(game, () => false), false);
+  assert.equal(combat.bombs.length, 0);
+  assert.equal(combat.throwBomb(game, () => {consumed++; return true;}), true);
+  assert.equal(combat.throwBomb(game, () => {consumed++; return true;}), false);
+  assert.equal(consumed, 1);
+  const snapshot = combat.snapshot();
+  game.distance += game.speed * CONFIG.bomb.flight; game.worldTime += CONFIG.bomb.flight + 0.001;
+  combat.update(game, 0.001, () => 0.5, () => false);
+  assert.equal(combat.health(enemy), 4);
+  combat.restore(snapshot, game.worldTime, true);
+  assert.equal(combat.bombs.length, 0);
+  assert.equal(combat.health(enemy), 4);
+  const empty = new NightCombat();
+  assert.equal(empty.throwBomb(game, () => {consumed++; return true;}), false);
+  assert.equal(consumed, 1);
+});
+
+
+test("dive circles require lane or wall height changes and cancel on a lost surface", () => {
+  for(const action of ["jump", "slide", "lane", "wallHeight", "surface"] as const) {
+    const {game,enemy,combat} = regionalFixture("canyon");
+    const wall=action==="wallHeight";
+    game.wallSide=wall?1:0; game.wallBlend=wall?1:0;
+    combat.region.state.attacks.push({id:2000000001,enemy:enemy.id,kind:"dive",start:game.worldTime-1.1,
+      lockAt:game.worldTime-1.1,impactAt:game.worldTime,x:wall?5.4:0,y:wall?game.wallY+0.95:0.95,
+      worldZ:game.distance,side:wall?1:0,fromX:3,fromY:4,fromZ:game.distance+8,spent:false,locked:true});
+    if(action==="jump") game.y=2;
+    if(action==="slide") game.slideTime=0.7;
+    if(action==="lane") game.x=2.5;
+    if(action==="wallHeight") game.wallY+=1.5;
+    if(action==="surface") game.wallSide=1;
+    combat.update(game,0.01,()=>0.5,()=>false);
+    assert.equal(game.mode,action==="jump"||action==="slide"?"over":"running");
+  }
+});
+
+test("small snowballs respect sliding and lane changes but do not grant jump immunity", () => {
+  for(const action of ["slide","lane","jump"] as const) {
+    const {game,enemy,combat} = regionalFixture("snow");
+    combat.region.state.attacks.push({id:2000000001,enemy:enemy.id,kind:"small",start:game.worldTime-1.2,
+      lockAt:game.worldTime-1.2,impactAt:game.worldTime,x:0,y:0.95,worldZ:game.distance,side:0,
+      fromX:3,fromY:1.25,fromZ:game.distance+8,spent:false,locked:true});
+    if(action==="slide")game.slideTime=0.7;
+    if(action==="lane")game.x=2.5;
+    if(action==="jump")game.y=2;
+    combat.update(game,0.01,()=>0.5,()=>false);combat.update(game,0.01,()=>0.5,()=>false);
+    assert.equal(game.cold,action==="jump"?15:0);
+  }
 });

@@ -6,6 +6,7 @@ import { CONFIG } from "./config.ts";
 import { NIGHT_START, dayPhase } from "./daylight.ts";
 import { NightCombat } from "./night-combat.ts";
 import type { Hunt } from "./night-combat.ts";
+import type { WeaponId } from "./economy.ts";
 import { WINTER_HAZARD_HALF_WIDTH } from "./snow-layout.ts";
 import { underRockShelf } from "./rock-shelf.ts";
 import type { RockShelf } from "./rock-shelf.ts";
@@ -113,6 +114,7 @@ export class RunnerGame {
   waterY: number = CONFIG.waterHeights[1];
   worldTime = 0;
   nightCombat = new NightCombat();
+  nextWeapon: WeaponId = "slingshot";
   get phase() { return dayPhase(this.worldTime); }
   get nightGearActive() { return this.phase === "night" || this.nightCombat.remaining > 0; }
   get swimming() { return this.terrain.biome === "water"; }
@@ -154,7 +156,7 @@ export class RunnerGame {
   introTime = 0;
   openingPrepared = false;
   coins = 0;
-  lastHit: ItemType | "gap" | "cold" | "wolf" | null = null;
+  lastHit: ItemType | "gap" | "cold" | "wolf" | "bat" | "yeti" | null = null;
   items: TrackItem[] = [];
   magnetTime = 0;
   shieldTime = 0;
@@ -292,7 +294,7 @@ export class RunnerGame {
     this.waterLevel = 1;
     this.waterY = CONFIG.waterHeights[1];
     this.worldTime = startAtNight ? NIGHT_START : 0;
-    this.nightCombat = new NightCombat();
+    this.nightCombat = new NightCombat(this.nextWeapon);
     this.idBase = ++this.runSerial * 1000000000000;
     this.nextId = 800000000000;
     this.mode = "running";
@@ -633,6 +635,23 @@ export class RunnerGame {
     this.cold = Math.max(0, this.cold + amount);
     this.coldDelta = amount; this.coldFeedback = 0.8;
   }
+  triggerSlip(id: number) {
+    if (this.triggeredIce.has(id) || this.boosting) return;
+    this.triggeredIce.add(id);
+    if (this.icy) return;
+    this.iceRemaining = CONFIG.iceDistance;
+    this.iceX = this.x; this.lane = Math.round(this.x / 2.5);
+    this.horizontalVelocity = this.y = this.velocity = this.slideTime = 0;
+    this.fastFalling = false;
+  }
+  nightHit(kind: "bat" | "yeti" | "cold") {
+    if (this.mode !== "running" || this.protectionTime > 0 || this.boosting) return false;
+    if (kind !== "cold" || this.shield) return this.collide(kind === "cold" ? "yeti" : kind);
+    this.changeCold(CONFIG.regionalCombat.smallCold);
+    this.protectionTime = 0.35;
+    if (this.cold >= CONFIG.coldMax) { this.cold = CONFIG.coldMax; this.mode = "over"; this.lastHit = "cold"; }
+    return true;
+  }
   private snowCollision(item: TrackItem, flying: boolean, travel: number) {
     if (flying) return;
     const lane = Math.abs(item.lane * 2.5 - this.x) < WINTER_HAZARD_HALF_WIDTH;
@@ -640,10 +659,7 @@ export class RunnerGame {
     if (item.type === "ice") {
       if (lane && Math.abs(item.z) < 3 && this.y <= 0.05 && this.icy) this.triggeredIce.add(item.id);
       if (lane && Math.abs(item.z) < 3 && this.y <= 0.05 && !this.icy && !this.triggeredIce.has(item.id)) {
-        this.triggeredIce.add(item.id); this.iceRemaining = CONFIG.iceDistance;
-        this.iceX = this.x; this.lane = Math.round(this.x / 2.5);
-        this.horizontalVelocity = this.y = this.velocity = this.slideTime = 0;
-        this.fastFalling = false;
+        this.triggerSlip(item.id);
       }
     } else if (item.type === "pool") {
       // Long open water is a lane hazard: entering its footprint on foot or
@@ -830,16 +846,16 @@ export class RunnerGame {
       this.pickupSerial++;
     }
   }
-  private collide(hit: TrackItem | "wolf") {
+  private collide(hit: TrackItem | "wolf" | "bat" | "yeti") {
     if (this.mode !== "running" || this.protectionTime > 0 || this.boosting) return false;
     if (this.shield) {
       this.shield = false;
       this.protectionTime = CONFIG.shieldProtection;
-      if (hit !== "wolf") this.cleared.add(hit.id);
+      if (typeof hit !== "string") this.cleared.add(hit.id);
       this.shieldBreakSerial++;
     } else {
       this.mode = "over";
-      this.lastHit = hit === "wolf" ? hit : hit.type;
+      this.lastHit = typeof hit === "string" ? hit : hit.type;
     }
     return true;
   }
@@ -1052,7 +1068,7 @@ export class RunnerGame {
         this.iceRemaining = Math.max(0, this.iceRemaining - travel);
         if (this.iceRemaining === 0) this.iceRecover = CONFIG.iceRecovery;
       } else this.iceRecover = Math.max(0, this.iceRecover - step);
-      if (!this.inSnow) this.iceRemaining = this.iceRecover = 0;
+      if (!this.inSnow && this.terrain.biome !== "canyon") this.iceRemaining = this.iceRecover = 0;
       if (this.inSnow && !flying && this.coldGrace === 0) this.cold += step * CONFIG.coldRate * (this.blizzard > 0 ? CONFIG.blizzardColdMultiplier : 1);
       if (!wasSwimming && this.swimming) {
         this.waterLevel = 1; this.waterY = CONFIG.waterHeights[1]; this.lane = 0;
