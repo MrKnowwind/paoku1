@@ -164,7 +164,11 @@ test("fire halves blizzard cold, ticks health every ten running seconds, and nee
   for (let tap = 0; tap < 3; tap++) {
     assert.equal(game.tapExtinguish(), true);
     assert.equal(game.tapExtinguish(), false);
-    if (tap < 2) { assert.equal(game.burning, true); game.update(0.8); }
+    if (tap < 2) {
+      assert.equal(game.burning, true);
+      assert.ok(game.extinguishTime > 0);
+      game.update(0.8);
+    }
   }
   assert.equal(game.burning, false);
   assert.ok(game.extinguishTime > 0);

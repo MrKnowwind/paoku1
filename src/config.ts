@@ -42,7 +42,7 @@ export const CONFIG = {
   snowdriftCold: 15,
   snowmanCold: 25,
   fireWarmth: 25,
-  burn: {damageInterval: 10, coldMultiplier: 0.5, qteHits: 3, qteDelay: 0.55, extinguishDuration: 0.8},
+  burn: {damageInterval: 10, coldMultiplier: 0.5, qteHits: 3, qteDelay: 0.55, patDuration: 0.38, extinguishDuration: 0.8},
   liquorWarmth: 35,
   drinkDuration: 1.55,
   iceDistance: 24,

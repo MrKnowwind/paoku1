@@ -211,3 +211,12 @@
 - 夜晚指南只保留夜间威胁、攻击预警、沿途补给三页。第三页结束后回到指南总览。移除后续蝙蝠及雪怪专页、四语文案与专用圆圈图示。
 - 雪地指南四语改为定性描述寒冷、冰面、雪堆及取暖，取消速率、距离和增减值。燃烧机制仍显示实用的点按次数和扣血间隔。
 - 功能提交 `b07e512`、`4bd4224` 已推送至 `origin/main`。[GitHub Actions 42577417933](https://github.com/MrKnowwind/paoku1/actions/runs/42577417933) 的112项测试、生产构建和 Pages 部署通过。
+
+
+## 40. 扑火按钮与灭火反馈（2026-11-09）
+
+- 灭火按钮使用内置 ImageGen 生成的手掌拍向火苗图标，游戏文件为 `public/art/icons-v3/fire-pat.webp`，128×128 透明 WebP，约 7.6 KB。按钮以短促弹入和暖色脉冲提示可点，点击后显示扩散光圈。取消进度点，仍需完成原有三次点击。
+- 每次有效点击触发单手扑拍、火苗压缩、少量火星和短促音效。熄灭时火苗快速收拢，短暂冒烟，并用不同音效区分。火苗和粒子复用原有资源，光圈由 CSS 位移与透明度动画驱动。
+- 燃烧指南与总览使用同一图标，四语说明改为见图标就点按，撞雪堆也可灭火。保留首次着火才自动提示的触发规则。
+- 图标生成提示词：Single square transparent mobile adventure-game QTE icon: a big unmistakable open hand with palm facing forward and fingers together, tilted diagonally from upper left to lower right, actively swatting a small orange flame at the palm heel. Show flame compressed toward lower right with two tiny orange spark shapes, and two short cream motion accents tucked close to the hand. The palm is warm cream/tan and occupies most of the silhouette, the flame is bright orange red with golden core, two elements overlap into one compact readable composition. Playful woodland runner game's bold hand-painted chibi interface icon, dark chestnut thick outline, simple rounded shapes, restrained flat shading, crisp shape hierarchy, readable at 36px. Centered, fill the square with small margins. True transparent background, no circular backing, no button bezel, no frame, no text, no numbers, no water, no scene.
+- 延伸现有燃烧回归，交由 GitHub Actions 验证。提交与部署待回填。

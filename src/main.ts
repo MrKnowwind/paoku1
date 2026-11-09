@@ -26,14 +26,13 @@ const guideCategories = [
   { id: "ocean", title: "oceanGuide", glyph: "drop" },
   { id: "snow", title: "snowGuide", glyph: "snowflake" },
   { id: "night", title: "nightGuide", glyph: "moon" },
-  { id: "burn", title: "burnGuide", glyph: "flame" },
+  { id: "burn", title: "burnGuide", glyph: "fire-pat" },
 ] as const satisfies readonly {id: GuideId; title: MessageKey; glyph: string}[];
 const guideGlyph = (name: string) => {
   const paths: Record<string, string> = {
     drop: "M12 2C9 7 5 11 5 15a7 7 0 0 0 14 0c0-4-4-8-7-13Z M9 16a3 3 0 0 0 3 3",
     snowflake: "M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M8.5 4.5 12 8l3.5-3.5m-7 15 3.5-3.5 3.5 3.5",
     moon: "M19 15.6A9 9 0 0 1 8.4 5a8.5 8.5 0 1 0 10.6 10.6Z M17 4v6m-3-3h6",
-    flame: "M12 2c2 6 7 8 7 13a7 7 0 1 1-14 0c0-3 2-5 4-7 0 2 1 3 2 3 2-2 2-5 1-9Z",
     strip: "M3 14v-4h18v4Z M6 12h1m4 0h1m4 0h1",
   };
   return paths[name] ? `<svg class="guide-symbol ${name}" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]}"/></svg>` : icon(name);
@@ -135,8 +134,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   </div>
   <div id="combat-floats" aria-hidden="true"></div>
   <button type="button" id="fire-qte" class="fire-qte" data-action="extinguish" data-label="extinguish" hidden>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C9 7 5 11 5 15a7 7 0 0 0 14 0c0-4-4-8-7-13Z"/><path d="M8.5 15.5a3.5 3.5 0 0 0 3.5 3"/></svg>
-    <span aria-hidden="true"><i></i><i></i><i></i></span>
+    ${icon("fire-pat")}
   </button>
   <canvas id="snow-weather" aria-hidden="true" hidden></canvas>
   <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="${CONFIG.coldMax}">
@@ -237,6 +235,7 @@ const fireQte = document.querySelector<HTMLButtonElement>("#fire-qte")!;
 let fireQteAt = -1;
 let fireQteX = 0;
 let fireQteY = 0;
+const fireQteCenter = {x: 0, y: 0};
 const shotMeter = nightHud.querySelector<HTMLElement>(".shot-meter i")!;
 
 function beep(kind: Sound) {
@@ -453,9 +452,7 @@ const guideNext = document.querySelector<HTMLButtonElement>("#guide-next")!;
 const guideDone = document.querySelector<HTMLButtonElement>("#guide-done")!;
 const guideClose = document.querySelector<HTMLButtonElement>("#guide-review-close")!;
 const weather = new SnowWeather(document.querySelector<HTMLCanvasElement>("#snow-weather")!);
-const guideText = (key: MessageKey) => t(key)
-  .replace("{burnSeconds}", n(CONFIG.burn.damageInterval))
-  .replace("{burnTaps}", n(CONFIG.burn.qteHits));
+const guideText = (key: MessageKey) => t(key).replace("{burnSeconds}", n(CONFIG.burn.damageInterval));
 const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?: MessageKey; top?: MessageKey[]; bottom?: MessageKey[]; symbols?: string[]}[]> = {
   basic: [{title: "guideTitle", copy: "basicGuideCopy", symbols: ["compass", "jump", "slide", "coin"]}],
   snow: [
@@ -473,7 +470,7 @@ const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?:
     {title: "nightAttacks", copy: "nightAttacksCopy", symbols: ["strip", "jump"]},
     {title: "nightSupplies", copy: "nightSuppliesCopy", symbols: ["ammo-pouch", "arrow-ammo"]},
   ],
-  burn: [{title: "extinguish", copy: "burnGuideCopy", detail: "burnGuideDetail", symbols: ["flame", "snowflake", "drop"]}],
+  burn: [{title: "extinguish", copy: "burnGuideCopy", detail: "burnGuideDetail", symbols: ["fire-pat", "snowflake"]}],
 };
 
 function updateGuideUi() {
@@ -643,11 +640,10 @@ function updateFireQte() {
     fireQteAt = game.fireQteAt;
     fireQteX = (Math.random() < 0.5 ? -1 : 1) * (66 + Math.random() * 24);
     fireQteY = 14 + Math.random() * 58;
-    fireQte.dataset.hits = String(game.fireQteHits);
   }
-  const x = Math.max(36, Math.min(innerWidth - 36, anchor.x + fireQteX));
-  const y = Math.max(76, Math.min(innerHeight - 100, anchor.y + fireQteY));
-  fireQte.style.transform = `translate3d(${x - 27}px, ${y - 27}px, 0)`;
+  fireQteCenter.x = Math.max(39, Math.min(innerWidth - 39, anchor.x + fireQteX));
+  fireQteCenter.y = Math.max(76, Math.min(innerHeight - 100, anchor.y + fireQteY));
+  fireQte.style.transform = `translate3d(${fireQteCenter.x - 30}px, ${fireQteCenter.y - 30}px, 0)`;
 }
 function updateFeatureUi() {
   const state = economy.state;
@@ -690,7 +686,16 @@ function updateFeatureUi() {
 }
 function act(action: string) {
   if (action === "extinguish") {
-    if (!activeDialog && !tutorial.guide && game.tapExtinguish()) fireQte.hidden = true;
+    if (!activeDialog && !tutorial.guide && game.tapExtinguish()) {
+      fireQte.hidden = true;
+      beep(game.burning ? "fire-pat" : "fire-out");
+      const flash = document.createElement("span");
+      flash.className = game.burning ? "fire-qte-hit" : "fire-qte-hit snuffed";
+      flash.style.left = `${fireQteCenter.x}px`;
+      flash.style.top = `${fireQteCenter.y}px`;
+      flash.addEventListener("animationend", () => flash.remove(), {once: true});
+      combatFloats.append(flash);
+    }
     return;
   }
   if (tutorial.guide && !activeDialog) { guideAction(action); return; }

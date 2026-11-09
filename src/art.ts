@@ -39,6 +39,7 @@ export const artIcons = new Set([
   "runner-portrait",
   "heart-full",
   "heart-empty",
+  "fire-pat",
 ]);
 
 export const iconAsset = (name: string) =>

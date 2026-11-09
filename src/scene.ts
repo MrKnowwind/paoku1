@@ -103,6 +103,7 @@ export class ForestScene {
   private contact!: Mesh;
   private shock!: Mesh;
   private burnFlames: Mesh[] = [];
+  private lastExtinguishSerial = 0;
   private shockLife = 0;
   private motion = new RunnerMotion();
   private chunks: TransformNode[] = [];
@@ -1610,24 +1611,36 @@ export class ForestScene {
 
   private updateBurnPose(game: RunnerGame) {
     const burning = game.burning && game.mode !== "ready" && !game.introducing;
+    const patting = game.extinguishTime > 0 && game.mode !== "over";
+    const duration = burning ? CONFIG.burn.patDuration : CONFIG.burn.extinguishDuration;
+    const age = patting ? duration - game.extinguishTime : 0;
+    const reach = patting ? smooth(age / 0.09) * (1 - smooth((age - 0.11) / (duration - 0.11))) : 0;
+    const flameSize = burning ? 1 - 0.48 * reach : patting ? 1 - smooth((age - 0.06) / 0.17) : 0;
     for (let i = 0; i < this.burnFlames.length; i++) {
       const flame = this.burnFlames[i];
-      const enabled = burning && (this.high || i < 2);
-      flame.setEnabled(enabled);
+      const enabled = flameSize > 0 && (this.high || i < 2);
+      if (flame.isEnabled() !== enabled) flame.setEnabled(enabled);
       if (!enabled) continue;
       const phase = game.worldTime * 18 + i * 2.1;
-      flame.scaling.y = 0.88 + Math.sin(phase) * 0.22;
+      flame.scaling.set(0.65 + flameSize * 0.35, (0.88 + Math.sin(phase) * 0.22) * flameSize, 0.65 + flameSize * 0.35);
       flame.rotation.z = Math.cos(phase) * 0.24;
     }
-    if (game.extinguishTime <= 0 || game.mode === "over") return;
-    const progress = 1 - game.extinguishTime / CONFIG.burn.extinguishDuration;
-    const weight = Math.sin(progress * Math.PI);
-    this.torso.rotation.x += weight * 0.16;
+    if (!patting) return;
+    const side = game.extinguishSerial % 2 ? 1 : -1;
+    this.torso.rotation.x += reach * 0.13;
+    this.torso.rotation.z += side * reach * 0.14;
     for (const arm of this.arms) {
-      const pat = 0.5 + Math.sin(progress * Math.PI * 6 + (arm.side > 0 ? Math.PI : 0)) * 0.5;
-      arm.upper.rotation.x += (-0.95 - arm.upper.rotation.x) * weight;
-      arm.upper.rotation.z += (arm.side * (0.48 - 0.43 * pat) - arm.upper.rotation.z) * weight;
-      arm.lower.rotation.x += ((-0.75 - 0.78 * pat) - arm.lower.rotation.x) * weight;
+      if (arm.side !== side) continue;
+      arm.upper.rotation.x += (-1.15 - arm.upper.rotation.x) * reach;
+      arm.upper.rotation.z += (arm.side * 0.26 - arm.upper.rotation.z) * reach;
+      arm.upper.rotation.y -= arm.side * reach * 0.38;
+      arm.lower.rotation.x += (-1.45 - arm.lower.rotation.x) * reach;
+    }
+    if (age >= 0.07 && game.extinguishSerial !== this.lastExtinguishSerial) {
+      this.lastExtinguishSerial = game.extinguishSerial;
+      const impact = this.torso.getAbsolutePosition().add(new Vector3(side * 0.22, 0.35, -0.15));
+      this.burst(impact, "#ffbd65", burning ? 5 : 3, 3.5, 0.25, 0.13, 4);
+      if (!burning) this.burst(impact, "#dce8eb", 6, 1.45, 0.58, 0.32, -0.25);
     }
   }
 

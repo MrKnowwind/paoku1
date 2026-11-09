@@ -128,7 +128,8 @@ export class RunnerGame {
   private burnDamageAt = 0;
   private lastIgnitingFire: number | undefined;
   fireQteAt = 0;
-  fireQteHits = 0;
+  private fireQteHits = 0;
+  extinguishSerial = 0;
   extinguishTime = 0;
   get burning() { return this.burnDamageAt > 0; }
   get fireQteReady() { return this.mode === "running" && this.burning && this.worldTime >= this.fireQteAt; }
@@ -687,11 +688,16 @@ export class RunnerGame {
     if (!this.burning) return;
     this.clearBurn();
     this.extinguishTime = CONFIG.burn.extinguishDuration;
+    this.extinguishSerial++;
   }
   tapExtinguish() {
     if (!this.fireQteReady) return false;
     if (++this.fireQteHits >= CONFIG.burn.qteHits) this.extinguish();
-    else this.fireQteAt = this.worldTime + CONFIG.burn.qteDelay;
+    else {
+      this.fireQteAt = this.worldTime + CONFIG.burn.qteDelay;
+      this.extinguishTime = CONFIG.burn.patDuration;
+      this.extinguishSerial++;
+    }
     return true;
   }
   private snowCollision(item: TrackItem, flying: boolean, travel: number) {
