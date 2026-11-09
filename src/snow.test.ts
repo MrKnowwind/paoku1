@@ -82,7 +82,7 @@ test("cold freezes during pause and teaching, warms before the cap check, and cl
   game.pause(); game.update(5); assert.ok(Math.abs(game.cold - CONFIG.coldRate) < 0.001); game.resume();
   game.cold = 99.999; game.addItem("liquor", 0, 0.2); game.update(0.01);
   assert.equal(game.mode, "running"); assert.ok(game.cold < 66); assert.ok(game.drinkTime > 0);
-  game.cold = 99.999; game.update(0.01); assert.equal(game.lastHit, "cold");
+  game.cold = 99.999; game.update(0.01); assert.equal(game.health, 2); assert.equal(game.mode, "running"); assert.ok(game.cold < 61);
   game.start(); game.distance = 1259.99; game.cold = 80; game.update(0.01); assert.equal(game.cold, 0);
 });
 
@@ -94,7 +94,13 @@ test("soft snow is a one-time cold penalty; shields only block physical snow obs
   }
   for (const type of ["pool", "fire"] as const) {
     const game = snowGame(); game.shield = true; game.protectionTime = 5; game.addItem(type, 0, 0);
-    game.update(0.01); assert.equal(game.lastHit, type);
+    game.update(0.01);
+    if(type === "pool") { assert.equal(game.lastHit, type); assert.equal(game.health,0); }
+    else { assert.equal(game.mode,"running"); assert.equal(game.health,3); }
+  }
+  {
+    const game=snowGame();game.addItem("fire",0,0);game.update(0.01);
+    assert.equal(game.health,2);assert.equal(game.mode,"running");
   }
   for (const type of ["stump", "snow-log"] as const) {
     const game = snowGame(); game.shield = true; game.addItem(type, 0, 0); game.update(0.01);
