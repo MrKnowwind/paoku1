@@ -8,7 +8,7 @@ const onPath = (item: TrackItem, x: number) =>
     : Math.abs(item.lane * 2.5 - x) < 1.1;
 
 export type TerrainGuideId = "snow" | "ocean";
-const guidePageCounts = { basic: 1, ocean: 3, snow: 3, night: 8, burn: 1 } as const;
+const guidePageCounts = { basic: 1, ocean: 3, snow: 3, night: 3, burn: 1 } as const;
 export type GuideId = keyof typeof guidePageCounts;
 export type LessonId =
   | GuideId

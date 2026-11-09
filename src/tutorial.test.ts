@@ -168,7 +168,7 @@ test("regional attacks do not open a guide, and night and terrain guides can be 
     fromX:4,fromY:1,fromZ:8,spent:false,locked:true});
   tutorial.update(game,0,false);
   assert.equal(tutorial.active,null);assert.equal(tutorial.timeScale(game),1);
-  for (const [guide, pages] of [["night",8],["ocean",3],["snow",3],["basic",1]] as const) {
+  for (const [guide, pages] of [["night",3],["ocean",3],["snow",3],["basic",1]] as const) {
     tutorial.reviewGuide(guide);
     assert.equal(tutorial.guide, guide);
     for (let i = 0; i < pages + 1; i++) tutorial.turnGuide(1);

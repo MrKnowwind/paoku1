@@ -1993,7 +1993,7 @@ html[lang="ko-KR"] .intro h1 {
 .guide-entry .guide-chevron { width:16px; height:16px; transform:rotate(-90deg); }
 .guide-symbol { fill:none; stroke:currentColor; stroke-width:1.65; stroke-linecap:round; stroke-linejoin:round; }
 .guide-symbol.flame { color:#e8974b; }
-.guide-symbol.ring, .guide-symbol.strip { color:#ff7472; }
+.guide-symbol.strip { color:#ff7472; }
 .guide-symbol.snowflake, .guide-symbol.drop { color:#69c3dc; }
 .guide-symbols { position:absolute; inset:0; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; align-content:center; gap:clamp(8px, 4cqw, 22px); padding:10px; background:radial-gradient(ellipse at center,#365d67,#142e3b); color:#ffe0a0; }
 .guide-symbols[hidden] { display:none; }

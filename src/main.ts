@@ -34,7 +34,6 @@ const guideGlyph = (name: string) => {
     snowflake: "M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M8.5 4.5 12 8l3.5-3.5m-7 15 3.5-3.5 3.5 3.5",
     moon: "M19 15.6A9 9 0 0 1 8.4 5a8.5 8.5 0 1 0 10.6 10.6Z M17 4v6m-3-3h6",
     flame: "M12 2c2 6 7 8 7 13a7 7 0 1 1-14 0c0-3 2-5 4-7 0 2 1 3 2 3 2-2 2-5 1-9Z",
-    ring: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
     strip: "M3 14v-4h18v4Z M6 12h1m4 0h1m4 0h1",
   };
   return paths[name] ? `<svg class="guide-symbol ${name}" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]}"/></svg>` : icon(name);
@@ -481,11 +480,6 @@ const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?:
     {title: "nightShooting", copy: "nightShootingCopy", symbols: ["moon", "slingshot", "bow"]},
     {title: "nightAttacks", copy: "nightAttacksCopy", symbols: ["strip", "jump"]},
     {title: "nightSupplies", copy: "nightSuppliesCopy", symbols: ["ammo-pouch", "arrow-ammo"]},
-    {title: "batDive", copy: "batDiveCopy", symbols: ["ring", "compass"]},
-    {title: "batDropping", copy: "batDroppingCopy", symbols: ["drop", "compass"]},
-    {title: "yetiSmall", copy: "yetiSmallCopy", symbols: ["strip", "slide"]},
-    {title: "yetiCharge", copy: "yetiChargeCopy", symbols: ["strip", "jump"]},
-    {title: "yetiSnowball", copy: "yetiSnowballCopy", symbols: ["ring", "heart-empty"]},
   ],
   burn: [{title: "extinguish", copy: "burnGuideCopy", detail: "burnGuideDetail", symbols: ["flame", "snowflake", "drop"]}],
 };
