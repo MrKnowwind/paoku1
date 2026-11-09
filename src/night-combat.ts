@@ -65,6 +65,8 @@ export class NightCombat {
   refillSerial = 0;
   playerHitAt = -Infinity;
   shotAt = -Infinity;
+  damageEvents: {id: number; at: number; amount: number; x: number; y: number; worldZ: number}[] = [];
+  private damageSequence = 0;
   aim?: {wolf: number; x: number; z: number};
   stones: Stone[] = [];
   hunt: Hunt = {
@@ -79,6 +81,12 @@ export class NightCombat {
   get enemies(): (Wolf | RegionalEnemy)[] { return [...this.hunt.wolves, ...this.region.state.enemies]; }
   hurt(enemy: Wolf | RegionalEnemy, amount: number, time: number, game?: RunnerGame) {
     if (this.health(enemy) <= 0) return;
+    if (game) {
+      const p = this.position(enemy, game);
+      this.damageEvents = this.damageEvents.filter(e => time - e.at < 1);
+      this.damageEvents.push({id: ++this.damageSequence, at: time, amount: Math.min(amount, this.health(enemy)),
+        x: p.x, y: p.y + 1, worldZ: game.distance + p.z});
+    }
     enemy.hitAt = time;
     this.damage.set(enemy.id, (this.damage.get(enemy.id) ?? 0) + amount);
     if (this.health(enemy) <= 0) {
@@ -121,6 +129,7 @@ export class NightCombat {
   }
 
   clearShots() {
+    this.damageEvents = [];
     this.stones.length = 0;
     this.bombs.length = 0;
     this.aim = undefined;

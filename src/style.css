@@ -1994,3 +1994,10 @@ html[lang="ko-KR"] .intro h1 {
 .shop-categories .selected { background: #405a38; color: #fff5dc; }
 .shop-coming-soon { display: grid; place-items: center; min-height: 200px; color: #607251; font-size: 22px; }
 .active-tool.bomb-tool { right: calc(94px + env(safe-area-inset-right, 0px)); }
+
+.player-health { position:fixed; z-index:8; pointer-events:none; transform:translate(-50%,-50%); display:flex; gap:4px; padding:4px 5px; background:#182630d9; border:1px solid #fff6; border-radius:5px; }
+.player-health[hidden] { display:none; }
+.player-health i { width:16px; height:8px; border-radius:2px; background:#53606b; }
+.player-health i.full { background:#f35564; box-shadow:0 0 5px #ff687a88; }
+.damage-float { position:fixed; z-index:12; pointer-events:none; transform:translate(-50%,-50%); font:bold 28px system-ui; color:#fff0b3; text-shadow:2px 2px 0 #4b201e,-1px -1px 0 #4b201e,0 0 8px #ff873b; }
+.damage-float.player { color:#ff596b; font-size:32px; text-shadow:1px 2px 0 #fff,-1px -1px 0 #fff,0 0 10px #c51a31; }

@@ -236,6 +236,9 @@ export class RegionalCombat {
       rules.snowballRoll + rules.snowballWarning;
     // Keep paired warnings compatible, including the recovery of the first attack.
     if (!this.safeWindow(game, duration) || !bat && s.attacks.some(a => a.kind !== kind)) return;
+    // Do not add a dive to an obstacle-constrained wall corridor during its approach or escape.
+    if (bat && game.wallSide && game.items.some(item => item.type === "wall-rock" &&
+      item.worldZ > game.distance - 4 && item.worldZ < game.distance + game.speed * (duration + 1.3))) return;
     const p = this.position(enemy, game);
     const droppingZ = game.distance + p.z;
     if (kind === "dropping" && (!obstacleAllowed(droppingZ, game.trackSeed, game.track) ||

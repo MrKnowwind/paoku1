@@ -111,6 +111,8 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <div class="night-weapon"><span class="weapon-icon"></span><div class="shot-meter"><i></i></div></div>
     <div class="ammo-slots"></div>
   </aside>
+  <div id="player-health" class="player-health" hidden aria-hidden="true"></div>
+  <div id="combat-floats" aria-hidden="true"></div>
   <div id="ammo-pickup" class="ammo-pickup" hidden aria-hidden="true"></div>
   <canvas id="snow-weather" aria-hidden="true" hidden></canvas>
   <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="${CONFIG.coldMax}">
@@ -200,6 +202,8 @@ const clockDay = document.querySelector<SVGTextElement>("#clock-day")!;
 const clockDot = document.querySelector<SVGCircleElement>("#clock-dot")!;
 const nightHud = document.querySelector<HTMLElement>("#night-hud")!;
 const ammoSlots = nightHud.querySelector<HTMLElement>(".ammo-slots")!;
+const playerHealth = document.querySelector<HTMLElement>("#player-health")!;
+const combatFloats = document.querySelector<HTMLElement>("#combat-floats")!;
 const ammoPopup = document.querySelector<HTMLElement>("#ammo-pickup")!;
 let ammoPopupAt = -Infinity;
 const shotMeter = nightHud.querySelector<HTMLElement>(".shot-meter i")!;
@@ -553,6 +557,26 @@ function updateNightUi() {
     ammoPopup.style.top = `${anchor.y - age * 30}px`;
     ammoPopup.style.opacity = String(Math.min(1, (1.1 - age) / 0.3));
   }
+  playerHealth.hidden = !anchor?.visible || !["running", "paused"].includes(game.mode) || !!tutorial.guide;
+  if (anchor) {
+    playerHealth.style.left = `${anchor.x}px`; playerHealth.style.top = `${anchor.y + 15}px`;
+    playerHealth.innerHTML = [0,1,2].map(i=>`<i class="${i < game.health ? "full" : ""}"></i>`).join("");
+  }
+  const floats: string[] = [];
+  const addFloat = (x:number,y:number,label:string,age:number,kind:string) => {
+    floats.push(`<b class="damage-float ${kind}" style="left:${x}px;top:${y-age*55}px;opacity:${Math.min(1,(1-age)*3)}">${label}</b>`);
+  };
+  if (!tutorial.guide && game.mode !== "rewinding") {
+    for (const e of game.nightCombat.damageEvents) {
+      const age=game.worldTime-e.at;
+      if(age<0||age>=1)continue;
+      const p=world?.getCombatAnchor(e.x,e.y,e.worldZ-game.distance);
+      if(p?.visible)addFloat(p.x,p.y,`−${e.amount}`,age,"enemy");
+    }
+    const age=game.worldTime-game.damagedAt;
+    if(anchor?.visible && age>=0 && age<1)addFloat(anchor.x,anchor.y-20,"−1",age,"player");
+  }
+  combatFloats.innerHTML=floats.join("");
   if (nightHud.hidden) return;
   const combat = game.nightCombat;
   if (nightHud.dataset.weapon !== combat.weapon) {
@@ -1096,7 +1120,7 @@ try {
       lastCoins = game.coins;
       if (wasRunning && game.mode === "over") {
         beep("hit");
-        resultDelay = game.lastHit === "pool" ? 1.8 : game.lastHit === "cold" ? 1.2 : 0.65;
+        resultDelay = (game.lastHit === "pool" || game.lastHit === "gap") ? 1.8 : game.lastHit === "cold" ? 1.2 : 0.65;
         document.body.classList.add("crashed");
       }
       if (game.mode === "over" && !activeDialog) {

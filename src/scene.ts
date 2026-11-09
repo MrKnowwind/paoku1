@@ -240,7 +240,7 @@ export class ForestScene {
       this.drinkBottle.scaling.setAll(0.55);
     }
     this.drinkPose(game.drinkTime, game.icy || game.mode === "over");
-    if (game.lastHit === "pool") {
+    if (game.lastHit === "pool" || game.lastHit === "gap") {
       this.runner.position.y -= this.motion.pose.death * 3.5;
       this.runner.rotation.x = this.motion.pose.death * 0.35;
       this.runner.rotation.z = Math.sin(this.time * 8) * 0.12;
@@ -1917,6 +1917,17 @@ export class ForestScene {
     };
   }
 
+  private lastDamageAt = -Infinity;
+
+  getCombatAnchor(x: number, y: number, z: number) {
+    const width = this.engine.getRenderWidth(), height = this.engine.getRenderHeight();
+    const point = Vector3.Project(new Vector3(x,y,z), Matrix.Identity(), this.scene.getTransformMatrix(),
+      this.camera.viewport.toGlobal(width,height));
+    const rect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
+    return {x:rect.left+point.x/width*rect.width,y:rect.top+point.y/height*rect.height,
+      visible:point.z>=0&&point.z<=1};
+  }
+
   getPlayerAnchor() {
     const width = this.engine.getRenderWidth(), height = this.engine.getRenderHeight();
     const point = Vector3.Project(this.runner.getAbsolutePosition().add(new Vector3(0, 2.55, 0)),
@@ -2096,7 +2107,7 @@ export class ForestScene {
     if (!aim) return;
     if (combat.shotAt !== this.lastShotAt && game.mode === "running") {
       this.lastShotAt = combat.shotAt;
-      this.burst(new Vector3(game.x - 0.22, game.y + (game.sliding ? 0.65 : 1.43), 0.45), "#ffe4a1", 6, 2.9, 0.18, 0.13, 0.5);
+      this.burst(new Vector3(game.x - 0.22, game.y + (game.sliding ? 0.65 : 1.43), 0.45), "#fff2b1", 14, 4.2, 0.28, 0.18, 1.1);
     }
     const hand = this.arms.find(arm => arm.side < 0)!;
     if (combat.weapon === "bow" && !this.bow) {
@@ -2335,7 +2346,7 @@ export class ForestScene {
         game.wallY * game.wallBlend + game.boostBlend * 5.5 * (1 - immersed);
       this.runner.rotation.z += game.wallVisualSide * 0.95 * game.wallBlend;
       this.runner.rotation.x -= game.boostBlend * 0.22;
-      if (game.lastHit === "gap") this.runner.position.y -= pose.death * 8;
+      if (game.lastHit === "gap") this.runner.position.y -= pose.death * 4.5;
     }
     this.hips.position.y =
       (opening
@@ -2498,6 +2509,20 @@ export class ForestScene {
     if (game.lastHit === "pool") {
       this.shock.position.set(game.x, POOL_WATER_Y + 0.018, 0); this.shock.rotation.set(0, 0, 0);
       this.shock.scaling.setAll(1 + this.motion.pose.death * 2.5);
+    }
+    if(this.lastDamageAt!==game.damagedAt) {
+      this.lastDamageAt=game.damagedAt;
+      if(game.mode!=="rewinding" && Number.isFinite(game.damagedAt)) {
+        this.burst(new Vector3(this.runner.position.x,this.runner.position.y+1,0),"#ff657b",18,3.8,0.4,0.14,1.2);
+        this.shake=Math.max(this.shake,0.18);
+      }
+    }
+    const hurtAge = game.worldTime - game.damagedAt;
+    if (hurtAge >= 0 && hurtAge < 0.42 && game.mode !== "rewinding") {
+      const weight = Math.sin(hurtAge / 0.42 * Math.PI);
+      this.runner.rotation.z += Math.sin(hurtAge * 38) * 0.13 * weight;
+      this.torso.rotation.x -= weight * 0.22;
+      this.runner.position.z -= weight * 0.24;
     }
     this.contact.position.x = this.runner.position.x;
     this.contact.position.z = this.runner.position.z;

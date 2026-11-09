@@ -32,7 +32,7 @@ test("wall-attached shelves block every covered lane and keep the opposite lane 
     for (const lane of [-1, 0, 1]) {
       for (const sliding of [false, true]) {
         const game = new RunnerGame({ autoSpawn: false });
-        game.start();
+        game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
         game.distance = 700;
         game.lane = lane;
         game.x = lane * 2.5;
@@ -177,7 +177,7 @@ test("magnet collects all routes and refreshes duration; pause freezes effects",
 
 test("shield expires after its duration, refreshes on pickup, and freezes while paused", () => {
   const game = new RunnerGame({ autoSpawn: false });
-  game.start();
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
   game.addItem("shield", 0, 1);
   game.update(0.1);
   assert.ok(game.shieldTime > CONFIG.shieldDuration - 0.1);
@@ -200,7 +200,7 @@ test("shield expires after its duration, refreshes on pickup, and freezes while 
 
 test("shield absorbs one ordinary hit and protects briefly, but cannot prevent a fall", () => {
   const game = new RunnerGame({ autoSpawn: false });
-  game.start();
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
   game.addItem("shield", 0, 1);
   game.update(0.1);
   assert.equal(game.shield, true);
@@ -216,7 +216,7 @@ test("shield absorbs one ordinary hit and protects briefly, but cannot prevent a
   game.addItem("rock", 0, 1);
   game.update(0.1);
   assert.equal(game.mode, "over");
-  game.start();
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
   game.shield = true;
   game.distance = gapsNear(800, game.trackSeed)[0].start - 0.1;
   game.jump();
@@ -334,7 +334,7 @@ test("rewind spends once, keeps unique coin income and clears obstacles without 
     autoSpawn: false,
     onCoins: (n) => (credited += n),
   });
-  game.start();
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
   const coin = game.addItem("coin", 0, 15);
   game.addItem("rock", 0, 60);
   game.update(3);
@@ -388,7 +388,7 @@ test("rewind spends once, keeps unique coin income and clears obstacles without 
 
 test("rewinding to a wall state restores an attached route that can still exit", () => {
   const game = new RunnerGame({ autoSpawn: false });
-  game.start();
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
   const gap = gapsNear(800, game.trackSeed)[0];
   game.distance = gap.start - 10;
   game.lane = -1;
@@ -417,7 +417,7 @@ test("procedurally generated coins retain identity across rewind and never credi
     random: () => 0.5,
     onCoins: (n) => (credited += n),
   });
-  game.start();
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
   const historicalRock = game.addItem("rock", 1, 120);
   game.update(0.8);
   const coin = game.items.find(item => item.type === "coin")!;
@@ -536,7 +536,8 @@ test("water generation leaves connected safe columns with unique IDs", () => {
 
 test("water rewind restores dynamic time and clears aquatic hazards", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = waterDistance(game, 1700); game.update(3.2);
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
+  game.distance = waterDistance(game, 1700); game.update(3.2);
   const clock = game.worldTime;
   game.addItem("bubble", 0, 1, CONFIG.waterHeights[1] + 0.95); game.update(0.1);
   assert.equal(game.mode, "over");
@@ -607,7 +608,8 @@ test("side-grown reefs reach two columns and preserve the opposite column", () =
 
 test("coral collision follows swimming between cells rather than only target lanes", () => {
   const game = new RunnerGame({autoSpawn: false});
-  game.start(); game.distance = waterDistance(game, 1700);
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
+  game.distance = waterDistance(game, 1700);
   game.lane = -1; game.x = -2.5;
   game.addItem("coral", 0, 2);
   game.move(1); game.move(1);
@@ -988,7 +990,7 @@ test("bomb requires a usable target and committed inventory, then rewind drops p
 
 test("dive circles require lane or wall height changes and cancel on a lost surface", () => {
   for(const action of ["jump", "slide", "lane", "wallHeight", "surface"] as const) {
-    const {game,enemy,combat} = regionalFixture("canyon");
+    const {game,enemy,combat} = regionalFixture("canyon"); game.health=1;
     const wall=action==="wallHeight";
     game.wallSide=wall?1:0; game.wallBlend=wall?1:0;
     combat.region.state.attacks.push({id:2000000001,enemy:enemy.id,kind:"dive",start:game.worldTime-1.1,

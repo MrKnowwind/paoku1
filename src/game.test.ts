@@ -165,7 +165,7 @@ test("lane changes ease into motion and settle without overshooting", () => {
 
 test("a jump clears a log and lands; staying on the ground causes a collision", () => {
   const game = new RunnerGame({ autoSpawn: false });
-  game.start();
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
   game.addItem("log", 0, 3);
   game.jump();
   game.update(0.45);
@@ -180,7 +180,7 @@ test("a jump clears a log and lands; staying on the ground causes a collision", 
 
 test("sliding clears a low arch and expires; a standing runner hits it", () => {
   const game = new RunnerGame({ autoSpawn: false });
-  game.start();
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
   game.addItem("arch", 0, 3);
   game.slide();
   game.update(0.4);
@@ -271,7 +271,7 @@ test("collects a coin once, avoids another lane, and freezes while paused", () =
 
 test("a boulder ends the run and speed increases within its limit", () => {
   const game = new RunnerGame({ autoSpawn: false });
-  game.start();
+  game.start(); game.health = 1; // Exercise a lethal hit on the final heart.
   const initial = game.speed;
   game.update(20);
   assert.ok(game.speed > initial && game.speed <= 24);
@@ -325,4 +325,16 @@ test("opening fog holds for model preparation and fades smoothly to the ordinary
   assert.ok(openingFog(CONFIG.openingFogHold + 1) > openingFog(CONFIG.openingFogHold + 2));
   assert.equal(openingFog(CONFIG.openingFogHold + CONFIG.openingFogFade), 0);
   assert.equal(openingFog(20), 0);
+});
+
+
+test("three hearts absorb ordinary damage with grace, shields take priority, and restart resets hearts", () => {
+  const game=new RunnerGame({autoSpawn:false});game.start();
+  assert.equal(game.health,3);
+  assert.equal(game.nightHit("bat"),true);assert.equal(game.health,2);assert.equal(game.mode,"running");
+  assert.equal(game.nightHit("bat"),false);assert.equal(game.health,2);
+  game.protectionTime=0;game.shield=true;game.nightHit("yeti");assert.equal(game.health,2);
+  game.protectionTime=0;game.nightHit("cold");assert.equal(game.health,1);assert.equal(game.cold,15);
+  game.protectionTime=0;game.nightHit("bat");assert.equal(game.health,0);assert.equal(game.mode,"over");
+  game.start();assert.equal(game.health,3);
 });

@@ -39,7 +39,7 @@ export class RegionalCombatView {
     if (kind === "danger" || kind === "countdown" || kind === "shock") {
       const color = kind === "shock" ? "255,204,117" : kind === "countdown" ? "255,228,202" : "255,68,94";
       const glow = ctx.createRadialGradient(128,128,95,128,128,128);
-      glow.addColorStop(0,`rgba(${color},0)`); glow.addColorStop(0.75,`rgba(${color},0.5)`); glow.addColorStop(1,`rgba(${color},0)`);
+      glow.addColorStop(0,`rgba(${color},0)`); glow.addColorStop(0.75,`rgba(${color},0.85)`); glow.addColorStop(1,`rgba(${color},0)`);
       ctx.fillStyle=glow; ctx.fillRect(0,0,256,256);
       ctx.strokeStyle=`rgba(${color},0.95)`;ctx.lineWidth=3;ctx.beginPath();ctx.arc(128,128,120,0,Math.PI*2);ctx.stroke();
       ctx.strokeStyle=`rgba(${color},0.3)`;ctx.lineWidth=1;ctx.beginPath();ctx.arc(128,128,111,0,Math.PI*2);ctx.stroke();
@@ -49,7 +49,7 @@ export class RegionalCombatView {
       }
     } else if (kind === "strip") {
       const gradient=ctx.createLinearGradient(0,0,256,0);
-      gradient.addColorStop(0,"#ff6c8c");gradient.addColorStop(0.12,"#e8456340");gradient.addColorStop(0.88,"#e8456340");gradient.addColorStop(1,"#ff6c8c");
+      gradient.addColorStop(0,"#ff244b");gradient.addColorStop(0.12,"#d91838a0");gradient.addColorStop(0.88,"#d91838a0");gradient.addColorStop(1,"#ff244b");
       ctx.fillStyle=gradient;ctx.fillRect(0,0,256,256);
       ctx.strokeStyle="#ffc1bb";ctx.lineWidth=3;
       for(let y=-32;y<280;y+=48) {ctx.beginPath();ctx.moveTo(64,y+18);ctx.lineTo(128,y);ctx.lineTo(192,y+18);ctx.stroke();}
@@ -97,6 +97,14 @@ export class RegionalCombatView {
         shard.rotation.set(i+p*4,i*0.7+p*3,p*2);shard.scaling.setAll((0.08+i%3*0.04)*(1-p));shard.visibility=1-p;
       }
     };
+    for (const hit of combat.damageEvents) {
+      const age=time-hit.at;
+      if(age<0||age>0.3||game.mode==="rewinding")continue;
+      particles(`damage-${hit.id}`,hit.x,hit.y-0.35,hit.worldZ-game.distance,age,0.3,"#fff0ae",high?14:8,1.7);
+      const flash=effect(`impact-${hit.id}`,"ring","#ffbd52","shock");
+      flash.position.set(hit.x,hit.y-0.35,hit.worldZ-game.distance);flash.rotation.x=Math.PI/2;
+      flash.scaling.setAll(0.3+age*3);flash.visibility=1-age/0.3;
+    }
     for(const e of state.enemies) {
       let model=this.models.get(e.id);
       if(!model) {model=e.kind==="yeti"?new YetiModel(this.scene,e.id,this.material,high):new RegionalEnemyModel(this.scene,e.id,"bat",this.material,high);this.models.set(e.id,model);}

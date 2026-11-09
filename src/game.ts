@@ -173,6 +173,9 @@ export class RunnerGame {
   pickupSerial = 0;
   lastPickup: "magnet" | "shield" = "magnet";
   shieldBreakSerial = 0;
+  health = 3;
+  damageSerial = 0;
+  damagedAt = -Infinity;
   clearSerial = 0;
   shattered: TrackItem[] = [];
   private runSerial = 0;
@@ -309,6 +312,8 @@ export class RunnerGame {
     this.openingPrepared = false;
     this.coins = 0;
     this.lastHit = null;
+    this.health = 3;
+    this.damagedAt = -Infinity;
     this.magnetTime = 0;
     this.shield = false;
     this.protectionTime = 0;
@@ -644,12 +649,17 @@ export class RunnerGame {
     this.horizontalVelocity = this.y = this.velocity = this.slideTime = 0;
     this.fastFalling = false;
   }
+  private frostDamage() {
+    this.collide("yeti");
+    this.cold = this.health > 0 ? CONFIG.coldMax * 0.6 : CONFIG.coldMax;
+    if (this.health === 0) this.lastHit = "cold";
+  }
   nightHit(kind: "bat" | "yeti" | "cold") {
     if (this.mode !== "running" || this.protectionTime > 0 || this.boosting) return false;
     if (kind !== "cold" || this.shield) return this.collide(kind === "cold" ? "yeti" : kind);
+    this.collide("yeti");
     this.changeCold(CONFIG.regionalCombat.smallCold);
-    this.protectionTime = 0.35;
-    if (this.cold >= CONFIG.coldMax) { this.cold = CONFIG.coldMax; this.mode = "over"; this.lastHit = "cold"; }
+    if (this.cold >= CONFIG.coldMax) this.frostDamage();
     return true;
   }
   private snowCollision(item: TrackItem, flying: boolean, travel: number) {
@@ -665,11 +675,11 @@ export class RunnerGame {
       // Long open water is a lane hazard: entering its footprint on foot or
       // landing mid-pool is lethal. A normal jump cannot cross all 28 metres.
       if (lane && Math.abs(item.z) < CONFIG.poolLength / 2 && this.y <= 0.12) {
-        this.mode = "over"; this.lastHit = "pool";
+        this.health = 0; this.mode = "over"; this.lastHit = "pool";
       }
     } else if (item.type === "fire") {
       if (lane && Math.abs(item.z) < 0.9 && this.y < CONFIG.fireHeight) {
-        this.mode = "over"; this.lastHit = "fire";
+        this.collide(item);
       } else if (crossed && lane && this.y >= CONFIG.fireHeight && !this.icy) {
         this.firePasses.add(item.id);
       }
@@ -854,8 +864,15 @@ export class RunnerGame {
       if (typeof hit !== "string") this.cleared.add(hit.id);
       this.shieldBreakSerial++;
     } else {
-      this.mode = "over";
-      this.lastHit = typeof hit === "string" ? hit : hit.type;
+      this.health = Math.max(0, this.health - 1);
+      this.damageSerial++;
+      this.damagedAt = this.worldTime;
+      this.protectionTime = 1.1;
+      if (typeof hit !== "string") this.cleared.add(hit.id);
+      if (this.health === 0) {
+        this.mode = "over";
+        this.lastHit = typeof hit === "string" ? hit : hit.type;
+      }
     }
     return true;
   }
@@ -1012,6 +1029,7 @@ export class RunnerGame {
     this.items = this.items.filter((item) => !this.cleared.has(item.id));
     this.clearSerial++;
     this.coldGrace = CONFIG.coldGrace;
+    this.health = Math.max(1, this.health);
     this.protectionTime = CONFIG.rewindProtection;
     this.lastHit = null;
     this.rewindFrame = this.rewindTarget = undefined;
@@ -1131,6 +1149,7 @@ export class RunnerGame {
         }
       } else if (gapAt(this.distance, this.seed, this.track) && !this.wallSide) {
         this.mode = "over";
+        this.health = 0;
         this.lastHit = "gap";
       }
       const itemReach = Math.max(1.15, travel + 0.65, this.magnetTime > 0 ? CONFIG.magnetRange : 0);
@@ -1211,7 +1230,7 @@ export class RunnerGame {
           this.collide(item);
       }
       if (this.mode === "running" && this.inSnow && this.cold >= CONFIG.coldMax) {
-        this.cold = CONFIG.coldMax; this.mode = "over"; this.lastHit = "cold";
+        this.frostDamage();
       }
       this.items = this.items.filter(item => {
         if (item.z <= -24 && item.attraction === undefined &&
