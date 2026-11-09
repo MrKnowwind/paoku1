@@ -42,8 +42,7 @@ export class RunnerMotion {
     this.pose.landing *= Math.exp(-dt * 15);
     if (this.airborne && game.y === 0) this.pose.landing = 1;
     this.airborne = game.y > 0;
-    const slideTarget =
-      (game.sliding || game.fastFalling) && game.mode !== "ready";
+    const slideTarget = game.sliding || game.fastFalling;
     const slideResponse = game.fastFalling ? 36 : game.velocity > 0 ? 48 : 22;
     this.pose.slide +=
       ((slideTarget ? 1 : 0) - this.pose.slide) *

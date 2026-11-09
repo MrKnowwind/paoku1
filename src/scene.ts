@@ -184,7 +184,7 @@ export class ForestScene {
     if (lift <= 0.025 || blocked) return;
     const arm = this.arms[1];
     this.head.rotation.x -= swallow * 0.19;
-    this.head.rotation.y += swallow * 0.09;
+    this.head.rotation.y += lift * 0.55 + swallow * 0.08;
     this.torso.rotation.y = -0.07 * lift;
     const torsoWorld = this.torso.computeWorldMatrix(true);
     const mouthWorld = Vector3.TransformCoordinates(new Vector3(0, 0.11, 0.285), this.head.computeWorldMatrix(true));
