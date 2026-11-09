@@ -48,7 +48,7 @@ import { defaultTrack, sectionAt, tunnelDarkness, snowBlend } from "./track.ts";
 import { SnowProps } from "./snow-props.ts";
 import { ICE_IMPACT_METRES, iceFallPose, sipPose } from "./winter-motion.ts";
 import { TerrainPreview } from "./terrain-preview.ts";
-import type { GuideId } from "./tutorial.ts";
+import type { TerrainGuideId } from "./tutorial.ts";
 import { POOL_WATER_Y } from "./snow-layout.ts";
 import { iconAsset } from "./art.ts";
 
@@ -170,7 +170,7 @@ export class ForestScene {
   private snow?: SnowProps;
   private guidePreviews = new Map<number, TerrainPreview>();
   private guideBackdrop?: Layer;
-  private previewGuide: GuideId | null = null;
+  private previewGuide: TerrainGuideId | null = null;
   private drinkBottle?: TransformNode;
   private lastSnowHit = 0;
   private lastIceRemaining = 0;
@@ -2184,7 +2184,7 @@ export class ForestScene {
     });
   }
 
-  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, guide: GuideId | null = null, guideStep = 0) {
+  update(game: RunnerGame, dt: number, showWallEntryMarkers = false, guide: TerrainGuideId | null = null, guideStep = 0) {
     const newTrack = this.track !== game.track;
     if (newTrack) {
       this.openingMistTime = 0;

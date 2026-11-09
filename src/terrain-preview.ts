@@ -10,7 +10,7 @@ import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { SnowProps } from "./snow-props.ts";
-import type { GuideId } from "./tutorial.ts";
+import type { TerrainGuideId } from "./tutorial.ts";
 import type { TrackItem } from "./game.ts";
 import { makeCoral } from "./coral.ts";
 import { CONFIG } from "./config.ts";
@@ -27,7 +27,7 @@ export class TerrainPreview {
   private targetY = 0.9;
 
   constructor(
-    scene: Scene, source: TransformNode, readonly guide: GuideId, readonly step: number,
+    scene: Scene, source: TransformNode, readonly guide: TerrainGuideId, readonly step: number,
     snow: () => SnowProps, makeItem: (item: TrackItem) => TransformNode,
     warningMaterial: (urgency: number) => StandardMaterial,
   ) {

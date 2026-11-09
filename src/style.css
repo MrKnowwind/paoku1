@@ -669,41 +669,10 @@ h2:focus {
 .segmented button + button {
   border-left: 1px solid #d5dccb;
 }
-.guide-list {
-  margin-bottom: 19px;
-}
-.guide-row {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 15px 0;
-  border-bottom: 1px solid #dfe3d4;
-}
-.guide-icon {
-  width: 29px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  flex: none;
-  color: #7b8d68;
-}
-.guide-3 {
-  color: #b89b59;
-}
-.guide-icon .icon {
-  width: 24px;
-  height: 24px;
-}
 h3 {
   font-size: 12px;
   font-weight: 600;
   margin: 0 0 4px;
-}
-.guide-row p {
-  font-size: 12px;
-  line-height: 1.8;
-  color: #465740;
-  margin: 0;
 }
 .full-width {
   width: 100%;
@@ -1969,7 +1938,6 @@ html[lang="ko-KR"] .intro h1 {
   font-weight: 850;
 }
 .guide-card button:focus-visible, .guide-card-copy:focus-visible { outline: 2px solid #fff5dc; outline-offset: -3px; }
-.guide-links { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 @media (orientation: landscape) and (max-height: 455px) {
   .guide-card {
     width: min(640px, 100cqw);
@@ -2017,3 +1985,22 @@ html[lang="ko-KR"] .intro h1 {
 .fire-qte span { display:flex; gap:3px; }
 .fire-qte i { width:5px; height:5px; border:1px solid currentColor; border-radius:50%; }
 .fire-qte[data-hits="1"] i:first-child, .fire-qte[data-hits="2"] i:nth-child(-n+2) { background:currentColor; }
+
+.guide-menu { display:grid; gap:8px; }
+.guide-menu .guide-entry { display:grid; grid-template-columns:36px minmax(0,1fr) 18px; gap:10px; text-align:start; align-items:center; min-height:52px; }
+.guide-entry > span { display:grid; place-items:center; }
+.guide-entry > span > :is(.guide-symbol,.art-icon) { width:26px; height:26px; }
+.guide-entry .guide-chevron { width:16px; height:16px; transform:rotate(-90deg); }
+.guide-symbol { fill:none; stroke:currentColor; stroke-width:1.65; stroke-linecap:round; stroke-linejoin:round; }
+.guide-symbol.flame { color:#e8974b; }
+.guide-symbol.ring, .guide-symbol.strip { color:#ff7472; }
+.guide-symbol.snowflake, .guide-symbol.drop { color:#69c3dc; }
+.guide-symbols { position:absolute; inset:0; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; align-content:center; gap:clamp(8px, 4cqw, 22px); padding:10px; background:radial-gradient(ellipse at center,#365d67,#142e3b); color:#ffe0a0; }
+.guide-symbols[hidden] { display:none; }
+.guide-symbols > :is(.guide-symbol,.art-icon) { width:clamp(40px, 15cqw, 76px); height:clamp(40px, 15cqw, 76px); object-fit:contain; }
+.terrain-guide[data-terrain="burn"] .guide-card { --guide-shell:#322c32; --guide-accent:#ffbc78; }
+@media (orientation: portrait), (min-height: 456px) {
+  .terrain-guide:is([data-terrain="burn"],[data-terrain="night"]) .guide-card { grid-template-rows:auto minmax(50px,1fr) minmax(92px,auto) auto; }
+}
+.terrain-guide:is([data-terrain="basic"],[data-terrain="burn"]) .guide-arrow { visibility:hidden; }
+.terrain-teaching .fire-qte { visibility:hidden; }

@@ -21,6 +21,24 @@ const icon = (name: string, cls = "") => {
   const artName = name === "route" ? "compass" : name;
   return `<img class="icon art-icon ${cls}" src="${iconAsset(artIcons.has(artName) ? artName : "leaf")}" alt="" aria-hidden="true" draggable="false" width="32" height="32" decoding="async">`;
 };
+const guideCategories = [
+  { id: "basic", title: "basicGuide", glyph: "compass" },
+  { id: "ocean", title: "oceanGuide", glyph: "drop" },
+  { id: "snow", title: "snowGuide", glyph: "snowflake" },
+  { id: "night", title: "nightGuide", glyph: "moon" },
+  { id: "burn", title: "burnGuide", glyph: "flame" },
+] as const satisfies readonly {id: GuideId; title: MessageKey; glyph: string}[];
+const guideGlyph = (name: string) => {
+  const paths: Record<string, string> = {
+    drop: "M12 2C9 7 5 11 5 15a7 7 0 0 0 14 0c0-4-4-8-7-13Z M9 16a3 3 0 0 0 3 3",
+    snowflake: "M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M8.5 4.5 12 8l3.5-3.5m-7 15 3.5-3.5 3.5 3.5",
+    moon: "M19 15.6A9 9 0 0 1 8.4 5a8.5 8.5 0 1 0 10.6 10.6Z M17 4v6m-3-3h6",
+    flame: "M12 2c2 6 7 8 7 13a7 7 0 1 1-14 0c0-3 2-5 4-7 0 2 1 3 2 3 2-2 2-5 1-9Z",
+    ring: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
+    strip: "M3 14v-4h18v4Z M6 12h1m4 0h1m4 0h1",
+  };
+  return paths[name] ? `<svg class="guide-symbol ${name}" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]}"/></svg>` : icon(name);
+};
 const read = (key: string) => {
   try {
     return localStorage.getItem(`wild-dash:${key}`);
@@ -135,6 +153,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       </header>
       <div class="guide-stage">
         <div id="guide-viewport" aria-hidden="true"></div>
+        <div id="guide-symbols" class="guide-symbols" hidden aria-hidden="true"></div>
         <div id="guide-stage-top" class="guide-stage-labels" aria-hidden="true"></div>
         <div id="guide-stage-bottom" class="guide-stage-labels" aria-hidden="true"></div>
       </div>
@@ -188,7 +207,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         <div class="best-record" data-label="best">${icon("trophy")}<strong id="home-best">${n(best)}</strong></div>
       </section>
     </main>
-    <footer><button class="icon-button help-button" data-action="guide" data-label="howTo">${icon("help")}</button></footer>
+    <footer><button class="icon-button help-button" data-action="guide" data-label="guideOverview">${icon("help")}</button></footer>
   </div>
   <section class="run-status" id="run-status" hidden aria-label="${t("powerStatus")}"></section>
   <button class="active-tool" id="booster-button" data-action="boost" data-label="activateBoost" hidden>${icon("rocket")}<span id="booster-status"></span></button>
@@ -286,22 +305,9 @@ function renderDialog() {
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${t("startAtNight")}</span><small>${t("nextRunHint")}</small></div><button class="toggle ${startAtNight ? "is-on" : ""}" data-action="start-at-night" role="switch" aria-checked="${startAtNight}" aria-label="${t("startAtNight")}"><span></span></button></div>
       <div class="setting-row"><div class="setting-copy"><span class="setting-label">${icon("help")}${t("tutorialTest")}</span></div><button class="toggle ${testTutorials ? "is-on" : ""}" data-action="tutorial-test" role="switch" aria-checked="${testTutorials}" aria-label="${t("tutorialTest")}"><span></span></button></div>`;
   } else if (activeDialog === "guide") {
-    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("help")}</span><h2 id="dialog-title">${t("howTo")}</h2></div><div class="guide-list">
-      ${(
-        [
-          ["route", "move", "guideMove"],
-          ["jump", "jump", "guideJump"],
-          ["slide", "slide", "guideSlide"],
-          ["coin", "coinName", "guideCollect"],
-        ] as const
-      )
-        .map(
-          ([glyph, title, body], i) =>
-            `<div class="guide-row"><span class="guide-icon guide-${i}">${icon(glyph)}</span><div><h3>${t(title)}</h3><p>${t(body)}</p></div></div>`,
-        )
-        .join(
-          "",
-        )}</div><div class="guide-links"><button class="secondary-button" data-action="snow-guide">${t("snowGuide")}</button><button class="secondary-button" data-action="ocean-guide">${t("oceanGuide")}</button></div>`;
+    const entries = guideCategories.map(({id, title, glyph}) =>
+      `<button class="secondary-button guide-entry" data-action="${id}-guide"><span>${guideGlyph(glyph)}</span>${t(title)}${icon("chevron", "guide-chevron")}</button>`).join("");
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("help")}</span><h2 id="dialog-title">${t("guideOverview")}</h2></div><div class="guide-menu">${entries}</div>`;
   } else if (activeDialog === "pause") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
@@ -424,6 +430,9 @@ function showToast(message: string) {
   }, 3200);
 }
 const lessonTitles: Record<LessonId, MessageKey> = {
+  basic: "basicGuide",
+  night: "nightGuide",
+  burn: "burnGuide",
   snow: "snowGuide",
   ocean: "oceanGuide",
   move: "lessonMove",
@@ -453,8 +462,11 @@ const guideNumbers: Record<string, number> = {
   snowman: CONFIG.snowmanCold,
   fire: CONFIG.fireWarmth,
   liquor: CONFIG.liquorWarmth,
+  burnSeconds: CONFIG.burn.damageInterval,
+  burnTaps: CONFIG.burn.qteHits,
 };
-const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?: MessageKey; top?: MessageKey[]; bottom?: MessageKey[]}[]> = {
+const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?: MessageKey; top?: MessageKey[]; bottom?: MessageKey[]; symbols?: string[]}[]> = {
+  basic: [{title: "guideTitle", copy: "basicGuideCopy", symbols: ["compass", "jump", "slide", "coin"]}],
   snow: [
     {title: "cold", copy: "snowLessonCold"},
     {title: "threats", copy: "snowLessonThreats", detail: "snowLessonFatal", top: ["guideFatal", "guideJumpOver"], bottom: ["guideIce", "guideChill"]},
@@ -465,6 +477,17 @@ const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?:
     {title: "oceanHazards", copy: "oceanHazardsCopy", bottom: ["oceanBubble", "oceanCoral", "oceanVent"]},
     {title: "oceanFish", copy: "oceanFishCopy"},
   ],
+  night: [
+    {title: "nightShooting", copy: "nightShootingCopy", symbols: ["moon", "slingshot", "bow"]},
+    {title: "nightAttacks", copy: "nightAttacksCopy", symbols: ["strip", "jump"]},
+    {title: "nightSupplies", copy: "nightSuppliesCopy", symbols: ["ammo-pouch", "arrow-ammo"]},
+    {title: "batDive", copy: "batDiveCopy", symbols: ["ring", "compass"]},
+    {title: "batDropping", copy: "batDroppingCopy", symbols: ["drop", "compass"]},
+    {title: "yetiSmall", copy: "yetiSmallCopy", symbols: ["strip", "slide"]},
+    {title: "yetiCharge", copy: "yetiChargeCopy", symbols: ["strip", "jump"]},
+    {title: "yetiSnowball", copy: "yetiSnowballCopy", symbols: ["ring", "heart-empty"]},
+  ],
+  burn: [{title: "extinguish", copy: "burnGuideCopy", detail: "burnGuideDetail", symbols: ["flame", "snowflake", "drop"]}],
 };
 
 function updateGuideUi() {
@@ -493,6 +516,9 @@ function updateGuideUi() {
     document.querySelector("#guide-progress")!.textContent = `${n(step - tutorial.guideFirst + 1)} / ${n(tutorial.guideLast - tutorial.guideFirst + 1)}`;
     document.querySelector("#guide-kicker")!.textContent = t(lessonTitles[guide]);
     const page = guidePages[guide][step - 1];
+    const symbols = document.querySelector<HTMLElement>("#guide-symbols")!;
+    symbols.hidden = !page.symbols;
+    symbols.innerHTML = page.symbols?.map(guideGlyph).join("") ?? "";
     document.querySelector("#guide-page-title")!.textContent = t(page.title);
     const decimals = new Intl.NumberFormat(languageTags[language], {maximumFractionDigits: 3});
     document.querySelector("#guide-copy")!.textContent = t(page.copy)
@@ -687,12 +713,15 @@ function act(action: string) {
   if (action === "terrain-override") {
     terrainOverride = !terrainOverride; save("terrain-override", String(terrainOverride)); renderDialog(); return;
   }
-  if (action === "snow-guide" || action === "ocean-guide") {
-    dialog.close();
-    activeDialog = null;
-    tutorial.reviewGuide(action === "snow-guide" ? "snow" : "ocean");
-    updateGuideUi();
-    return;
+  if (activeDialog === "guide") {
+    const category = guideCategories.find(({id}) => action === `${id}-guide`);
+    if (category) {
+      dialog.close();
+      activeDialog = null;
+      tutorial.reviewGuide(category.id);
+      updateGuideUi();
+      return;
+    }
   }
   if (action === "shop") {
     if (game.mode === "ready" || (game.mode === "over" && runFinalized))
@@ -1139,7 +1168,8 @@ try {
       if (world!.engine.maxFPS !== maxFPS) world!.engine.maxFPS = maxFPS;
       world!.adjustResolution(loaded && wasRunning && game.mode === "running" && !guide ? frameTime : 0);
       world!.update(game, guide ? 0 : game.mode === "over" ? dt : simulationDt,
-        tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"), guide,
+        tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"),
+        guide === "snow" || guide === "ocean" ? guide : null,
         guide ? tutorial.guideStep : 0);
       if (pickedAmmo && game.mode === "running" && !guide && game.nightCombat.refillGain > 0) {
         const glyph = game.nightCombat.weapon === "bow" ? "arrow-ammo" : "stone";

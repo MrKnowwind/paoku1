@@ -160,7 +160,7 @@ test("first encounters with ordinary obstacles never start lessons", () => {
 });
 
 
-test("regional attacks never open a monster guide, and terrain help remains available", () => {
+test("regional attacks do not open a guide, and night and terrain guides can be reviewed", () => {
   const game = new RunnerGame({autoSpawn:false});game.start(true);
   const tutorial=new Tutorial(["basics","move"],()=>{});
   game.nightCombat.region.state.attacks.push({id:1,enemy:1,kind:"small",start:game.worldTime,
@@ -168,7 +168,40 @@ test("regional attacks never open a monster guide, and terrain help remains avai
     fromX:4,fromY:1,fromZ:8,spent:false,locked:true});
   tutorial.update(game,0,false);
   assert.equal(tutorial.active,null);assert.equal(tutorial.timeScale(game),1);
-  tutorial.reviewGuide("ocean");
-  for(let i=0;i<5;i++)tutorial.turnGuide(1);
-  assert.equal(tutorial.guideStep,3);tutorial.finishGuide();assert.equal(tutorial.active,null);
+  for (const [guide, pages] of [["night",8],["ocean",3],["snow",3],["basic",1]] as const) {
+    tutorial.reviewGuide(guide);
+    assert.equal(tutorial.guide, guide);
+    for (let i = 0; i < pages + 1; i++) tutorial.turnGuide(1);
+    assert.equal(tutorial.guideStep, pages);
+    tutorial.finishGuide();
+    assert.equal(tutorial.active, null);
+  }
+});
+
+test("burning guidance opens only on first actual ignition and reviewing does not mark it learned", () => {
+  const game = new RunnerGame({autoSpawn:false});
+  game.nextTerrain = "snow";
+  game.start();
+  game.distance = 680;
+  const saved: string[] = [];
+  const tutorial = new Tutorial(["basics", "move", "snow"], seen => saved.push(...seen));
+  tutorial.reviewGuide("burn");
+  tutorial.finishGuide();
+  assert.equal(tutorial.knows("burn"), false);
+  game.addItem("fire", 1, 0);
+  game.update(0.01);
+  tutorial.update(game, 0.01, false);
+  assert.equal(tutorial.guide, null);
+  game.addItem("fire", 0, 0);
+  game.update(0.01);
+  tutorial.update(game, 0.01, false);
+  assert.equal(game.burning, true);
+  assert.equal(tutorial.guide, "burn");
+  assert.equal(tutorial.timeScale(game), 0);
+  tutorial.finishGuide();
+  assert.ok(saved.includes("burn"));
+  tutorial.resetRun(game);
+  tutorial.update(game, 0.01, false);
+  assert.equal(tutorial.guide, null);
+  assert.equal(tutorial.timeScale(game), 1);
 });

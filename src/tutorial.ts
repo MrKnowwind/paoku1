@@ -8,7 +8,8 @@ const onPath = (item: TrackItem, x: number) =>
     : Math.abs(item.lane * 2.5 - x) < 1.1;
 
 export type TerrainGuideId = "snow" | "ocean";
-export type GuideId = TerrainGuideId;
+const guidePageCounts = { basic: 1, ocean: 3, snow: 3, night: 8, burn: 1 } as const;
+export type GuideId = keyof typeof guidePageCounts;
 export type LessonId =
   | GuideId
   | "move"
@@ -43,7 +44,7 @@ export class Tutorial {
   private previousGuideLast = 3;
   get guide(): GuideId | null {
     const id = this.active?.id;
-    return id === "snow" || id === "ocean" ? id : null;
+    return id && Object.hasOwn(guidePageCounts, id) ? id as GuideId : null;
   }
   reviewGuide(id: GuideId) {
     if (this.reviewingGuide) return;
@@ -54,7 +55,7 @@ export class Tutorial {
     this.openGuide(id);
   }
   private openGuide(id: GuideId) {
-    this.guideFirst = 1; this.guideLast = 3;
+    this.guideFirst = 1; this.guideLast = guidePageCounts[id];
     this.guideStep = 1;
     this.show({id, gesture: "tap"});
   }
@@ -185,6 +186,9 @@ export class Tutorial {
       if (id === "booster" && game.boosting) this.complete(id);
       else if (id === "wallEntry" && game.wallSide) this.complete(id);
       return;
+    }
+    if (game.burning && !this.knows("burn")) {
+      this.openGuide("burn"); return;
     }
     if (this.cooldown > 0 || game.boosting) return;
     if (game.inSnow && !this.knows("snow")) {
