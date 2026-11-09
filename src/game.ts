@@ -290,8 +290,8 @@ export class RunnerGame {
         ? String(INTRO_TIMING.countdown - Math.floor(elapsed))
         : "GO!";
   }
-  begin(startAtNight = false) {
-    this.start(startAtNight);
+  begin(startAtNight = false, quickTerrain = false) {
+    this.start(startAtNight, quickTerrain);
     this.mode = "intro";
     this.introTime = 0;
     this.launchTime = 0;
@@ -301,7 +301,7 @@ export class RunnerGame {
     this.mode = "ready";
     this.introTime = 0;
   }
-  start(startAtNight = false) {
+  start(startAtNight = false, quickTerrain = false) {
     this.waterLevel = 1;
     this.waterY = CONFIG.waterHeights[1];
     this.worldTime = startAtNight ? NIGHT_START : 0;
@@ -340,7 +340,7 @@ export class RunnerGame {
     this.completedWallTutorial = false;
     this.shattered = [];
     this.seed = 1 + Math.floor(this.random() * 2147483646);
-    this.track = new TrackPlan(this.seed, this.nextTerrain);
+    this.track = new TrackPlan(this.seed, this.nextTerrain, quickTerrain);
     this.cold = this.coldGrace = this.coldFeedback = this.coldDelta = this.snowballGraceUntil = 0;
     this.clearBurn();
     this.lastIgnitingFire = undefined;
@@ -659,10 +659,11 @@ export class RunnerGame {
     this.horizontalVelocity = this.y = this.velocity = this.slideTime = 0;
     this.fastFalling = false;
   }
-  private frostDamage() {
-    this.collide("yeti");
-    this.cold = this.health > 0 ? CONFIG.coldMax * 0.6 : CONFIG.coldMax;
-    if (this.health === 0) this.lastHit = "cold";
+  private freezeFromCold() {
+    this.cold = CONFIG.coldMax;
+    this.health = 0;
+    this.mode = "over";
+    this.lastHit = "cold";
   }
   nightHit(kind: "bat" | "yeti" | "cold" | "snowball") {
     if (this.mode !== "running" || this.protectionTime > 0 || this.boosting) return false;
@@ -671,9 +672,12 @@ export class RunnerGame {
     if (this.shield) return this.collide("yeti");
     this.changeCold(kind === "cold" ? CONFIG.regionalCombat.smallCold : CONFIG.regionalCombat.snowballCold);
     this.snowballGraceUntil = this.worldTime + 0.35;
-    this.snowHitX = this.x;
-    this.snowHitSerial++;
-    if (this.cold >= CONFIG.coldMax) this.frostDamage();
+    if (this.cold >= CONFIG.coldMax) this.freezeFromCold();
+    else if (kind === "snowball") this.collide("yeti");
+    else {
+      this.snowHitX = this.x;
+      this.snowHitSerial++;
+    }
     return true;
   }
   private clearBurn() {
@@ -1279,7 +1283,7 @@ export class RunnerGame {
         this.loseHealth("fire");
       }
       if (this.mode === "running" && this.inSnow && this.cold >= CONFIG.coldMax) {
-        this.frostDamage();
+        this.freezeFromCold();
       }
       this.items = this.items.filter(item => {
         if (item.z <= -24 && item.attraction === undefined &&

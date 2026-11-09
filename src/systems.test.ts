@@ -959,7 +959,7 @@ test("dropping slips once and cannot extend an existing slip or consume shields"
   game.update(0.01); assert.ok(game.iceRemaining > 0, "canyon keeps the sliding state");
 });
 
-test("both snowball sizes add only cold and a shield absorbs the hit", () => {
+test("snowballs chill, large snowballs also damage, and shields absorb either hit", () => {
   for (const [kind, amount] of [["cold", CONFIG.regionalCombat.smallCold], ["snowball", CONFIG.regionalCombat.snowballCold]] as const) {
     const {game} = regionalFixture("snow");
     game.shield = true;
@@ -969,7 +969,7 @@ test("both snowball sizes add only cold and a shield absorbs the hit", () => {
     game.protectionTime = 0;
     assert.equal(game.nightHit(kind), true);
     assert.equal(game.cold, amount);
-    assert.equal(game.health, 3);
+    assert.equal(game.health, kind === "snowball" ? 2 : 3);
     assert.equal(game.nightHit(kind), false);
   }
 });
@@ -1013,7 +1013,7 @@ test("dive circles require lane or wall height changes and miss on a lost surfac
   }
 });
 
-test("sliding evades small snowballs, changing lanes evades either size, and hits only chill", () => {
+test("sliding evades small snowballs and changing lanes evades either size", () => {
   for (const [kind, action, cold] of [["small","slide",0],["small","lane",0],["small","jump",15],["snowball","lane",0],["snowball","slide",25]] as const) {
     const {game,enemy,combat} = regionalFixture("snow");
     combat.region.state.attacks.push({id:2000000001,enemy:enemy.id,kind,start:game.worldTime-1.2,
@@ -1024,7 +1024,7 @@ test("sliding evades small snowballs, changing lanes evades either size, and hit
     if(action==="jump")game.y=2;
     combat.update(game,0.01,()=>0.5,()=>false);combat.update(game,0.01,()=>0.5,()=>false);
     assert.equal(game.cold,cold);
-    assert.equal(game.health,3);
+    assert.equal(game.health,kind === "snowball" && cold > 0 ? 2 : 3);
   }
 });
 

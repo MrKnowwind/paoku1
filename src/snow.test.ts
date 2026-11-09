@@ -77,12 +77,35 @@ test("all 12 directed connectors preserve surface continuity and safety", () => 
   const game = snowGame(); game.distance = 620; game.update(0.5); assert.equal(game.cold, 0);
 });
 
-test("cold freezes during pause and teaching, warms before the cap check, and clears on exit", () => {
+test("test terrain opens near the starting area through the usual safe connector", () => {
+  for (const biome of coreBiomes) {
+    const game = new RunnerGame({autoSpawn: false});
+    game.nextTerrain = biome;
+    game.begin(false, true);
+    assert.equal(game.terrain.biome, "forest");
+    if (biome === "forest") continue;
+    const bridge = game.track.at(CONFIG.testTerrainLeadIn);
+    assert.equal(bridge.to, biome);
+    assert.equal(obstacleAllowed((bridge.start + bridge.end) / 2, game.trackSeed, game.track), false);
+    assert.ok(bridge.end <= 100);
+    game.update(20);
+    game.update(10);
+    assert.equal(game.terrain.biome, biome);
+  }
+  const regular = new RunnerGame({autoSpawn: false});
+  regular.begin();
+  assert.equal(regular.track.at(CONFIG.forestLength - 1).biome, "forest");
+});
+
+test("cold pauses, warmth resolves before the cap, and reaching the cap ends the run", () => {
   const game = snowGame(); game.update(1); assert.ok(Math.abs(game.cold - 2.25) < 0.001);
   game.pause(); game.update(5); assert.ok(Math.abs(game.cold - CONFIG.coldRate) < 0.001); game.resume();
   game.cold = 99.999; game.addItem("liquor", 0, 0.2); game.update(0.01);
   assert.equal(game.mode, "running"); assert.ok(game.cold < 66); assert.ok(game.drinkTime > 0);
-  game.cold = 99.999; game.update(0.01); assert.equal(game.health, 2); assert.equal(game.mode, "running"); assert.ok(game.cold < 61);
+  game.cold = 99.999; game.shield = true; game.protectionTime = 1;
+  game.update(0.01);
+  assert.equal(game.health, 0); assert.equal(game.mode, "over"); assert.equal(game.lastHit, "cold");
+  assert.equal(game.cold, CONFIG.coldMax);
   game.start(); game.distance = 1259.99; game.cold = 80; game.update(0.01); assert.equal(game.cold, 0);
 });
 

@@ -29,14 +29,19 @@ export function connection(from: CoreBiome, to: CoreBiome): {biome: Biome; lengt
 }
 // Queries append sections. Combat keeps the current terrain until its enemies are cleared.
 export class TrackPlan {
-  readonly sections: TrackSection[] = [{biome: "forest", start: 0, end: CONFIG.forestLength, cycle: 0}];
+  readonly sections: TrackSection[];
   private canyons: TrackSection[] = [];
   get canyonSections(): readonly TrackSection[] { return this.canyons; }
   readonly seed: number;
   readonly forced: CoreBiome | null;
   revision = 0;
   changedFrom = Infinity;
-  constructor(seed = 1, forced: CoreBiome | null = null) { this.seed = seed; this.forced = forced; }
+  constructor(seed = 1, forced: CoreBiome | null = null, quickStart = false) {
+    this.seed = seed;
+    this.forced = forced;
+    const end = quickStart && forced && forced !== "forest" ? CONFIG.testTerrainLeadIn : CONFIG.forestLength;
+    this.sections = [{biome: "forest", start: 0, end, cycle: 0}];
+  }
   at(distance: number): TrackSection {
     const d = Math.max(0, distance);
     while (d >= this.sections[this.sections.length - 1].end) {
