@@ -112,14 +112,16 @@ test("cold pauses, warmth resolves before the cap, and reaching the cap ends the
 test("high and low snow piles add cold once, put out fire and spare health and shields", () => {
   for (const [type, amount] of [["snowdrift", CONFIG.snowdriftCold], ["snowman", CONFIG.snowmanCold]] as const) {
     const game = snowGame();
-    game.shield = true;
-    game.addItem("fire", 0, 0);
+    const fire = game.addItem("fire", 0, 0);
     game.update(0.01);
     assert.equal(game.burning, true);
+    assert.equal(game.health, 2);
+    assert.ok(game.items.includes(fire));
+    game.shield = true;
     game.addItem(type, 0, 0);
     game.update(0.02);
     assert.equal(game.burning, false);
-    assert.equal(game.health, 3);
+    assert.equal(game.health, 2);
     assert.equal(game.shield, true);
     assert.ok(game.cold >= amount && game.cold < amount + 0.1);
     game.update(0.05);
@@ -146,9 +148,12 @@ test("fire halves blizzard cold, ticks health every ten running seconds, and nee
     return game.blizzard === 1;
   });
   assert.notEqual(blizzardDistance, undefined);
+  game.shield = true;
   game.addItem("fire", 0, 0);
   game.update(0.01);
   assert.equal(game.health, 3);
+  assert.equal(game.shield, false);
+  assert.equal(game.burning, true);
   const before = game.cold;
   game.update(0.4);
   assert.ok(Math.abs(game.cold - before - CONFIG.coldRate * CONFIG.blizzardColdMultiplier * 0.5 * 0.4) < 0.001);
@@ -190,6 +195,7 @@ test("ice freezes lateral motion and all active controls for exactly one control
 test("fire rewards a completed normal jump, while passing beside it or flying does not", () => {
   const game = snowGame(); game.cold = 60; game.jump(); game.addItem("fire", 0, 9); game.update(0.6);
   assert.equal(game.mode, "running"); assert.ok(game.cold < 37);
+  assert.equal(game.health, 3); assert.equal(game.burning, false);
   const side = snowGame(); side.cold = 60; side.addItem("fire", 1, 1); side.update(0.2); assert.ok(side.cold > 60);
   const flying = snowGame(); flying.cold = 60; flying.activateBooster(true);
   flying.addItem("ice", 0, 1); flying.addItem("fire", 0, 2); flying.addItem("pool", 0, 4); flying.addItem("liquor", 0, 6);

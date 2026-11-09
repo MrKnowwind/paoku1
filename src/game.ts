@@ -126,7 +126,7 @@ export class RunnerGame {
   cold = 0;
   private snowballGraceUntil = 0;
   private burnDamageAt = 0;
-  private lastIgnitingFire: number | undefined;
+  private lastTouchedFire: number | undefined;
   fireQteAt = 0;
   private fireQteHits = 0;
   extinguishSerial = 0;
@@ -344,7 +344,7 @@ export class RunnerGame {
     this.track = new TrackPlan(this.seed, this.nextTerrain, quickTerrain);
     this.cold = this.coldGrace = this.coldFeedback = this.coldDelta = this.snowballGraceUntil = 0;
     this.clearBurn();
-    this.lastIgnitingFire = undefined;
+    this.lastTouchedFire = undefined;
     this.iceRemaining = this.iceRecover = this.iceX = this.drinkTime = 0;
     this.triggeredIce.clear(); this.firePasses.clear(); this.warmedFires.clear(); this.generatedSnow.clear();
     this.nextRow = this.nextLandRow = 65;
@@ -717,9 +717,11 @@ export class RunnerGame {
       }
     } else if (item.type === "fire") {
       if (lane && Math.abs(item.z) < 0.9 && this.y < CONFIG.fireHeight) {
-        if (this.lastIgnitingFire !== item.id) {
-          this.lastIgnitingFire = item.id;
-          if (!this.burning) {
+        if (this.lastTouchedFire !== item.id) {
+          this.lastTouchedFire = item.id;
+          this.firePasses.delete(item.id);
+          this.collide("fire");
+          if (this.mode === "running" && !this.burning) {
             this.extinguishTime = 0;
             this.burnDamageAt = this.worldTime + CONFIG.burn.damageInterval;
             this.fireQteAt = this.worldTime + CONFIG.burn.qteDelay;
@@ -902,7 +904,7 @@ export class RunnerGame {
       this.pickupSerial++;
     }
   }
-  private collide(hit: TrackItem | "wolf" | "bat" | "yeti") {
+  private collide(hit: TrackItem | "wolf" | "bat" | "yeti" | "fire") {
     if (this.mode !== "running" || this.protectionTime > 0 || this.boosting) return false;
     if (this.shield) {
       this.shield = false;
@@ -1016,7 +1018,7 @@ export class RunnerGame {
     this.nightCombat.clearShots();
     this.clearBurn();
     this.snowballGraceUntil = 0;
-    this.lastIgnitingFire = undefined;
+    this.lastTouchedFire = undefined;
     this.mode = "rewinding";
     return true;
   }

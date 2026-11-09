@@ -1633,7 +1633,7 @@ export class ForestScene {
       if (arm.side !== side) continue;
       arm.upper.rotation.x += (-1.15 - arm.upper.rotation.x) * reach;
       arm.upper.rotation.z += (arm.side * 0.26 - arm.upper.rotation.z) * reach;
-      arm.upper.rotation.y -= arm.side * reach * 0.38;
+      arm.upper.rotation.y += (-arm.side * 0.38 - arm.upper.rotation.y) * reach;
       arm.lower.rotation.x += (-1.45 - arm.lower.rotation.x) * reach;
     }
     if (age >= 0.07 && game.extinguishSerial !== this.lastExtinguishSerial) {
@@ -2489,26 +2489,25 @@ export class ForestScene {
     }
     for (const arm of this.arms) {
       const stride = Math.sin(pose.phase + (arm.side > 0 ? 0 : Math.PI));
-      arm.upper.rotation.x = opening
+      const shoulderPitch = opening
         ? -sitting * 0.4 +
           Math.sin(walkPhase + (arm.side > 0 ? 0 : Math.PI)) * 0.3 * walking
         : stride * 0.78 * runWeight -
           (0.65 + tuck * 0.2) * airWeight +
           pose.slide * 0.72 -
           pose.dive * 0.85;
-      arm.upper.rotation.z =
-        arm.side *
-        (0.07 +
-          Math.abs(pose.turn) * 0.22 * blend +
-          airWeight * 0.26 +
-          pose.slide * 0.12);
-      arm.lower.rotation.x = opening
+      const shoulderRoll = arm.side *
+        (0.07 + Math.abs(pose.turn) * 0.22 * blend + airWeight * 0.26 + pose.slide * 0.12);
+      const elbowPitch = opening
         ? -0.35 - sitting * 0.02
         : (-0.95 - Math.max(0, -stride) * 0.3) * runWeight -
           0.9 * airWeight -
           0.15 * pose.slide -
           0.8 * pose.dive -
           0.35 * (1 - pose.run) * (1 - pose.air) * blend;
+      // Rebuild the whole pose before drinking, aiming or patting layers change its axes.
+      arm.upper.rotation.set(shoulderPitch, 0, shoulderRoll);
+      arm.lower.rotation.set(elbowPitch, 0, 0);
     }
     for (const leg of this.legs) {
       leg.upper.rotation.z += leg.side * game.wallBlend * 0.12;

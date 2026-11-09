@@ -220,3 +220,10 @@
 - 燃烧指南与总览使用同一图标，四语说明改为见图标就点按，撞雪堆也可灭火。保留首次着火才自动提示的触发规则。
 - 图标生成提示词：Single square transparent mobile adventure-game QTE icon: a big unmistakable open hand with palm facing forward and fingers together, tilted diagonally from upper left to lower right, actively swatting a small orange flame at the palm heel. Show flame compressed toward lower right with two tiny orange spark shapes, and two short cream motion accents tucked close to the hand. The palm is warm cream/tan and occupies most of the silhouette, the flame is bright orange red with golden core, two elements overlap into one compact readable composition. Playful woodland runner game's bold hand-painted chibi interface icon, dark chestnut thick outline, simple rounded shapes, restrained flat shading, crisp shape hierarchy, readable at 36px. Centered, fill the square with small margins. True transparent background, no circular backing, no button bezel, no frame, no text, no numbers, no water, no scene.
 - 延伸现有燃烧回归。功能提交 `02f9a08` 已推送至 `origin/main`。[GitHub Actions 42578503257](https://github.com/MrKnowwind/paoku1/actions/runs/42578503257) 的112项测试、生产构建和 Pages 部署通过。动画、音效与触屏手感待实机验收。
+
+
+## 41. 扑火后手臂姿势与营火接触伤害（2026-11-09）
+
+- 修复扑火期间肩关节横向旋转逐帧累加。肩与肘每帧先重设完整基础姿势，扑火只混入当前帧的动作。射击、喝酒、灭火结束后恢复正常摆臂。
+- 营火接触恢复 1 点普通伤害，尊重护盾和受伤保护。同一营火只处理一次，火堆留在场上。玩家存活时仍会着火，持续烧伤按既有间隔单独结算。跳过营火取暖规则保留。四语燃烧指南同步说明接触伤害。
+- 回归覆盖接触扣血、盾挡接触伤害、灭火和安全越火。按项目约定由 CI 验证，手臂画面待实机确认。提交与部署待回填。
