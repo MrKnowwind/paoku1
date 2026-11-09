@@ -11,7 +11,7 @@ import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { Layer } from "@babylonjs/core/Layers/layer";
-import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -1917,6 +1917,15 @@ export class ForestScene {
     };
   }
 
+  getPlayerAnchor() {
+    const width = this.engine.getRenderWidth(), height = this.engine.getRenderHeight();
+    const point = Vector3.Project(this.runner.getAbsolutePosition().add(new Vector3(0, 2.55, 0)),
+      Matrix.Identity(), this.scene.getTransformMatrix(), this.camera.viewport.toGlobal(width, height));
+    const rect = this.engine.getRenderingCanvas()!.getBoundingClientRect();
+    return {x: rect.left + point.x / width * rect.width, y: rect.top + point.y / height * rect.height,
+      visible: point.z >= 0 && point.z <= 1};
+  }
+
   pickWolf(x: number, y: number) {
     if (!this.wolves.size && !this.regionalCombatView?.size) return;
     const hit = this.scene.pick(x, y, mesh => mesh.isPickable && mesh.isEnabled() &&
@@ -1969,8 +1978,7 @@ export class ForestScene {
         const area = CreateGround("wolf-warning-area", {width: 2, height: 2}, this.scene);
         const fill = CreateGround("wolf-warning-fill", {width: 2, height: 2}, this.scene);
         const slash = CreatePlane("wolf-claw-slash", {size: 1.6}, this.scene);
-        area.material = this.mat("#c21f43", true);
-        fill.material = this.mat("#ff5a68", true);
+        area.material = fill.material = this.regionalCombatView!.warningMaterial();
         slash.material = this.clawMaterial ??= this.createClawMaterial();
         slash.billboardMode = Mesh.BILLBOARDMODE_ALL;
         area.isPickable = fill.isPickable = slash.isPickable = false;
@@ -2006,7 +2014,7 @@ export class ForestScene {
   private updateNightCombat(game: RunnerGame) {
     const combat = game.nightCombat;
     this.regionalCombatView ??= new RegionalCombatView(this.scene, (color, glow) => this.mat(color, glow));
-    this.regionalCombatView.update(game);
+    this.regionalCombatView.update(game, this.high);
     const forest = game.terrain.biome === "forest";
     const wolves = forest ? combat.hunt.wolves : [];
     for (const [id, wolf] of this.wolves) {
@@ -2021,6 +2029,7 @@ export class ForestScene {
         this.wolves.set(wolf.id, model);
       }
       const pose = combat.position(wolf, game);
+      model.root.setEnabled(game.worldTime >= (wolf.enteredAt ?? combat.hunt.enteredAt));
       const sinceHit = game.worldTime - wolf.hitAt;
       model.root.position.set(pose.x, 0.065, pose.z);
       model.root.rotation.y = pose.yaw;
@@ -2029,7 +2038,7 @@ export class ForestScene {
       model.root.scaling.setAll(1.12 - fallen * 0.32);
       model.animate(game.distance * 0.81 + wolf.id, pose.crouch, pose.leap, pose.bite,
         1 - smooth(sinceHit / 0.22), fallen);
-      model.updateHealth(health, pose.leap);
+      model.updateHealth(health, pose.leap, game.worldTime - (wolf.enteredAt ?? combat.hunt.enteredAt) > CONFIG.nightCombat.entrance * 0.8);
       if (model.lastHitAt !== wolf.hitAt && game.mode === "running" && sinceHit >= 0 && sinceHit < 0.18) {
         model.lastHitAt = wolf.hitAt;
         const impact = new Vector3(pose.x, 0.86 + pose.leap, pose.z);
@@ -2766,7 +2775,7 @@ export class ForestScene {
       this.guidePreviews.clear();
       this.guideBackdrop?.dispose();
       this.guideBackdrop = undefined;
-      if (guide && guide !== "night") {
+      if (guide) {
         const backdrop = new Layer("guide-backdrop", null, this.scene);
         const texture = new Texture(import.meta.env.BASE_URL + `art/guide-${guide}.webp`, this.scene, true);
         texture.isBlocking = false;
@@ -2809,7 +2818,7 @@ export class ForestScene {
         this.scene.autoClear = false; this.scene.autoClearDepthAndStencil = false;
         this.scene.fogDensity = 0; this.scene.renderTargetsEnabled = false;
         this.engine.clear(Color4.FromHexString(guide === "snow" ? "#31547dff" :
-          guide === "night" ? "#192742ff" : "#074d62ff"), true, true, true);
+          "#074d62ff"), true, true, true);
         this.scene.render();
       } finally {
         this.engine.disableScissor(); this.scene.autoClear = true; this.scene.autoClearDepthAndStencil = autoClearDepth;

@@ -1051,9 +1051,10 @@ export class RunnerGame {
       this.boostCooldown = Math.max(0, this.boostCooldown - step);
       // Extend before the item generator reaches the old exit buffer.
       if (this.nightCombat.remaining > 0) {
-        const forest = this.terrain;
-        if (forest.biome === "forest" && forest.end - this.distance <= CONFIG.nightCombat.forestExtensionLead)
-          this.track.extendForest(forest, CONFIG.nightCombat.forestExtensionLength);
+        const terrain = this.terrain;
+        if (["forest", "canyon", "snow", "water"].includes(terrain.biome) &&
+          terrain.end - this.distance <= CONFIG.nightCombat.forestExtensionLead)
+          this.track.extendForCombat(terrain, CONFIG.nightCombat.forestExtensionLength);
       }
       const flying = this.boosting;
       const travel = step * this.speed;

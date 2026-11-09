@@ -17,6 +17,7 @@ interface Wolf {
   homeX: number;
   homeZ: number;
   hitAt: number;
+  enteredAt?: number;
 }
 
 interface Attack {
@@ -61,6 +62,7 @@ export class NightCombat {
   cooldown = 0;
   refillFlash = 0;
   refillGain = 0;
+  refillSerial = 0;
   playerHitAt = -Infinity;
   shotAt = -Infinity;
   aim?: {wolf: number; x: number; z: number};
@@ -124,6 +126,7 @@ export class NightCombat {
     this.refillGain = Math.min(this.weaponRules.ammo - this.ammo, Math.ceil(this.weaponRules.ammo * rules.refillFraction));
     this.ammo += this.refillGain;
     this.refillFlash = 0.65;
+    this.refillSerial++;
   }
 
   fire(id: number, game: RunnerGame) {
@@ -146,12 +149,14 @@ export class NightCombat {
 
   position(wolf: Wolf | RegionalEnemy, game: RunnerGame) {
     if ("kind" in wolf) return this.region.position(wolf, game);
-    const {enteredAt} = this.hunt;
+    const enteredAt = wolf.enteredAt ?? this.hunt.enteredAt;
     const attack = this.hunt.attacks.find(attack => attack.wolf === wolf.id);
     const time = game.worldTime;
-    let x = wolf.homeX + Math.sign(wolf.homeX) * 1.1 * (1 - smooth((time - enteredAt) / rules.entrance));
-    let z = wolf.homeZ;
-    let yaw = -Math.sign(x) * 0.12;
+    const entry = smooth((time - enteredAt) / rules.entrance);
+    const side = Math.sign(wolf.homeX);
+    let x = lerp(side * 15, wolf.homeX, entry);
+    let z = lerp(-14, wolf.homeZ, entry);
+    let yaw = lerp(Math.atan2(wolf.homeX - side * 15, wolf.homeZ + 14), -side * 0.12, entry);
     let crouch = 0, leap = 0, bite = 0;
     if (attack) {
       const elapsed = time - attack.start;
@@ -268,7 +273,8 @@ export class NightCombat {
       hunt.wolves = Array.from({length: size}, (_, i) => {
         const id = pack * rules.packMax + i;
         return {id, homeX: (random(id, 92) < 0.5 ? -1 : 1) * (4.25 + random(id, 93) * 0.45),
-          homeZ: 6.5 + i * 4.25 + random(id, 94) * 0.85, hitAt: -Infinity};
+          homeZ: 6.5 + i * 4.25 + random(id, 94) * 0.85,
+          enteredAt: time + i * rules.entryStagger, hitAt: -Infinity};
       }).filter(wolf => this.health(wolf) > 0);
       hunt.enteredAt = time;
       hunt.nextPack = time + rules.packInterval;
@@ -306,7 +312,8 @@ export class NightCombat {
     const time = game.worldTime;
     const slots = rules.maxAttackers - hunt.attacks.length;
     if (time < hunt.nextAttack || slots <= 0 || game.protectionTime > 0 || !hunt.wolves.length) return;
-    const ready = hunt.wolves.filter(wolf => this.health(wolf) > 0 && !hunt.attacks.some(attack => attack.wolf === wolf.id));
+    const ready = hunt.wolves.filter(wolf => this.health(wolf) > 0 &&
+      time >= (wolf.enteredAt ?? hunt.enteredAt) + rules.entrance && !hunt.attacks.some(attack => attack.wolf === wolf.id));
     if (!ready.length) return;
     const sequence = ++hunt.strikes;
     const stagger = lerp(rules.partnerDelayMin, rules.partnerDelayMax, random(sequence, 98));

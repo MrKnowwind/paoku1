@@ -8,6 +8,7 @@ export interface TrackSection {
   end: number;
   // Unique core segment ordinal, also used for stable encounter IDs.
   cycle: number;
+  combatExit?: number;
   from?: CoreBiome;
   to?: CoreBiome;
 }
@@ -26,7 +27,7 @@ export function connection(from: CoreBiome, to: CoreBiome): {biome: Biome; lengt
   if (from === "snow" || to === "snow") return [{biome: "snow-transition", length: CONFIG.snowTransition}];
   return [{biome: "tunnel", length: CONFIG.tunnelLength}];
 }
-// Queries append sections. Forest combat can move an exit forward before the runner reaches it.
+// Queries append sections. Combat keeps the current terrain until its enemies are cleared.
 export class TrackPlan {
   readonly sections: TrackSection[] = [{biome: "forest", start: 0, end: CONFIG.forestLength, cycle: 0}];
   private canyons: TrackSection[] = [];
@@ -65,8 +66,12 @@ export class TrackPlan {
     return this.sections[first];
   }
   extendForest(section: TrackSection, length: number) {
+    this.extendForCombat(section, length);
+  }
+  extendForCombat(section: TrackSection, length: number) {
     // Commit the next biome first so an extension cannot change the seeded choice.
     const exit = section.end;
+    section.combatExit ??= exit;
     this.at(exit);
     section.end += length;
     for (const future of this.sections.slice(this.sections.indexOf(section) + 1)) {

@@ -14,7 +14,6 @@ import type { GuideId } from "./tutorial.ts";
 import type { TrackItem } from "./game.ts";
 import { makeCoral } from "./coral.ts";
 import { CONFIG } from "./config.ts";
-import { RegionalEnemyModel } from "./regional-enemy-model.ts";
 
 export class TerrainPreview {
   static readonly layerMask = 0x10000000;
@@ -40,7 +39,7 @@ export class TerrainPreview {
     this.camera.maxZ = 45;
     this.camera.fov = 0.66;
 
-    if (step === 1 || guide === "night" && step === 2) {
+    if (step === 1) {
       const explorer = source.clone("lesson-explorer", this.root)!;
       explorer.position.set(0, 0, 0);
       explorer.rotation.set(0, Math.PI + 0.18, 0);
@@ -61,10 +60,6 @@ export class TerrainPreview {
           if (node.name.endsWith("ankle")) node.rotation.x = 0.19;
           if (node.name.endsWith("head-joint")) node.rotation.x = -0.22;
         }
-      }
-      if (guide === "night") {
-        explorer.position.set(step === 1 ? -0.75 : -1.25, 0, -0.95);
-        explorer.rotation.y = step === 1 ? 2.5 : 0.7;
       }
       if (guide === "ocean") {
         this.frameWidth = 5;
@@ -175,7 +170,6 @@ export class TerrainPreview {
         this.diagramArrow(2.57, 2.12, 1, 0, 0.86, this.diagramInk("#6af1b9"));
       }
     }
-    if (guide === "night") this.createNightStage(step, makeItem);
     const stage = CreateCylinder("lesson-display-plinth", {diameter: this.frameWidth, height: 0.12, tessellation: 48}, scene);
     stage.parent = this.root;
     stage.position.y = -0.14;
@@ -187,75 +181,6 @@ export class TerrainPreview {
     for (const mesh of this.root.getChildMeshes()) {
       mesh.layerMask = TerrainPreview.layerMask;
       mesh.receiveShadows = false;
-    }
-  }
-
-  private createNightStage(step: number, makeItem: (item: TrackItem) => TransformNode) {
-    this.frameWidth = 8.8;
-    this.frameHeight = 4.8;
-    this.overhead = step === 2 ? 0.62 : 0.37;
-    this.targetY = 0.92;
-    const scene = this.root.getScene();
-    const box = (name: string, size: [number, number, number], position: [number, number, number], ink: StandardMaterial) => {
-      const mesh = CreateBox(name, {width: size[0], height: size[1], depth: size[2]}, scene);
-      mesh.parent = this.root;
-      mesh.position.set(...position);
-      mesh.material = ink;
-      return mesh;
-    };
-    box("night-forest-base", [7.8, 0.42, 5.6], [0, -0.25, 0], this.diagramInk("#29394c"));
-    box("night-forest-trail", [4.55, 0.07, 5.6], [0, -0.03, 0], this.diagramInk("#575363"));
-    const marking = this.diagramInk("#8c8897");
-    for (const x of [-0.75, 0.75]) for (const z of [-2.2, -1.1, 0, 1.1, 2.2])
-      box("night-lane-mark", [0.035, 0.012, 0.47], [x, 0.013, z], marking);
-    const bark = this.diagramInk("#484254");
-    const pines = [this.diagramInk("#344e63"), this.diagramInk("#415e70")];
-    for (const [x, z, height] of [[-3.13, 1.65, 2.35], [-2.77, 2.25, 1.65], [3.28, 1.84, 2.48], [3.22, -0.3, 1.42]]) {
-      box("night-tree-trunk", [0.14, height * 0.55, 0.15], [x, height * 0.26, z], bark);
-      for (let tier = 0; tier < 3; tier++) {
-        const crown = CreateCylinder("night-pine-crown", {height: height * 0.45,
-          diameterTop: 0, diameterBottom: height * (0.51 - tier * 0.09), tessellation: 6}, scene);
-        crown.parent = this.root;
-        crown.position.set(x, height * (0.46 + tier * 0.16), z);
-        crown.material = pines[tier % 2];
-      }
-    }
-    if (step === 1) {
-      const moon = CreateSphere("night-moon", {diameter: 0.68}, scene);
-      moon.parent = this.root;
-      moon.position.set(1.55, 2.66, 2.3);
-      moon.material = this.diagramInk("#ffe7b5");
-      this.diagramFrame(1.04, 1.06, 0.98, 0.98, this.diagramInk("#ff707c"), 0.034);
-      this.diagramStroke([new Vector3(1.04, 0.98, 1), new Vector3(1.04, 1.37, 1)], this.diagramInk("#ffb1aa"), 0.049);
-      box("night-threat-dot", [0.1, 0.1, 0.09], [1.04, 0.8, 1], this.diagramInk("#ffb1aa"));
-    } else if (step === 2) {
-      const warning = box("night-warning-strip", [0.73, 0.024, 3.75], [0.38, 0.035, 0.25], this.diagramInk("#e44662"));
-      warning.rotation.y = 0.36;
-      const streak = box("night-warning-center", [0.055, 0.016, 3.65], [0.38, 0.055, 0.25], this.diagramInk("#ff9a92"));
-      streak.rotation.y = warning.rotation.y;
-      this.diagramArrow(-1.3, 0.32, -1, 0, 0.8, this.diagramInk("#ffe1a2"));
-    } else if (step === 3) {
-      const supply = makeItem({type: "ammo", id: 0, lane: 0, z: 0, y: 0, worldZ: 0});
-      supply.parent = this.root;
-      supply.position.set(0, 1.09, -0.1);
-      supply.scaling.setAll(1.46);
-      box("night-supply-plinth", [1.76, 0.2, 1.4], [0, 0.1, -0.1], this.diagramInk("#67877f"));
-    } else {
-      const bat = step < 6;
-      const model = new RegionalEnemyModel(scene, 0, bat ? "bat" : "yeti", color => this.diagramInk(color));
-      model.root.parent = this.root; model.root.position.set(-1.8, bat ? 2.2 : 0, 0.6);
-      model.animate(0, bat ? 1 : 5, 0.3, step === 8 ? 0.8 : 0, 0, 0);
-      if (step === 6 || step === 7) {
-        box("guide-attack-strip", step === 6 ? [0.35,0.035,4] : [6.5,0.035,0.6], [0.4,0.04,0], this.diagramInk("#ff5269"));
-      } else {
-        const ring = Array.from({length:33},(_,i) => new Vector3(0.7+Math.cos(i*Math.PI/16),0.055,Math.sin(i*Math.PI/16)));
-        this.diagramStroke(ring, this.diagramInk(step === 5 ? "#fff2ce" : "#ff5269"), 0.055);
-      }
-      if (step === 5 || step === 6 || step === 8) {
-        const ball=CreateSphere("guide-falling-projectile",{diameter:step===8?1.25:0.35,segments:8},scene);
-        ball.parent=this.root;ball.position.set(0.7,1.45,0);ball.material=this.diagramInk("#eefaff");
-      }
-      this.diagramArrow(2.1,0.65,step===7?0:1,step===7?1:0,0.8,this.diagramInk("#ffe1a2"));
     }
   }
 

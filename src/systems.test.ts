@@ -1016,3 +1016,69 @@ test("small snowballs respect sliding and lane changes but do not grant jump imm
     assert.equal(game.cold,action==="jump"?15:0);
   }
 });
+
+
+test("canyon and snow retain living enemies across the planned exit and open after clearing", () => {
+  for (const biome of ["canyon", "snow"] as const) {
+    const {game,enemy,combat} = regionalFixture(biome);
+    const exit=game.terrain.end;
+    game.distance=exit-1;game.protectionTime=60;
+    game.update(0.1);
+    assert.ok(game.distance>exit);
+    assert.equal(game.terrain.biome,biome);
+    assert.equal(combat.health(enemy)>0,true);
+    assert.equal(game.terrain.combatExit,exit);
+    assert.equal(combat.region.state.enemies.some(e=>e.id===enemy.id),true);
+    const heldExit=game.terrain.end;
+    combat.hurt(enemy,combat.health(enemy),game.worldTime);
+    game.distance=heldExit-1;game.update(0.1);
+    assert.notEqual(game.terrain.biome,biome);
+  }
+});
+
+test("regional reinforcements stop at the original exit approach even when combat extends terrain", () => {
+  const {game,combat} = regionalFixture("canyon");
+  const section=game.terrain,exit=section.end;
+  game.track.extendForCombat(section,CONFIG.nightCombat.forestExtensionLength);
+  game.distance=exit-100;combat.region.state.nextPack=0;
+  const count=combat.remaining;
+  combat.update(game,0.01,()=>0.99,()=>false);
+  assert.equal(combat.remaining,count);
+});
+
+test("droppings fall straight below the releasing bat without locking onto the runner", () => {
+  const {game,enemy,combat} = regionalFixture("canyon");
+  const gaps=gapsNear(game.terrain.start,game.trackSeed,game.track);
+  game.distance=gaps[gaps.length-1].end+30;
+  enemy.homeX=-2.5;enemy.homeZ=26;enemy.enteredAt=game.worldTime-3;enemy.readyAt=0;
+  const pose=combat.position(enemy,game);
+  combat.update(game,0.01,()=>0.9,()=>false);
+  const attack=combat.region.state.attacks[0];
+  assert.ok(attack&&attack.kind==="dropping");
+  assert.equal(attack.x,pose.x);assert.equal(attack.x,attack.fromX);
+  assert.equal(attack.worldZ,game.distance+pose.z);assert.equal(attack.worldZ,attack.fromZ);
+  game.x=2.5;game.lane=1;game.worldTime=attack.impactAt;
+  combat.update(game,0.01,()=>0.9,()=>false);
+  const stain=combat.region.state.droppings[0];
+  assert.equal(stain.x,pose.x);assert.equal(stain.worldZ,attack.worldZ);
+  assert.equal(game.icy,false);
+});
+
+test("enemies enter from outside the view in a stagger and cannot attack during their entrance", () => {
+  const game=new RunnerGame({autoSpawn:false});game.start(true);game.distance=80;
+  const combat=game.nightCombat;combat.update(game,0.01,()=>0.5,()=>false);
+  const wolves=combat.hunt.wolves;
+  assert.ok(wolves.length>1);assert.ok(wolves[1].enteredAt!>wolves[0].enteredAt!);
+  const initial=combat.position(wolves[0],game);
+  assert.ok(Math.abs(initial.x)>=14);assert.ok(initial.z<0);
+  game.worldTime+=CONFIG.nightCombat.entrance*0.5;combat.update(game,0.01,()=>0.5,()=>false);
+  assert.equal(combat.hunt.attacks.length,0);
+  for (const biome of ["canyon","snow"] as const) {
+    const {game,enemy,combat}=regionalFixture(biome);
+    enemy.enteredAt=game.worldTime;enemy.readyAt=game.worldTime+CONFIG.regionalCombat.entrance+1;
+    const p=combat.position(enemy,game);
+    if(biome==="canyon")assert.ok(p.y>12);
+    else {assert.ok(Math.abs(p.x)>=14);assert.ok(p.z<0);}
+    combat.update(game,0.01,()=>0.5,()=>false);assert.equal(combat.region.state.attacks.length,0);
+  }
+});

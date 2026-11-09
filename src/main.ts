@@ -109,8 +109,9 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <canvas id="world" aria-label="3D"></canvas>
   <aside id="night-hud" class="night-hud" hidden>
     <div class="night-weapon"><span class="weapon-icon"></span><div class="shot-meter"><i></i></div></div>
-    <div><div class="ammo-slots"></div><small class="ammo-status"></small></div>
+    <div class="ammo-slots"></div>
   </aside>
+  <div id="ammo-pickup" class="ammo-pickup" hidden aria-hidden="true"></div>
   <canvas id="snow-weather" aria-hidden="true" hidden></canvas>
   <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="${CONFIG.coldMax}">
     <svg class="cold-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M3.34 7l17.32 10M3.34 17 20.66 7M9 5l3 3 3-3M9 19l3-3 3 3M4.44 11l4.09-1.1-1.1-4.1M19.56 13l-4.09 1.1 1.1 4.1M7.43 18.2l1.1-4.1-4.09-1.1M16.57 5.8l-1.1 4.1 4.09 1.1"/></svg>
@@ -199,7 +200,8 @@ const clockDay = document.querySelector<SVGTextElement>("#clock-day")!;
 const clockDot = document.querySelector<SVGCircleElement>("#clock-dot")!;
 const nightHud = document.querySelector<HTMLElement>("#night-hud")!;
 const ammoSlots = nightHud.querySelector<HTMLElement>(".ammo-slots")!;
-const ammoStatus = nightHud.querySelector<HTMLElement>(".ammo-status")!;
+const ammoPopup = document.querySelector<HTMLElement>("#ammo-pickup")!;
+let ammoPopupAt = -Infinity;
 const shotMeter = nightHud.querySelector<HTMLElement>(".shot-meter i")!;
 
 function beep(kind: Sound) {
@@ -233,12 +235,12 @@ function renderDialog() {
     const product = (kind: "booster" | "hourglass" | "bomb", glyph: string, price: number) => {
       const unavailable = state.wallet < price;
       const count = kind === "booster" ? state.boosters : kind === "hourglass" ? state.hourglasses : state.bombs;
-      return `<article class="supply-card"><span class="supply-icon">${icon(glyph)}</span><div><h3>${t(kind)}</h3><p>${t(kind === "booster" ? "boosterDesc" : kind === "hourglass" ? "hourglassDesc" : "bombDesc")}</p><small aria-label="${t("stock")}">×${n(count)}</small></div><div class="purchase-row"><span>${icon("coin")}${n(price)}</span><button class="secondary-button" data-action="buy-${kind}" ${unavailable ? "disabled" : ""}>${t(unavailable ? "insufficient" : "buy")}</button></div></article>`;
+      return `<article class="supply-card"><span class="supply-icon">${icon(glyph)}</span><div><h3>${t(kind)}</h3><p class="supply-stats">${kind === "booster" ? `${icon("rocket")}180m ${icon("clock")}60s` : kind === "hourglass" ? `${icon("clock")}3s · ×1` : `${icon("bolt")}3×1 ${icon("compass")}4m`}</p><small aria-label="${t("stock")}">×${n(count)}</small></div><div class="purchase-row"><span>${icon("coin")}${n(price)}</span><button class="secondary-button" data-action="buy-${kind}" ${unavailable ? "disabled" : ""}>${t(unavailable ? "insufficient" : "buy")}</button></div></article>`;
     };
     const weapon = (id: WeaponId) => {
       const spec = CONFIG.weapons[id], owned = id === "slingshot" || state.bowOwned, equipped = state.equipped === id;
       const unavailable = !owned && state.wallet < spec.price;
-      return `<article class="supply-card"><span class="supply-icon">${icon(id)}</span><div><h3>${t(id)}</h3><p>${t("weaponStats").replace("{damage}", n(spec.damage)).replace("{ammo}", n(spec.ammo))}</p><small>${t(owned ? "owned" : "permanent")}</small></div><div class="purchase-row">${owned ? "" : `<span>${icon("coin")}${n(spec.price)}</span>`}<button class="secondary-button" data-action="${owned ? `equip-${id}` : "buy-bow"}" ${equipped || unavailable ? "disabled" : ""}>${t(equipped ? "equipped" : owned ? "equip" : unavailable ? "insufficient" : "buy")}</button></div></article>`;
+      return `<article class="supply-card"><span class="supply-icon">${icon(id)}</span><div><h3>${t(id)}</h3><p class="supply-stats" aria-label="${t("weaponStats").replace("{damage}", n(spec.damage)).replace("{ammo}", n(spec.ammo))}">${icon("bolt")}${n(spec.damage)} ${icon(id === "bow" ? "arrow-ammo" : "stone")}${n(spec.ammo)}</p><small>${t(owned ? "owned" : "permanent")}</small></div><div class="purchase-row">${owned ? "" : `<span>${icon("coin")}${n(spec.price)}</span>`}<button class="secondary-button" data-action="${owned ? `equip-${id}` : "buy-bow"}" ${equipped || unavailable ? "disabled" : ""}>${t(equipped ? "equipped" : owned ? "equip" : unavailable ? "insufficient" : "buy")}</button></div></article>`;
     };
     const categories = (["weapons", "tools", "characters"] as const).map(category => `<button class="${shopCategory === category ? "selected" : ""}" data-action="category-${category}" aria-pressed="${shopCategory === category}">${t(category)}</button>`).join("");
     const content = shopCategory === "characters" ? `<p class="shop-coming-soon">${t("comingSoon")}</p>` :
@@ -252,8 +254,7 @@ function renderDialog() {
       : economy.state.hourglasses === 0
         ? "noHourglass"
         : "reviveHint";
-    const wolfHit = ["wolf", "bat", "yeti"].includes(game.lastHit ?? "") ? `<p class="revive-copy">${t(game.lastHit === "bat" ? "batHit" : game.lastHit === "yeti" ? "yetiHit" : "wolfHit")}</p>` : "";
-    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div>${wolfHit}${usable ? "" : `<p class="revive-copy">${t(hint)}</p>`}<div class="revive-stock" aria-label="${t("stock")}">${icon("hourglass")}×${n(economy.state.hourglasses)}</div><button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
+    dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("hourglass")}</span><h2 id="dialog-title">${t("reviveTitle")}</h2></div>${usable ? "" : `<p class="revive-copy">${t(hint)}</p>`}<div class="revive-stock" aria-label="${t("stock")}">${icon("hourglass")}×${n(economy.state.hourglasses)}</div><button class="primary-button full-width" data-action="rewind" ${usable ? "" : "disabled"}>${icon("hourglass")}${t("useHourglass")}</button><button class="secondary-button full-width finish-run" data-action="finish">${t("finishRun")}</button>`;
   } else if (activeDialog === "settings") {
     const selected = languages.find((item) => item.code === language)!;
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("settings")}</span><h2 id="dialog-title">${t("settings")}</h2></div>
@@ -283,29 +284,11 @@ function renderDialog() {
         )
         .join(
           "",
-        )}</div><div class="guide-links"><button class="secondary-button" data-action="snow-guide">${t("snowGuide")}</button><button class="secondary-button" data-action="ocean-guide">${t("oceanGuide")}</button><button class="secondary-button" data-action="night-guide">${t("nightGuide")}</button></div>`;
+        )}</div><div class="guide-links"><button class="secondary-button" data-action="snow-guide">${t("snowGuide")}</button><button class="secondary-button" data-action="ocean-guide">${t("oceanGuide")}</button></div>`;
   } else if (activeDialog === "pause") {
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("pause")}</span><h2 id="dialog-title">${t("paused")}</h2></div><button class="primary-button full-width" data-action="resume">${icon("play")}${t("resume")}</button><div class="secondary-actions"><button class="secondary-button" data-action="restart">${icon("restart")}${t("restart")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   } else if (activeDialog === "over") {
-    const hint =
-      game.lastHit === "wolf" ? "wolfHit" : game.lastHit === "bat" ? "batHit" : game.lastHit === "yeti" ? "yetiHit" :
-      game.lastHit === "cold" ? "coldHint" : ["pool", "fire"].includes(game.lastHit ?? "") ? "snowDeathHint" :
-      ["bubble", "coral", "volcano", "fish"].includes(game.lastHit ?? "")
-        ? "lessonSwim"
-        : game.lastHit === "wall-rock"
-        ? "wallHint"
-        : game.lastHit === "gap"
-          ? "fallHint"
-          : ["log", "stump", "snow-log"].includes(game.lastHit ?? "")
-            ? game.terrain.biome === "canyon"
-              ? "canyonLogHint"
-              : "hitLog"
-            : game.lastHit === "arch"
-              ? game.terrain.biome === "canyon"
-                ? "canyonArchHint"
-                : "hitArch"
-              : "hitRock";
-    dialog.innerHTML = `<div class="result-heading"><span class="result-seal">${icon("trophy")}</span><h2 id="dialog-title">${t("over")}</h2>${newBest ? `<span class="record-tag">${t("newBest")}</span>` : ""}</div><div class="final-score"><span>${t("score")}</span><strong>${n(game.score)}</strong></div><div class="result-stats"><div><span class="stat-label" aria-label="${t("totalDistance")}">${icon("route")}</span><strong>${n(game.distance)}<small>m</small></strong></div><div><span class="stat-label" aria-label="${t("collected")}">${icon("coin")}</span><strong>${n(game.coins)}</strong></div></div><p class="collision-tip">${icon("help")}<span>${t(hint)}</span></p><div class="result-actions"><button class="primary-button" data-action="restart">${icon("restart")}${t("again")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
+    dialog.innerHTML = `<div class="result-heading"><span class="result-seal">${icon("trophy")}</span><h2 id="dialog-title">${t("over")}</h2>${newBest ? `<span class="record-tag">${t("newBest")}</span>` : ""}</div><div class="final-score"><span>${t("score")}</span><strong>${n(game.score)}</strong></div><div class="result-stats"><div><span class="stat-label" aria-label="${t("totalDistance")}">${icon("route")}</span><strong>${n(game.distance)}<small>m</small></strong></div><div><span class="stat-label" aria-label="${t("collected")}">${icon("coin")}</span><strong>${n(game.coins)}</strong></div></div><div class="result-actions"><button class="primary-button" data-action="restart">${icon("restart")}${t("again")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   }
 }
 
@@ -384,6 +367,7 @@ function start() {
   game.nextTerrain = terrainOverride ? terrainTarget : null;
   game.nextWeapon = economy.state.equipped;
   game.begin(startAtNight);
+  ammoPopupAt = -Infinity;
   // Commit the directed exit now; visuals still load only near that section.
   game.track.at(CONFIG.forestLength);
   tutorial.resetRun(game);
@@ -421,7 +405,6 @@ function showToast(message: string) {
   }, 3200);
 }
 const lessonTitles: Record<LessonId, MessageKey> = {
-  night: "nightGuide",
   snow: "snowGuide",
   ocean: "oceanGuide",
   move: "lessonMove",
@@ -462,16 +445,6 @@ const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?:
     {title: "oceanGrid", copy: "oceanGridCopy"},
     {title: "oceanHazards", copy: "oceanHazardsCopy", bottom: ["oceanBubble", "oceanCoral", "oceanVent"]},
     {title: "oceanFish", copy: "oceanFishCopy"},
-  ],
-  night: [
-    {title: "nightShooting", copy: "nightShootingCopy"},
-    {title: "nightAttacks", copy: "nightAttacksCopy"},
-    {title: "nightSupplies", copy: "nightSuppliesCopy"},
-    {title: "batDive", copy: "batDiveCopy"},
-    {title: "batDropping", copy: "batDroppingCopy"},
-    {title: "yetiSmall", copy: "yetiSmallCopy"},
-    {title: "yetiCharge", copy: "yetiChargeCopy"},
-    {title: "yetiSnowball", copy: "yetiSnowballCopy"},
   ],
 };
 
@@ -572,6 +545,14 @@ function updateNightUi() {
   }
   clockDot.setAttribute("transform", `rotate(${360 * dayTime(time) / DAY_LENGTH} 24 24)`);
   nightHud.hidden = !game.nightGearActive || game.mode === "over" || game.introducing || !!tutorial.guide;
+  const age = game.worldTime - ammoPopupAt;
+  const anchor = world?.getPlayerAnchor();
+  ammoPopup.hidden = age < 0 || age >= 1.1 || !anchor?.visible || game.mode !== "running" || !!tutorial.guide;
+  if (!ammoPopup.hidden && anchor) {
+    ammoPopup.style.left = `${anchor.x}px`;
+    ammoPopup.style.top = `${anchor.y - age * 30}px`;
+    ammoPopup.style.opacity = String(Math.min(1, (1.1 - age) / 0.3));
+  }
   if (nightHud.hidden) return;
   const combat = game.nightCombat;
   if (nightHud.dataset.weapon !== combat.weapon) {
@@ -584,8 +565,8 @@ function updateNightUi() {
   Array.from(ammoSlots.children).forEach((slot, index) => slot.classList.toggle("spent", index >= combat.ammo));
   nightHud.classList.toggle("refilled", combat.refillFlash > 0);
   shotMeter.style.transform = `scaleX(${1 - combat.cooldown / combat.weaponRules.cooldown})`;
-  ammoStatus.textContent = combat.refillFlash > 0 ? t("ammoRefill") + (combat.refillGain ? ` +${n(combat.refillGain)}` : "") :
-    combat.ammo === 0 ? t("ammoEmpty") : combat.cooldown > 0 ? t("shotCooldown") : ammo;
+  nightHud.classList.toggle("empty", combat.ammo === 0);
+
 }
 function updateFeatureUi() {
   const state = economy.state;
@@ -630,10 +611,10 @@ function act(action: string) {
   if (action === "terrain-override") {
     terrainOverride = !terrainOverride; save("terrain-override", String(terrainOverride)); renderDialog(); return;
   }
-  if (action === "snow-guide" || action === "ocean-guide" || action === "night-guide") {
+  if (action === "snow-guide" || action === "ocean-guide") {
     dialog.close();
     activeDialog = null;
-    tutorial.reviewGuide(action === "snow-guide" ? "snow" : action === "ocean-guide" ? "ocean" : "night");
+    tutorial.reviewGuide(action === "snow-guide" ? "snow" : "ocean");
     updateGuideUi();
     return;
   }
@@ -659,17 +640,7 @@ function act(action: string) {
     buyBusyUntil = performance.now() + 400;
     const result = economy.buy(action.slice(4) as ProductId);
     renderDialog();
-    showToast(
-      t(
-        result === "ok"
-          ? "buySuccess"
-          : result === "funds"
-            ? "insufficient"
-            : result === "owned"
-              ? "owned"
-              : "storageError",
-      ),
-    );
+    showToast(result === "ok" ? "✓" : t(result === "funds" ? "insufficient" : result === "owned" ? "owned" : "storageError"));
     return;
   }
   if (action === "bomb") {
@@ -1054,23 +1025,26 @@ try {
       previous = now;
       const wasRunning = game.mode === "running";
       const previousMode = game.mode;
-      const previousPhase = game.phase;
       tutorial.update(game, dt, economy.state.boosters > 0);
       const simulationDt = dt * tutorial.timeScale(game);
       const transitionBefore = game.transitioning;
       const swimBefore = game.swimming;
       const pickupBefore = game.pickupSerial;
-      const refillBefore = game.nightCombat.refillFlash;
+      const refillBefore = game.nightCombat.refillSerial;
       const shieldBreakBefore = game.shieldBreakSerial;
       const clearBefore = game.clearSerial;
       game.update(simulationDt);
-      if (game.phase === "night" && (previousPhase !== "night" || previousMode === "intro"))
-        tutorial.update(game, 0, economy.state.boosters > 0);
       const wolfImpactAge = game.worldTime - game.nightCombat.playerHitAt;
       document.body.classList.toggle("wolf-impact", game.mode !== "rewinding" && wolfImpactAge >= 0 && wolfImpactAge < 0.32);
       audio.update(game, !!activeDialog);
       if (game.pickupSerial !== pickupBefore) beep(game.lastPickup);
-      if (game.nightCombat.refillFlash > refillBefore) beep("ammo");
+      if (game.nightCombat.refillSerial !== refillBefore) {
+        beep("ammo");
+        if (game.nightCombat.refillGain > 0) {
+          ammoPopupAt = game.worldTime;
+          ammoPopup.innerHTML = `${icon(game.nightCombat.weapon === "bow" ? "arrow-ammo" : "stone")}<b>+${n(game.nightCombat.refillGain)}</b>`;
+        }
+      }
       if (game.shieldBreakSerial !== shieldBreakBefore) beep("break");
       if (game.clearSerial !== clearBefore) beep("clear");
       if (transitionBefore || game.transitioning || game.icy) gesture = null;

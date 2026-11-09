@@ -27,8 +27,7 @@ export class WolfModel {
       return node;
     };
     const fur = (name: string, color: string, size: number[], pos: number[], parent: TransformNode, glow = false) => {
-      const mesh = CreateSphere(name, {diameter: 1, segments: 6}, scene);
-      mesh.convertToFlatShadedMesh();
+      const mesh = CreateSphere(name, {diameter: 1, segments: 10}, scene);
       mesh.parent = parent;
       mesh.scaling.set(size[0], size[1], size[2]);
       mesh.position.set(pos[0], pos[1], pos[2]);
@@ -90,8 +89,8 @@ export class WolfModel {
       this.healthPips.push(bar("wolf-health-pip", width - 0.032, 0.095, (i + 0.5) * width - 0.47, -0.005, "#ff555d"));
   }
 
-  updateHealth(health: number, leap: number) {
-    this.healthBar.setEnabled(health > 0);
+  updateHealth(health: number, leap: number, entered = true) {
+    this.healthBar.setEnabled(health > 0 && entered);
     this.healthBar.position.y = 1.82 + leap;
     this.healthPips.forEach((pip, index) => pip.setEnabled(index < health));
   }

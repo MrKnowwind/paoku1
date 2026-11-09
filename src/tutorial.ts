@@ -8,7 +8,7 @@ const onPath = (item: TrackItem, x: number) =>
     : Math.abs(item.lane * 2.5 - x) < 1.1;
 
 export type TerrainGuideId = "snow" | "ocean";
-export type GuideId = TerrainGuideId | "night";
+export type GuideId = TerrainGuideId;
 export type LessonId =
   | GuideId
   | "move"
@@ -36,7 +36,6 @@ export class Tutorial {
   guideStep = 0;
   guideFirst = 1;
   guideLast = 3;
-  private attackLesson?: string;
   reviewingGuide = false;
   private previousLesson: Lesson | null = null;
   private previousGuideStep = 0;
@@ -44,7 +43,7 @@ export class Tutorial {
   private previousGuideLast = 3;
   get guide(): GuideId | null {
     const id = this.active?.id;
-    return id === "snow" || id === "ocean" || id === "night" ? id : null;
+    return id === "snow" || id === "ocean" ? id : null;
   }
   reviewGuide(id: GuideId) {
     if (this.reviewingGuide) return;
@@ -53,7 +52,6 @@ export class Tutorial {
     this.previousGuideFirst = this.guideFirst; this.previousGuideLast = this.guideLast;
     this.reviewingGuide = true;
     this.openGuide(id);
-    this.guideLast = id === "night" ? 8 : 3;
   }
   private openGuide(id: GuideId) {
     this.guideFirst = 1; this.guideLast = 3;
@@ -77,11 +75,6 @@ export class Tutorial {
     if (!guide || this.guideStep !== this.guideLast) return;
     if (this.reviewingGuide) this.closeGuideReview();
     else {
-      if (this.attackLesson) {
-        this.runSeen.add(this.attackLesson);
-        if (!this.testMode) this.seen.add(this.attackLesson);
-        this.attackLesson = undefined;
-      }
       this.guideStep = 0; this.complete(guide);
     }
   }
@@ -111,7 +104,6 @@ export class Tutorial {
     this.runSeen = new Set(this.testMode ? [] : this.seen);
     if (this.needsBasics) basics.forEach((id) => this.runSeen.delete(id));
     this.active = null;
-    this.attackLesson = undefined;
     this.guideStep = 0; this.reviewingGuide = false; this.previousLesson = null; this.previousGuideStep = 0;
     this.cooldown = 0;
     this.handled.clear();
@@ -188,10 +180,6 @@ export class Tutorial {
   update(game: RunnerGame, dt: number, _boosterUnlocked: boolean) {
     if (game.mode !== "running") return;
     this.cooldown = Math.max(0, this.cooldown - dt);
-    if (game.phase === "night" && !this.knows("night") && !this.guide) {
-      this.openGuide("night");
-      return;
-    }
     if (this.active) {
       const id = this.active.id;
       if (id === "booster" && game.boosting) this.complete(id);
@@ -199,15 +187,6 @@ export class Tutorial {
       return;
     }
     if (this.cooldown > 0 || game.boosting) return;
-    const attacks = game.nightCombat.region.state.attacks;
-    const attack = attacks.find(a => !a.spent && !this.knows(`attack-${a.kind}`));
-    if (attack) {
-      const pages = {dive: 4, dropping: 5, small: 6, charge: 7, snowball: 8};
-      this.openGuide("night");
-      this.guideStep = this.guideFirst = this.guideLast = pages[attack.kind];
-      this.attackLesson = `attack-${attack.kind}`;
-      return;
-    }
     if (game.inSnow && !this.knows("snow")) {
       this.openGuide("snow"); return;
     }

@@ -1,9 +1,11 @@
 import { CONFIG } from "./config.ts";
 import { DAY_LENGTH, dayTime } from "./daylight.ts";
 import type { RunnerGame } from "./game.ts";
+import { obstacleAllowed } from "./track.ts";
 
 const rules = CONFIG.regionalCombat;
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
+const smooth = (n: number) => clamp(n) ** 2 * (3 - 2 * clamp(n));
 export type RegionalAttackKind = "dive" | "dropping" | "small" | "charge" | "snowball";
 export interface RegionalEnemy {
   id: number;
@@ -69,13 +71,20 @@ export class RegionalCombat {
 
   position(enemy: RegionalEnemy, game: RunnerGame) {
     const time = game.worldTime;
-    const enter = 1 - clamp((time - enemy.enteredAt) / rules.entrance);
-    let x = enemy.homeX + Math.sign(enemy.homeX) * enter * 1.8;
-    let z = enemy.homeZ, y = enemy.homeY;
+    const entry = smooth((time - enemy.enteredAt) / rules.entrance);
+    const side = Math.sign(enemy.homeX) || 1;
+    let x = enemy.homeX, z = enemy.homeZ, y = enemy.homeY;
+    let yaw = -side * 0.15;
     if (enemy.kind === "bat") {
+      y += (1 - entry) * 13;
+      z += (1 - entry) * 8;
       x += Math.sin(time * 1.3 + enemy.id) * 0.45;
       y += Math.sin(time * 2.1 + enemy.id) * 0.28;
       z += Math.cos(time + enemy.id) * 0.5;
+    } else {
+      x += (side * 15 - x) * (1 - entry);
+      z += (-14 - z) * (1 - entry);
+      yaw = (Math.atan2(enemy.homeX - side * 15, enemy.homeZ + 14) + Math.PI) * (1 - entry) + yaw * entry;
     }
     const a = this.state.attacks.find(a => a.enemy === enemy.id);
     let crouch = 0, leap = 0, bite = 0;
@@ -94,12 +103,13 @@ export class RegionalCombat {
           if (time >= a.impactAt - 0.16) {
             x = Math.sign(enemy.homeX) * (4.3 - sweep * 8.6);
             z = a.worldZ - game.distance;
+            yaw = Math.sign(enemy.homeX) * Math.PI / 2;
           }
         }
       }
       if (a.kind === "small" || a.kind === "snowball") leap = Math.sin(p * Math.PI) * 0.1;
     }
-    return {x, y, z, yaw: -Math.sign(x) * 0.15, crouch, leap, bite};
+    return {x, y, z, yaw, crouch, leap, bite};
   }
 
   // A fresh warning only starts when the current route has time and space for its dodge.
@@ -124,9 +134,10 @@ export class RegionalCombat {
     }
     s.enemies = s.enemies.filter(e => health(e) > 0 || time - e.hitAt < 0.4);
     const bat = terrain.biome === "canyon";
+    const spawnEnd = terrain.combatExit ?? terrain.end;
     const living = s.enemies.filter(e => health(e) > 0).length;
     if (game.phase === "night" && !game.boosting && time >= s.nextPack &&
-      game.distance > terrain.start + CONFIG.exitSafety && terrain.end - game.distance > game.speed * 5 &&
+      game.distance > terrain.start + CONFIG.exitSafety && spawnEnd - game.distance > CONFIG.nightCombat.forestExtensionLead &&
       DAY_LENGTH - dayTime(time) > 5 && (bat ? living < rules.batLimit : !s.enemies.length)) {
       const pack = ++s.pack;
       const min = bat ? rules.batMin : rules.yetiMin, max = bat ? rules.batMax : rules.yetiMax;
@@ -134,10 +145,11 @@ export class RegionalCombat {
       for (let i = 0; i < size; i++) {
         const id = 1000000000 + pack * 10 + i;
         const e: RegionalEnemy = {id, kind: bat ? "bat" : "yeti",
-          homeX: (random(id, 202) < 0.5 ? -1 : 1) * (bat ? 2.7 + random(id, 203) : 4.3),
-          homeZ: 6 + i * 3.8 + random(id, 204) * 2,
+          homeX: bat ? (Math.floor(random(id, 202) * 3) - 1) * 2.5 : (random(id, 202) < 0.5 ? -1 : 1) * 4.3,
+          homeZ: (bat ? 18 : 6) + i * 3.8 + random(id, 204) * 2,
           homeY: bat ? 3 + random(id, 205) * 2.2 : 1.25,
-          enteredAt: time, readyAt: time + rules.entrance + 1 + i * 0.5, hitAt: -Infinity};
+          enteredAt: time + i * rules.entryStagger,
+          readyAt: time + i * rules.entryStagger + rules.entrance + 1, hitAt: -Infinity};
         if (health(e) > 0) s.enemies.push(e);
       }
       s.nextPack = time + (bat ? rules.batSpawnMin + random(pack, 206) * (rules.batSpawnMax - rules.batSpawnMin) : rules.yetiPackInterval);
@@ -188,18 +200,23 @@ export class RegionalCombat {
     const sequence = s.sequence + 1;
     let kind: RegionalAttackKind = bat ? (random(sequence, 207) < 0.5 ? "dive" : "dropping") :
       (["small", "charge", "snowball"] as const)[Math.floor(random(sequence, 207) * 3)];
-    if (bat && (game.wallSide || game.gapWarning)) kind = "dive";
+    if (bat && game.wallSide) kind = "dive";
     const duration = kind === "dive" ? rules.diveWarning : kind === "dropping" ? rules.droppingWarning :
       kind === "small" ? rules.smallWarning + rules.smallFlight : kind === "charge" ? rules.chargeWarning + 0.16 :
       rules.snowballRoll + rules.snowballWarning;
     // Keep paired warnings compatible, including the recovery of the first attack.
     if (!this.safeWindow(game, duration) || !bat && s.attacks.some(a => a.kind !== kind)) return;
-    s.sequence = sequence;
     const p = this.position(enemy, game);
+    const droppingZ = game.distance + p.z;
+    if (kind === "dropping" && (!obstacleAllowed(droppingZ, game.trackSeed, game.track) ||
+      game.items.some(item => !["coin", "ammo", "shield", "magnet"].includes(item.type) &&
+        Math.abs(item.worldZ - droppingZ) < 5 && Math.abs(item.lane * 2.5 - p.x) < 1.5))) return;
+    s.sequence = sequence;
     const lockAt = time + (kind === "snowball" ? rules.snowballRoll : 0);
     s.attacks.push({id: 2000000000 + sequence, enemy: enemy.id, kind, start: time, lockAt,
-      impactAt: time + duration, x: game.wallSide ? game.wallSide * 5.4 : game.x,
-      y: game.wallSide ? game.wallY + 0.95 : 0.95, worldZ: game.distance + game.speed * duration,
+      impactAt: time + duration, x: kind === "dropping" ? p.x : game.wallSide ? game.wallSide * 5.4 : game.x,
+      y: kind === "dropping" ? 0.07 : game.wallSide ? game.wallY + 0.95 : 0.95,
+      worldZ: kind === "dropping" ? droppingZ : game.distance + game.speed * duration,
       side: game.wallSide, fromX: p.x, fromY: p.y, fromZ: game.distance + p.z,
       spent: false, locked: kind !== "snowball"});
     enemy.readyAt = time + duration + rules.attackMin + random(sequence, 208) * (rules.attackMax - rules.attackMin);

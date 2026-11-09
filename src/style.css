@@ -326,22 +326,29 @@ h1 span {
   bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 7px 9px;
+  gap: 12px;
+  padding: 10px 13px;
   border: 1px solid #8b9b9f;
   border-radius: 11px;
   color: #f5ead4;
   background: #253634ed;
 }
-.night-weapon .art-icon { display: block; width: 30px; height: 30px; }
+.night-weapon .art-icon { display: block; width: 42px; height: 42px; }
 .shot-meter { height: 3px; background: #172624; border-radius: 3px; overflow: hidden; }
 .shot-meter i { display: block; height: 100%; background: #eec778; transform-origin: left; }
-.ammo-slots { display: flex; gap: 2px; }
-.ammo-slots .art-icon { width: 15px; height: 15px; }
+.ammo-slots { display: flex; gap: 3px; }
+.ammo-slots .art-icon { width: 22px; height: 28px; object-fit: contain; }
 .ammo-slots .spent { opacity: 0.28; }
-.ammo-status { display: block; min-height: 14px; font-size: 10px; line-height: 1.4; }
 .night-hud.refilled { border-color: #b6e097; }
-.night-hud.refilled .ammo-status { color: #cbefa8; }
+.night-hud.empty .shot-meter i { background: #dd7d69; }
+.ammo-pickup { position: fixed; z-index: 8; pointer-events: none; transform: translate(-50%, -100%); display: flex; align-items: center; gap: 3px; color: #fff3c9; font-size: 24px; font-weight: 800; text-shadow: 0 2px 4px #172824, 1px 0 2px #172824; }
+.ammo-pickup .art-icon { width: 37px; height: 37px; filter: drop-shadow(0 2px 3px #17282488); }
+.supply-card .supply-stats { display: flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
+.supply-stats .art-icon { width: 20px; height: 20px; }
+@media (max-width: 480px) {
+  .night-hud { gap: 8px; padding: 9px 10px; }
+  .ammo-slots { display: grid; grid-template-columns: repeat(3, 22px); row-gap: 0; }
+}
 @media (max-width: 420px) {
   .day-clock { width: 38px; }
   .playing .header-actions .icon-button { width: 37px; height: 37px; }
@@ -814,20 +821,6 @@ dialog[data-view="pause"] > .primary-button {
   font-size: 12px;
   font-weight: 400;
   color: #465740;
-}
-.collision-tip {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  margin: 16px 0 19px;
-  font-size: 12px;
-  line-height: 1.7;
-  color: #465740;
-}
-.collision-tip .icon {
-  width: 14px;
-  height: 14px;
-  margin-top: 1px;
 }
 .result-actions {
   display: grid;
@@ -1856,11 +1849,7 @@ html[lang="ko-KR"] .intro h1 {
   --guide-shell: #082839;
   --guide-accent: #57e6cc;
 }
-.terrain-guide[data-terrain="night"] .guide-card {
-  --guide-shell: #18243b;
-  --guide-accent: #b5caff;
-  border-color: #52678b;
-}
+
 .guide-card-heading {
   grid-area: heading;
   min-width: 0;
@@ -1984,7 +1973,6 @@ html[lang="ko-KR"] .intro h1 {
 }
 .guide-card button:focus-visible, .guide-card-copy:focus-visible { outline: 2px solid #fff5dc; outline-offset: -3px; }
 .guide-links { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-.guide-links [data-action="night-guide"] { grid-column: 1 / -1; }
 @media (orientation: landscape) and (max-height: 455px) {
   .guide-card {
     width: min(640px, 100cqw);
@@ -2001,8 +1989,6 @@ html[lang="ko-KR"] .intro h1 {
   .guide-pagination { grid-template-rows: auto; grid-template-columns: auto minmax(0, 170px); justify-content: center; column-gap: 10px; }
 }
 
-.terrain-guide[data-terrain="night"] .guide-card-copy { scrollbar-width: none; }
-.terrain-guide[data-terrain="night"] .guide-card-copy::-webkit-scrollbar { display: none; }
 .shop-categories { display: flex; gap: 8px; margin: 12px 0 18px; }
 .shop-categories button { flex: 1; padding: 10px 6px; border-radius: 8px; background: #e7ecdc; color: #465740; }
 .shop-categories .selected { background: #405a38; color: #fff5dc; }
