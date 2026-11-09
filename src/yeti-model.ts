@@ -1,10 +1,10 @@
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
-import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import type { Scene } from "@babylonjs/core/scene";
+import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder.js";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 import type { RegionalAttack } from "./regional-combat.ts";
 import { ease, yetiMotion } from "./yeti-motion.ts";
 import type { Point3 } from "./yeti-motion.ts";
@@ -120,6 +120,22 @@ export class YetiModel {
         const toe=sculpt("yeti-toe-cap",[[-0.08,0.12,0.18,0.43],[0.055,0.12,0.19,0.43]],"#cee1e5",ankle);toe.position.x=(i-1)*0.135;
       }
       this.legs.push({upper:hip,lower:knee,tip:ankle,a:0.46,b:0.49,side});
+    }
+    // Merge only rigid pieces sharing a joint and material; preserve every animated joint.
+    const groups=new Map<string,Mesh[]>();
+    for(const child of this.root.getChildMeshes()) {
+      if(!(child instanceof Mesh))continue;
+      const key=`${child.parent!.uniqueId}:${child.material!.uniqueId}`;
+      const group=groups.get(key)??[];group.push(child);groups.set(key,group);
+    }
+    for(const pieces of groups.values())if(pieces.length>1) {
+      const parent=pieces[0].parent as TransformNode;
+      parent.computeWorldMatrix(true);
+      const inverse=parent.getWorldMatrix().clone().invert();
+      for(const piece of pieces)piece.computeWorldMatrix(true);
+      const merged=Mesh.MergeMeshes(pieces,true,true)!;
+      merged.bakeTransformIntoVertices(inverse);merged.parent=parent;
+      merged.metadata={wolfId:id};
     }
     this.bar=joint("yeti-health",[0,3.05,0]);this.bar.billboardMode=Mesh.BILLBOARDMODE_ALL;
     const bar=(width:number,height:number,x:number,z:number,color:string)=>{

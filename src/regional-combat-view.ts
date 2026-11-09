@@ -22,6 +22,8 @@ export class RegionalCombatView {
   private effects = new Map<string, Mesh>();
   private paints = new Map<Paint, StandardMaterial>();
   private high = true;
+  private spareEffects = new Map<string, Mesh[]>();
+  private effectKinds = new Map<string, string>();
   constructor(private scene: Scene, private material: (color: string, glow?: boolean) => StandardMaterial) {}
   get size() { return this.models.size; }
   warningMaterial() { return this.paint("strip"); }
@@ -81,10 +83,13 @@ export class RegionalCombatView {
     for(const [id,model] of this.models) if(!state.enemies.some(e=>e.id===id)) {model.root.dispose();this.models.delete(id);}
     const effect=(key:string,shape:"ring"|"strip"|"ball"|"shard"|"hoop",color:string,paint?:Paint)=>{
       keep.add(key);let mesh=this.effects.get(key);
+      const poolKey=`${shape}:${color}:${paint??""}`;
       if(!mesh) {
-        mesh=shape==="ring"?CreateGround(key,{width:2,height:2},this.scene):shape==="strip"?CreateGround(key,{width:1,height:1},this.scene):
+        mesh=this.spareEffects.get(poolKey)?.pop();
+        if(mesh)mesh.name=key;
+        mesh??=shape==="ring"?CreateGround(key,{width:2,height:2},this.scene):shape==="strip"?CreateGround(key,{width:1,height:1},this.scene):
           shape==="shard"?CreatePolyhedron(key,{type:1,size:0.5},this.scene):shape==="hoop"?CreateTorus(key,{diameter:1,thickness:0.12,tessellation:24},this.scene):CreateSphere(key,{diameter:1,segments:high?14:8},this.scene);
-        mesh.material=paint?this.paint(paint):this.material(color,shape==="shard"||key.includes("flash"));mesh.isPickable=false;this.effects.set(key,mesh);
+        mesh.material=paint?this.paint(paint):this.material(color,shape==="shard"||key.includes("flash"));mesh.isPickable=false;this.effects.set(key,mesh);this.effectKinds.set(key,poolKey);
       }
       mesh.setEnabled(true);mesh.rotation.set(0,0,0);mesh.scaling.setAll(1);mesh.visibility=1;return mesh;
     };
@@ -115,7 +120,7 @@ export class RegionalCombatView {
       const a=state.attacks.find(a=>a.enemy===e.id);
       if(model instanceof YetiModel)model.animate(time,health,entry,since,a);
       else model.animate(time+e.id,health,p.crouch,0,health<=0?clamp(since/0.35):0,1-clamp(since/0.2),entry);
-      if(since>=0&&since<0.35&&game.mode!=="rewinding")particles(`hit-${e.id}`,p.x,p.y,p.z,since,0.35,health>0?"#ffe5ad":"#d8def4",high?10:6,1.4);
+
       if(e.kind==="yeti"&&entry>0&&entry<1)particles(`entry-${e.id}`,p.x,0.1,p.z,(time-e.enteredAt)%0.3,0.3,"#d3e7eb",4,0.65);
     }
     const rules=CONFIG.regionalCombat;
@@ -214,6 +219,11 @@ export class RegionalCombatView {
         flash.scaling.setAll(0.3+(1-pulse)*1.4);flash.visibility=(1-pulse)*0.55;
       }
     }
-    for(const [key,mesh] of this.effects)if(!keep.has(key)){mesh.dispose();this.effects.delete(key);}
+    for(const [key,mesh] of this.effects)if(!keep.has(key)) {
+      const kind=this.effectKinds.get(key)!,pool=this.spareEffects.get(kind)??[];
+      mesh.setEnabled(false);
+      if(pool.length<24){pool.push(mesh);this.spareEffects.set(kind,pool);}else mesh.dispose();
+      this.effects.delete(key);this.effectKinds.delete(key);
+    }
   }
 }

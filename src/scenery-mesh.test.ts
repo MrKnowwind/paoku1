@@ -1,3 +1,4 @@
+import { YetiModel } from "./yeti-model.ts";
 import { coastGridIndices, reefRockGeometry } from "./ocean-geometry.ts";
 import { canyonRidgeGeometry, canyonRidgeStrength } from "./canyon-landform.ts";
 import type { TrackSection } from "./track.ts";
@@ -155,4 +156,27 @@ test("reef rocks face outward at their sides and closed end caps", () => {
     for (let i = 0; i < positions.length; i += 3)
       assert.ok(positions[i] * normals[i] + positions[i + 1] * normals[i + 1] + positions[i + 2] * normals[i + 2] > 0);
   }
+});
+
+
+test("yeti rigid detail batches preserve animated joints and picking", () => {
+  const engine=new NullEngine();
+  try {
+    const scene=new Scene(engine),palette=new Map<string,StandardMaterial>();
+    const model=new YetiModel(scene,42,(color)=>{
+      if(!palette.has(color))palette.set(color,new StandardMaterial(color,scene));
+      return palette.get(color)!;
+    });
+    assert.ok(model.root.getChildMeshes().length<100);
+    for(const time of [0,0.15,0.6]) {
+      model.animate(time,5,1,Infinity);
+      for(const mesh of model.root.getChildMeshes()) {
+        mesh.computeWorldMatrix(true);
+        const bounds=mesh.getBoundingInfo().boundingBox;
+        assert.ok(Number.isFinite(bounds.minimumWorld.x)&&Number.isFinite(bounds.maximumWorld.y));
+        if(!mesh.name.includes("health"))assert.equal(mesh.metadata.wolfId,42);
+      }
+    }
+    assert.ok(model.root.getChildTransformNodes().some(node=>node.name==="yeti-elbow"));
+  } finally {engine.dispose();}
 });

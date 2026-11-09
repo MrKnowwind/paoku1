@@ -323,15 +323,14 @@ h1 span {
   position: fixed;
   z-index: 5;
   left: max(14px, calc(env(safe-area-inset-left) + 8px));
-  bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
+  bottom: max(70px, calc(env(safe-area-inset-bottom) + 64px));
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 13px;
-  border: 1px solid #8b9b9f;
-  border-radius: 11px;
+  padding: 0;
+  border: 0;
   color: #f5ead4;
-  background: #253634ed;
+  background: none;
 }
 .night-weapon .art-icon { display: block; width: 42px; height: 42px; }
 .shot-meter { height: 3px; background: #172624; border-radius: 3px; overflow: hidden; }
@@ -346,7 +345,7 @@ h1 span {
 .supply-card .supply-stats { display: flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
 .supply-stats .art-icon { width: 20px; height: 20px; }
 @media (max-width: 480px) {
-  .night-hud { gap: 8px; padding: 9px 10px; }
+  .night-hud { gap: 8px; padding: 0; }
   .ammo-slots { display: grid; grid-template-columns: repeat(3, 22px); row-gap: 0; }
 }
 @media (max-width: 420px) {
@@ -1995,9 +1994,12 @@ html[lang="ko-KR"] .intro h1 {
 .shop-coming-soon { display: grid; place-items: center; min-height: 200px; color: #607251; font-size: 22px; }
 .active-tool.bomb-tool { right: calc(94px + env(safe-area-inset-right, 0px)); }
 
-.player-health { position:fixed; z-index:8; pointer-events:none; transform:translate(-50%,-50%); display:flex; gap:4px; padding:4px 5px; background:#182630d9; border:1px solid #fff6; border-radius:5px; }
+.player-health { position:fixed; left:max(14px,calc(env(safe-area-inset-left) + 8px)); bottom:max(14px,calc(env(safe-area-inset-bottom) + 8px)); z-index:8; pointer-events:none; display:flex; align-items:center; gap:8px; }
 .player-health[hidden] { display:none; }
-.player-health i { width:16px; height:8px; border-radius:2px; background:#53606b; }
-.player-health i.full { background:#f35564; box-shadow:0 0 5px #ff687a88; }
-.damage-float { position:fixed; z-index:12; pointer-events:none; transform:translate(-50%,-50%); font:bold 28px system-ui; color:#fff0b3; text-shadow:2px 2px 0 #4b201e,-1px -1px 0 #4b201e,0 0 8px #ff873b; }
+.player-portrait { width:42px; height:42px; filter:drop-shadow(0 0 1px #fff) drop-shadow(0 1px 1px #172621); }
+.player-hearts { display:flex; gap:3px; }
+.player-hearts i { font:normal 28px/1 system-ui; color:#58636b; -webkit-text-stroke:1.5px #192b25; paint-order:stroke fill; text-shadow:0 1px 1px #fff; }
+.player-hearts i.full { color:#f33e56; }
+.night-hud .art-icon { filter:drop-shadow(1px 0 0 #172621) drop-shadow(-1px 0 0 #172621) drop-shadow(0 1px 0 #fff); }
+.damage-float { position:fixed; left:0; top:0; z-index:12; pointer-events:none; transform:translate(-50%,-50%); font:bold 28px system-ui; color:#fff0b3; text-shadow:2px 2px 0 #4b201e,-1px -1px 0 #4b201e,0 0 8px #ff873b; }
 .damage-float.player { color:#ff596b; font-size:32px; text-shadow:1px 2px 0 #fff,-1px -1px 0 #fff,0 0 10px #c51a31; }
