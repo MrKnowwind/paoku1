@@ -117,7 +117,6 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       `<i>${icon("heart-full", "filled-heart")}${icon("heart-empty", "empty-heart")}</i>`).join("")}</span>
   </div>
   <div id="combat-floats" aria-hidden="true"></div>
-  <div id="ammo-pickup" class="ammo-pickup" hidden aria-hidden="true"></div>
   <canvas id="snow-weather" aria-hidden="true" hidden></canvas>
   <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="${CONFIG.coldMax}">
     <svg class="cold-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M3.34 7l17.32 10M3.34 17 20.66 7M9 5l3 3 3-3M9 19l3-3 3 3M4.44 11l4.09-1.1-1.1-4.1M19.56 13l-4.09 1.1 1.1 4.1M7.43 18.2l1.1-4.1-4.09-1.1M16.57 5.8l-1.1 4.1 4.09 1.1"/></svg>
@@ -212,8 +211,6 @@ let shownHealth = -1;
 let shownEnemyHit = 0;
 let shownPlayerHit = 0;
 const combatFloats = document.querySelector<HTMLElement>("#combat-floats")!;
-const ammoPopup = document.querySelector<HTMLElement>("#ammo-pickup")!;
-let ammoPopupAt = -Infinity;
 const shotMeter = nightHud.querySelector<HTMLElement>(".shot-meter i")!;
 
 function beep(kind: Sound) {
@@ -379,7 +376,6 @@ function start() {
   game.nextTerrain = terrainOverride ? terrainTarget : null;
   game.nextWeapon = economy.state.equipped;
   game.begin(startAtNight);
-  ammoPopupAt = -Infinity;
   shownEnemyHit = 0;
   combatFloats.replaceChildren();
   // Commit the directed exit now; visuals still load only near that section.
@@ -559,15 +555,6 @@ function updateNightUi() {
   }
   clockDot.setAttribute("transform", `rotate(${360 * dayTime(time) / DAY_LENGTH} 24 24)`);
   nightHud.hidden = !game.nightGearActive || game.mode === "over" || game.introducing || !!tutorial.guide;
-  const age = game.worldTime - ammoPopupAt;
-  const showingAmmo = age >= 0 && age < 1.1 && game.mode === "running" && !tutorial.guide;
-  const anchor = showingAmmo ? world?.getPlayerAnchor() : undefined;
-  ammoPopup.hidden = !anchor?.visible;
-  if (!ammoPopup.hidden && anchor) {
-    ammoPopup.style.left = `${anchor.x}px`;
-    ammoPopup.style.top = `${anchor.y - age * 30}px`;
-    ammoPopup.style.opacity = String(Math.min(1, (1.1 - age) / 0.3));
-  }
   playerHealth.hidden = !["running", "paused", "rewinding"].includes(game.mode) || !!tutorial.guide;
   if (shownHealth !== game.health) {
     shownHealth = game.health;
@@ -589,6 +576,22 @@ function updateNightUi() {
   nightHud.classList.toggle("empty", combat.ammo === 0);
 
 }
+function showCombatFloat(
+  anchor: {x: number; y: number; visible: boolean} | undefined,
+  label: string,
+  kind: "enemy" | "player" | "ammo",
+  glyph?: "arrow-ammo" | "stone",
+) {
+  if (!anchor?.visible) return;
+  const node = document.createElement("b");
+  node.className = `combat-float ${kind}`;
+  node.textContent = label;
+  if (glyph) node.insertAdjacentHTML("afterbegin", icon(glyph));
+  node.style.left = `${anchor.x}px`;
+  node.style.top = `${anchor.y - (kind === "player" ? 20 : 0)}px`;
+  node.addEventListener("animationend", () => node.remove(), {once: true});
+  combatFloats.append(node);
+}
 function updateDamageFloats() {
   const suspended = !!tutorial.guide || game.mode === "paused";
   combatFloats.classList.toggle("suspended", suspended);
@@ -597,25 +600,16 @@ function updateDamageFloats() {
     return;
   }
   if (suspended) return;
-  const addFloat = (x: number, y: number, label: string, kind: string) => {
-    const node = document.createElement("b");
-    node.className = `damage-float ${kind}`;
-    node.textContent = label;
-    node.style.left = `${x}px`;
-    node.style.top = `${y}px`;
-    node.addEventListener("animationend", () => node.remove(), {once: true});
-    combatFloats.append(node);
-  };
   for (const hit of game.nightCombat.damageEvents) {
     if (hit.id <= shownEnemyHit) continue;
     shownEnemyHit = hit.id;
     const anchor = world?.getCombatAnchor(hit.x, hit.y, hit.worldZ - game.distance);
-    if (anchor?.visible) addFloat(anchor.x, anchor.y, `−${hit.amount}`, "enemy");
+    showCombatFloat(anchor, `−${hit.amount}`, "enemy");
   }
   if (shownPlayerHit !== game.damageSerial) {
     shownPlayerHit = game.damageSerial;
     const anchor = world?.getPlayerAnchor();
-    if (anchor?.visible && game.worldTime - game.damagedAt < 0.5) addFloat(anchor.x, anchor.y - 20, "−1", "player");
+    if (game.worldTime - game.damagedAt < 0.5) showCombatFloat(anchor, "−1", "player");
   }
 }
 function updateFeatureUi() {
@@ -1088,13 +1082,8 @@ try {
       document.body.classList.toggle("wolf-impact", game.mode !== "rewinding" && wolfImpactAge >= 0 && wolfImpactAge < 0.32);
       audio.update(game, !!activeDialog);
       if (game.pickupSerial !== pickupBefore) beep(game.lastPickup);
-      if (game.nightCombat.refillSerial !== refillBefore) {
-        beep("ammo");
-        if (game.nightCombat.refillGain > 0) {
-          ammoPopupAt = game.worldTime;
-          ammoPopup.innerHTML = `${icon(game.nightCombat.weapon === "bow" ? "arrow-ammo" : "stone")}<b>+${n(game.nightCombat.refillGain)}</b>`;
-        }
-      }
+      const pickedAmmo = game.nightCombat.refillSerial !== refillBefore;
+      if (pickedAmmo) beep("ammo");
       if (game.shieldBreakSerial !== shieldBreakBefore) beep("break");
       if (game.clearSerial !== clearBefore) beep("clear");
       if (transitionBefore || game.transitioning || game.icy) gesture = null;
@@ -1120,6 +1109,10 @@ try {
       world!.update(game, guide ? 0 : game.mode === "over" ? dt : simulationDt,
         tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"), guide,
         guide ? tutorial.guideStep : 0);
+      if (pickedAmmo && game.mode === "running" && !guide && game.nightCombat.refillGain > 0) {
+        const glyph = game.nightCombat.weapon === "bow" ? "arrow-ammo" : "stone";
+        showCombatFloat(world!.getPlayerAnchor(), `+${n(game.nightCombat.refillGain)}`, "ammo", glyph);
+      }
       // A drawn, ready character is required. Terrain starts with solid colors.
       if (!loaded && world!.isPlayable()) {
         loaded = true;

@@ -54,20 +54,6 @@ test("ocean guide waits for swimming controls and saves only on explicit complet
   assert.equal(activeLesson(tutorial), "ocean");
 });
 
-test("ordinary shelves do not interrupt play with first-encounter guidance", () => {
-  const game = new RunnerGame({ autoSpawn: false });
-  game.start();
-  game.distance = 700;
-  game.lane = 1;
-  game.x = 2.5;
-  const item = game.addItem("arch", 0, 5);
-  item.shelf = { side: 1, laneCount: 2 };
-  const tutorial = new Tutorial([], () => {});
-  tutorial.resetRun(game);
-  tutorial.update(game, 0.1, false);
-  assert.equal(tutorial.active, null);
-});
-
 test("opening lesson keeps slow motion until the matching accepted gesture", () => {
   const game = new RunnerGame({ autoSpawn: false });
   game.start();
@@ -153,11 +139,18 @@ test("pickups and unlocked powers do not interrupt play with tutorials", () => {
 
 
 test("first encounters with ordinary obstacles never start lessons", () => {
-  for (const type of ["log", "arch", "rock"] as const) {
+  for (const type of ["log", "arch", "rock", "shelf"] as const) {
     const game = new RunnerGame({ autoSpawn: false });
     game.start();
     game.distance = 30;
-    game.addItem(type, 0, 5);
+    if (type === "shelf") {
+      game.distance = 700;
+      game.lane = 1;
+      game.x = 2.5;
+      game.addItem("arch", 0, 5).shelf = { side: 1, laneCount: 2 };
+    } else {
+      game.addItem(type, 0, 5);
+    }
     const tutorial = new Tutorial([], () => {});
     tutorial.resetRun(game);
     tutorial.update(game, 0.1, false);

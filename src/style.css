@@ -340,8 +340,6 @@ h1 span {
 .ammo-slots .spent { opacity: 0.28; }
 .night-hud.refilled { border-color: #b6e097; }
 .night-hud.empty .shot-meter i { background: #dd7d69; }
-.ammo-pickup { position: fixed; z-index: 8; pointer-events: none; transform: translate(-50%, -100%); display: flex; align-items: center; gap: 3px; color: #fff3c9; font-size: 24px; font-weight: 800; text-shadow: 0 2px 4px #172824, 1px 0 2px #172824; }
-.ammo-pickup .art-icon { width: 37px; height: 37px; filter: drop-shadow(0 2px 3px #17282488); }
 .supply-card .supply-stats { display: flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
 .supply-stats .art-icon { width: 20px; height: 20px; }
 @media (max-width: 480px) {
@@ -2002,10 +2000,12 @@ html[lang="ko-KR"] .intro h1 {
 .player-hearts .art-icon { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
 .player-hearts i:not(.full) .filled-heart, .player-hearts i.full .empty-heart { visibility:hidden; }
 .night-hud .art-icon { filter:drop-shadow(1px 0 0 #172621) drop-shadow(-1px 0 0 #172621) drop-shadow(0 1px 0 #fff); }
-.damage-float { position:fixed; z-index:12; pointer-events:none; font:bold 28px system-ui; color:#fff0b3; -webkit-text-stroke:1.5px #4b201e; paint-order:stroke fill; animation:damage-rise 720ms ease-out both; }
-.damage-float.player { color:#ff596b; font-size:32px; -webkit-text-stroke-color:#fff; }
-#combat-floats.suspended .damage-float { animation-play-state:paused; }
-@keyframes damage-rise {
+.combat-float { position:fixed; z-index:12; pointer-events:none; font:bold 28px system-ui; color:#fff0b3; -webkit-text-stroke:1.5px #4b201e; paint-order:stroke fill; animation:combat-rise 720ms ease-out both; }
+.combat-float.player { color:#ff596b; font-size:32px; -webkit-text-stroke-color:#fff; }
+.combat-float.ammo { display:flex; align-items:center; gap:3px; color:#fff3c9; font-size:24px; -webkit-text-stroke-color:#172824; }
+.combat-float.ammo .art-icon { width:32px; height:32px; }
+#combat-floats.suspended .combat-float { animation-play-state:paused; }
+@keyframes combat-rise {
   from { transform:translate(-50%,-50%); opacity:1; }
   55% { opacity:1; }
   to { transform:translate(-50%,calc(-50% - 44px)); opacity:0; }

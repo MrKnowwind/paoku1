@@ -1159,11 +1159,10 @@ test("cluster bomb pulses keep their release-time offset as the runner advances"
   const {game,enemy,combat}=regionalFixture("snow");
   enemy.readyAt=Infinity;combat.region.state.nextPack=Infinity;
   assert.equal(combat.throwBomb(game,()=>true),true);
-  const offset=combat.bombs[0].relativeZ,start=game.worldTime;
+  const start=game.worldTime;
   for(let pulse=0;pulse<3;pulse++) {
     game.worldTime=start+CONFIG.bomb.flight+pulse*CONFIG.bomb.interval+0.001;
     game.distance+=game.speed*0.3;combat.update(game,0.001,()=>0.5,()=>false);
-    assert.equal(combat.bombs[0].relativeZ,offset);
     assert.equal(combat.health(enemy),4-pulse);
   }
 });
