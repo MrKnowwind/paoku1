@@ -453,17 +453,9 @@ const guideNext = document.querySelector<HTMLButtonElement>("#guide-next")!;
 const guideDone = document.querySelector<HTMLButtonElement>("#guide-done")!;
 const guideClose = document.querySelector<HTMLButtonElement>("#guide-review-close")!;
 const weather = new SnowWeather(document.querySelector<HTMLCanvasElement>("#snow-weather")!);
-const guideNumbers: Record<string, number> = {
-  base: CONFIG.coldRate,
-  storm: CONFIG.coldRate * CONFIG.blizzardColdMultiplier,
-  ice: CONFIG.iceDistance,
-  drift: CONFIG.snowdriftCold,
-  snowman: CONFIG.snowmanCold,
-  fire: CONFIG.fireWarmth,
-  liquor: CONFIG.liquorWarmth,
-  burnSeconds: CONFIG.burn.damageInterval,
-  burnTaps: CONFIG.burn.qteHits,
-};
+const guideText = (key: MessageKey) => t(key)
+  .replace("{burnSeconds}", n(CONFIG.burn.damageInterval))
+  .replace("{burnTaps}", n(CONFIG.burn.qteHits));
 const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?: MessageKey; top?: MessageKey[]; bottom?: MessageKey[]; symbols?: string[]}[]> = {
   basic: [{title: "guideTitle", copy: "basicGuideCopy", symbols: ["compass", "jump", "slide", "coin"]}],
   snow: [
@@ -514,10 +506,8 @@ function updateGuideUi() {
     symbols.hidden = !page.symbols;
     symbols.innerHTML = page.symbols?.map(guideGlyph).join("") ?? "";
     document.querySelector("#guide-page-title")!.textContent = t(page.title);
-    const decimals = new Intl.NumberFormat(languageTags[language], {maximumFractionDigits: 3});
-    document.querySelector("#guide-copy")!.textContent = t(page.copy)
-      .replace(/\{(\w+)\}/g, (_, name: string) => decimals.format(guideNumbers[name]));
-    document.querySelector("#guide-detail")!.textContent = page.detail ? t(page.detail) : "";
+    document.querySelector("#guide-copy")!.textContent = guideText(page.copy);
+    document.querySelector("#guide-detail")!.textContent = page.detail ? guideText(page.detail) : "";
     const labels = (keys: MessageKey[] = []) => keys.map(label => `<span>${t(label)}</span>`).join("");
     document.querySelector("#guide-stage-top")!.innerHTML = labels(page.top);
     document.querySelector("#guide-stage-bottom")!.innerHTML = labels(page.bottom);
