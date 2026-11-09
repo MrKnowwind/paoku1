@@ -1996,10 +1996,17 @@ html[lang="ko-KR"] .intro h1 {
 
 .player-health { position:fixed; left:max(14px,calc(env(safe-area-inset-left) + 8px)); bottom:max(14px,calc(env(safe-area-inset-bottom) + 8px)); z-index:8; pointer-events:none; display:flex; align-items:center; gap:8px; }
 .player-health[hidden] { display:none; }
-.player-portrait { width:42px; height:42px; filter:drop-shadow(0 0 1px #fff) drop-shadow(0 1px 1px #172621); }
+.player-health .player-portrait { width:42px; height:42px; filter:drop-shadow(0 0 1px #fff) drop-shadow(0 1px 1px #172621); }
 .player-hearts { display:flex; gap:3px; }
-.player-hearts i { font:normal 28px/1 system-ui; color:#58636b; -webkit-text-stroke:1.5px #192b25; paint-order:stroke fill; text-shadow:0 1px 1px #fff; }
-.player-hearts i.full { color:#f33e56; }
+.player-hearts i { position:relative; display:block; width:28px; height:28px; }
+.player-hearts .art-icon { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+.player-hearts i:not(.full) .filled-heart, .player-hearts i.full .empty-heart { visibility:hidden; }
 .night-hud .art-icon { filter:drop-shadow(1px 0 0 #172621) drop-shadow(-1px 0 0 #172621) drop-shadow(0 1px 0 #fff); }
-.damage-float { position:fixed; left:0; top:0; z-index:12; pointer-events:none; transform:translate(-50%,-50%); font:bold 28px system-ui; color:#fff0b3; text-shadow:2px 2px 0 #4b201e,-1px -1px 0 #4b201e,0 0 8px #ff873b; }
-.damage-float.player { color:#ff596b; font-size:32px; text-shadow:1px 2px 0 #fff,-1px -1px 0 #fff,0 0 10px #c51a31; }
+.damage-float { position:fixed; z-index:12; pointer-events:none; font:bold 28px system-ui; color:#fff0b3; -webkit-text-stroke:1.5px #4b201e; paint-order:stroke fill; animation:damage-rise 720ms ease-out both; }
+.damage-float.player { color:#ff596b; font-size:32px; -webkit-text-stroke-color:#fff; }
+#combat-floats.suspended .damage-float { animation-play-state:paused; }
+@keyframes damage-rise {
+  from { transform:translate(-50%,-50%); opacity:1; }
+  55% { opacity:1; }
+  to { transform:translate(-50%,calc(-50% - 44px)); opacity:0; }
+}

@@ -1937,13 +1937,27 @@ export class ForestScene {
       visible: point.z >= 0 && point.z <= 1};
   }
 
-  pickWolf(x: number, y: number) {
+  pickWolf(x: number, y: number, game: RunnerGame) {
     if (!this.wolves.size && !this.regionalCombatView?.size) return;
-    const hit = this.scene.pick(x, y, mesh => mesh.isPickable && mesh.isEnabled() &&
+    const hit = this.scene.pick(x, y, mesh => typeof mesh.metadata?.wolfId === "number" && mesh.isPickable && mesh.isEnabled() &&
       mesh.isVisible && mesh.visibility > 0.05 && (mesh.material?.alpha ?? 1) >= 0.98 &&
       !mesh.material?.needAlphaBlendingForMesh(mesh), false, this.camera);
     const id: unknown = hit.pickedMesh?.metadata?.wolfId;
-    return typeof id === "number" ? id : undefined;
+    const enemies=game.nightCombat.enemies.filter(e=>game.nightCombat.health(e)>0 &&
+      game.worldTime >= (e.enteredAt ?? game.nightCombat.hunt.enteredAt));
+    if(typeof id === "number" && enemies.some(e=>e.id===id))return id;
+    const rect=this.engine.getRenderingCanvas()!.getBoundingClientRect();
+    let selected: number|undefined, best=Infinity;
+    for(const enemy of enemies) {
+      const p=game.nightCombat.position(enemy,game);
+      const center=this.getCombatAnchor(p.x,p.y,p.z);
+      if(!center.visible)continue;
+      const edge=this.getCombatAnchor(p.x+0.8,p.y,p.z);
+      const radius=Math.max(28,Math.min(64,Math.abs(edge.x-center.x)));
+      const score=((x+rect.left-center.x)/radius)**2+((y+rect.top-center.y)/(radius*1.25))**2;
+      if(score<=1&&score<best){best=score;selected=enemy.id;}
+    }
+    return selected;
   }
 
   private createClawMaterial() {
@@ -2050,12 +2064,6 @@ export class ForestScene {
       model.animate(game.distance * 0.81 + wolf.id, pose.crouch, pose.leap, pose.bite,
         1 - smooth(sinceHit / 0.22), fallen);
       model.updateHealth(health, pose.leap, game.worldTime - (wolf.enteredAt ?? combat.hunt.enteredAt) > CONFIG.nightCombat.entrance * 0.8);
-      if (model.lastHitAt !== wolf.hitAt && game.mode === "running" && sinceHit >= 0 && sinceHit < 0.18) {
-        model.lastHitAt = wolf.hitAt;
-        const impact = new Vector3(pose.x, 0.86 + pose.leap, pose.z);
-        this.burst(impact, "#fff1b5", 8, 4.8, 0.22, 0.14, 4);
-        this.burst(impact, health > 0 ? "#ff8865" : "#ef5362", health > 0 ? 5 : 12, 5, 0.35, 0.22, 5);
-      }
     }
 
     this.updateWolfWarnings(game);
@@ -2063,7 +2071,8 @@ export class ForestScene {
       game.worldTime - combat.playerHitAt >= 0 && game.worldTime - combat.playerHitAt < 0.15) {
       this.lastWolfImpact = combat.playerHitAt;
       this.shake = Math.max(this.shake, 0.24);
-      this.burst(new Vector3(game.x, game.y + 0.95, 0), "#ff5969", 17, 6, 0.35, 0.23, 4);
+      if (combat.playerHitAt !== game.damagedAt)
+        this.burst(new Vector3(game.x, game.y + 0.95, 0), "#ff5969", 8, 6, 0.35, 0.23, 4);
     }
     const stones = game.mode !== "over" ? combat.stones : [];
     while (this.stones.length > stones.length) {

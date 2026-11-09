@@ -988,7 +988,7 @@ test("bomb requires a usable target and committed inventory, then rewind drops p
 });
 
 
-test("dive circles require lane or wall height changes and cancel on a lost surface", () => {
+test("dive circles require lane or wall height changes and miss on a lost surface", () => {
   for(const action of ["jump", "slide", "lane", "wallHeight", "surface"] as const) {
     const {game,enemy,combat} = regionalFixture("canyon"); game.health=1;
     const wall=action==="wallHeight";
@@ -1135,5 +1135,35 @@ test("yeti hands and held snowball share continuous roll lift and release target
     }
     assert.equal(yetiMotion(releaseTime(a)+.001,a).ball,undefined);
     if(kind==="snowball")assert.ok(yetiMotion(a.lockAt,a).ball![1]-yetiMotion(a.lockAt,a).radius>2.8);
+  }
+});
+
+
+test("a wall dive finishes its motion after leaving the wall without hitting the ground", () => {
+  const {game,enemy,combat}=regionalFixture("canyon");game.health=1;
+  game.wallSide=1;game.wallBlend=1;
+  const a={id:55,enemy:enemy.id,kind:"dive" as const,start:game.worldTime-0.9,lockAt:game.worldTime-0.9,
+    impactAt:game.worldTime+0.2,x:5.4,y:game.wallY+0.95,worldZ:game.distance,side:1,
+    fromX:3,fromY:4,fromZ:game.distance+8,spent:false,locked:true};
+  combat.region.state.attacks=[a];const before=combat.position(enemy,game);
+  game.wallSide=0;game.wallBlend=0;combat.update(game,0,()=>0.5,()=>false);
+  assert.equal(combat.region.state.attacks.length,1);
+  assert.deepEqual(combat.position(enemy,game),before);
+  game.worldTime=a.impactAt;combat.update(game,0.01,()=>0.5,()=>false);
+  assert.equal(game.health,1);assert.equal(combat.region.state.attacks[0].harmless,true);
+  game.worldTime=a.impactAt+0.61;combat.update(game,0.01,()=>0.5,()=>false);
+  assert.equal(combat.region.state.attacks.length,0);
+});
+
+test("cluster bomb pulses keep their release-time offset as the runner advances", () => {
+  const {game,enemy,combat}=regionalFixture("snow");
+  enemy.readyAt=Infinity;combat.region.state.nextPack=Infinity;
+  assert.equal(combat.throwBomb(game,()=>true),true);
+  const offset=combat.bombs[0].relativeZ,start=game.worldTime;
+  for(let pulse=0;pulse<3;pulse++) {
+    game.worldTime=start+CONFIG.bomb.flight+pulse*CONFIG.bomb.interval+0.001;
+    game.distance+=game.speed*0.3;combat.update(game,0.001,()=>0.5,()=>false);
+    assert.equal(combat.bombs[0].relativeZ,offset);
+    assert.equal(combat.health(enemy),4-pulse);
   }
 });

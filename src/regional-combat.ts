@@ -38,6 +38,7 @@ export interface RegionalAttack {
   locked: boolean;
   releaseAt?: number;
   launched?: boolean;
+  harmless?: boolean;
 }
 export interface Dropping {
   id: number;
@@ -171,14 +172,15 @@ export class RegionalCombat {
       }
       s.nextPack = time + (bat ? rules.batSpawnMin + random(pack, 206) * (rules.batSpawnMax - rules.batSpawnMin) : rules.yetiPackInterval);
     }
-    if (game.boosting) { s.attacks = []; s.droppings = []; return; }
+    if (game.boosting) { s.attacks = s.attacks.filter(a => a.kind === "dive"); s.droppings = []; }
     for(const a of s.attacks) if(a.kind==="charge"&&time>=a.impactAt+0.75) {
       const enemy=s.enemies.find(e=>e.id===a.enemy);
       if(enemy)enemy.homeX=-enemy.homeX;
     }
     s.attacks = s.attacks.filter(a => s.enemies.some(e => e.id === a.enemy && health(e) > 0) &&
-      time < a.impactAt + (a.kind === "charge" ? 0.75 : 0.6) && (a.side ? game.wallSide === a.side : !game.wallSide));
+      time < a.impactAt + (a.kind === "charge" ? 0.75 : 0.6) && (a.kind === "dive" || (a.side ? game.wallSide === a.side : !game.wallSide)));
     for (const a of s.attacks) {
+      if(a.kind === "dive" && (a.side !== game.wallSide || game.boosting)) a.harmless = true;
       if (!a.locked && time >= a.lockAt) {
         a.locked = true; a.x = game.wallSide ? game.wallSide * 5.4 : game.x;
         a.y = game.wallSide ? game.wallY + 0.95 : 0.95;
@@ -217,7 +219,7 @@ export class RegionalCombat {
       const hit = a.side ? Math.hypot((game.wallY + 0.95 - a.y) / rules.wallRadius, dz / rules.targetRadius) < 1 :
         a.kind === "small" ? Math.abs(game.x - a.x) < rules.smallHalfWidth && Math.abs(dz) < rules.impactDepth && !game.sliding :
         Math.hypot(game.x - a.x, dz) < rules.targetRadius;
-      if (hit && game.nightHit(a.kind === "small" ? "cold" : bat ? "bat" : "yeti"))
+      if (hit && !a.harmless && game.nightHit(a.kind === "small" ? "cold" : bat ? "bat" : "yeti"))
         game.nightCombat.playerHitAt = time;
     }
     s.droppings = s.droppings.filter(d => d.expires > time && d.worldZ > game.distance - 24);

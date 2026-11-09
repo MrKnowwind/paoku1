@@ -9,7 +9,6 @@ import { CONFIG } from "./config.ts";
 
 export class WolfModel {
   root: TransformNode;
-  lastHitAt = -Infinity;
   private healthBar: TransformNode;
   private healthPips: Mesh[] = [];
   private body: TransformNode;

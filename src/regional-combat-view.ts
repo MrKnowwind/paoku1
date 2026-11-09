@@ -102,10 +102,13 @@ export class RegionalCombatView {
         shard.rotation.set(i+p*4,i*0.7+p*3,p*2);shard.scaling.setAll((0.08+i%3*0.04)*(1-p));shard.visibility=1-p;
       }
     };
-    for (const hit of combat.damageEvents) {
+    let hitBursts = 0;
+    for (let i = combat.damageEvents.length - 1; i >= 0; i--) {
+      const hit = combat.damageEvents[i];
       const age=time-hit.at;
       if(age<0||age>0.3||game.mode==="rewinding")continue;
-      particles(`damage-${hit.id}`,hit.x,hit.y-0.35,hit.worldZ-game.distance,age,0.3,"#fff0ae",high?14:8,1.7);
+      if (hitBursts++ < (high ? 3 : 2))
+        particles(`damage-${hit.id}`,hit.x,hit.y-0.35,hit.worldZ-game.distance,age,0.3,"#fff0ae",6,1.7);
       const flash=effect(`impact-${hit.id}`,"ring","#ffbd52","shock");
       flash.position.set(hit.x,hit.y-0.35,hit.worldZ-game.distance);flash.rotation.x=Math.PI/2;
       flash.scaling.setAll(0.3+age*3);flash.visibility=1-age/0.3;
@@ -126,7 +129,7 @@ export class RegionalCombatView {
     const rules=CONFIG.regionalCombat;
     if(game.mode!=="over")for(const a of state.attacks) {
       const until=a.impactAt-time,locked=time>=a.lockAt,progress=clamp((time-a.lockAt)/(a.impactAt-a.lockAt));
-      if(locked&&until>=(a.kind==="charge"?-0.16:0)) {
+      if(!a.harmless&&locked&&until>=(a.kind==="charge"?-0.16:0)) {
         const strip=a.kind==="small"||a.kind==="charge",dropping=a.kind==="dropping",z=a.worldZ-game.distance;
         const area=effect(`warn-${a.id}`,strip?"strip":"ring","#ff4059",dropping?"shadow":strip?"strip":"danger");
         area.position.set(a.kind==="charge"?0:a.x,a.side?a.y:0.065,z);
@@ -202,7 +205,7 @@ export class RegionalCombatView {
       const elapsed=time-b.start,p=clamp(elapsed/CONFIG.bomb.flight);
       if(p<1) {
         const mesh=effect(`bomb-${b.id}`,"ball","#638337");mesh.scaling.setAll(0.48);
-        mesh.position.set(b.fromX+(b.x-b.fromX)*p,b.fromY+(b.y-b.fromY)*p+Math.sin(p*Math.PI)*2,b.fromZ+(b.worldZ-b.fromZ)*p-game.distance);
+        mesh.position.set(b.fromX+(b.x-b.fromX)*p,b.fromY+(b.y-b.fromY)*p+Math.sin(p*Math.PI)*2,(b.fromZ-game.distance)*(1-p)+b.relativeZ*p);
         const band=effect(`bomb-band-${b.id}`,"hoop","#d6ac48");band.position.copyFrom(mesh.position);band.scaling.setAll(0.47);
         const cap=effect(`bomb-cap-${b.id}`,"ball","#e2bb58");cap.position.copyFrom(mesh.position);cap.position.y+=0.23;cap.scaling.set(0.17,0.09,0.17);
         const fuse=effect(`bomb-fuse-${b.id}`,"ball","#f5deb0");fuse.position.copyFrom(cap.position);fuse.position.y+=0.08;fuse.scaling.set(0.04,0.13,0.04);fuse.rotation.z=-0.3;
@@ -212,9 +215,9 @@ export class RegionalCombatView {
         }
       } else {
         const age=(elapsed-CONFIG.bomb.flight)%CONFIG.bomb.interval,pulse=age/CONFIG.bomb.interval;
-        const ring=effect(`bomb-wave-${b.id}`,"ring","#ffcd67","shock");ring.position.set(b.x,b.y,b.worldZ-game.distance);
+        const ring=effect(`bomb-wave-${b.id}`,"ring","#ffcd67","shock");ring.position.set(b.x,b.y,b.relativeZ);
         ring.scaling.setAll(CONFIG.bomb.radius*(0.25+pulse*0.75));ring.visibility=1-pulse;
-        particles(`bomb-sparks-${b.id}`,b.x,b.y,b.worldZ-game.distance,age,CONFIG.bomb.interval,"#ffd392",16,CONFIG.bomb.radius);
+        particles(`bomb-sparks-${b.id}`,b.x,b.y,b.relativeZ,age,CONFIG.bomb.interval,"#ffd392",16,CONFIG.bomb.radius);
         const flash=effect(`bomb-flash-${b.id}`,"ball","#fff0be");flash.position.copyFrom(ring.position);
         flash.scaling.setAll(0.3+(1-pulse)*1.4);flash.visibility=(1-pulse)*0.55;
       }

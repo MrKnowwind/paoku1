@@ -56,7 +56,7 @@ export class NightCombat {
   readonly weapon: WeaponId;
   ammo: number;
   region = new RegionalCombat();
-  bombs: {id: number; start: number; x: number; y: number; worldZ: number; fromX: number; fromY: number; fromZ: number; pulses: number}[] = [];
+  bombs: {id: number; start: number; x: number; y: number; relativeZ: number; fromX: number; fromY: number; fromZ: number; pulses: number}[] = [];
   bombCooldown = 0;
   private bombSerial = 0;
   cooldown = 0;
@@ -201,15 +201,15 @@ export class NightCombat {
     const targets = this.enemies.filter(e => this.health(e) > 0).map(e => {
       const future = {worldTime: game.worldTime + CONFIG.bomb.flight, distance: game.distance + game.speed * CONFIG.bomb.flight};
       const p = this.position(e, {...game, ...future} as RunnerGame);
-      return {id: e.id, x: p.x, y: p.y, worldZ: future.distance + p.z};
+      return {id: e.id, x: p.x, y: p.y, z: p.z};
     });
-    const density = (p: typeof targets[number]) => targets.filter(q => Math.hypot(p.x - q.x, p.y - q.y, p.worldZ - q.worldZ) <= CONFIG.bomb.radius).length;
+    const density = (p: typeof targets[number]) => targets.filter(q => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) <= CONFIG.bomb.radius).length;
     targets.sort((a, b) => density(b) - density(a) ||
-      Math.hypot(a.x - game.x, a.y - game.y, a.worldZ - game.distance) -
-      Math.hypot(b.x - game.x, b.y - game.y, b.worldZ - game.distance) || a.id - b.id);
+      Math.hypot(a.x - game.x, a.y - game.y, a.z) -
+      Math.hypot(b.x - game.x, b.y - game.y, b.z) || a.id - b.id);
     if (!consume()) return false;
     const target = targets[0];
-    this.bombs.push({id: ++this.bombSerial, start: game.worldTime, x: target.x, y: target.y, worldZ: target.worldZ,
+    this.bombs.push({id: ++this.bombSerial, start: game.worldTime, x: target.x, y: target.y, relativeZ: target.z,
       fromX: game.wallSide ? game.wallSide * 5.4 : game.x, fromY: game.wallSide ? game.wallY + 1.3 : game.y + 1.3,
       fromZ: game.distance, pulses: 0});
     this.bombCooldown = CONFIG.bomb.cooldown;
@@ -231,11 +231,12 @@ export class NightCombat {
       return true;
     });
     for (const bomb of this.bombs) {
+      // Keep the release-time offset along the moving runner, without retargeting enemies.
       while (bomb.pulses < CONFIG.bomb.pulses && time >= bomb.start + CONFIG.bomb.flight + bomb.pulses * CONFIG.bomb.interval) {
         bomb.pulses++;
         for (const e of this.enemies) {
           const p = this.position(e, game);
-          if (Math.hypot(p.x - bomb.x, p.y - bomb.y, p.z + game.distance - bomb.worldZ) <= CONFIG.bomb.radius)
+          if (Math.hypot(p.x - bomb.x, p.y - bomb.y, p.z - bomb.relativeZ) <= CONFIG.bomb.radius)
             this.hurt(e, 1, time, game);
         }
       }

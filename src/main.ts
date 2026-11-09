@@ -112,8 +112,9 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <div class="ammo-slots"></div>
   </aside>
   <div id="player-health" class="player-health" hidden aria-hidden="true">
-    <svg class="player-portrait" viewBox="0 0 48 48"><g stroke="#253029" stroke-width="2.5" stroke-linejoin="round"><path fill="#425e4b" d="M6 46v-7q18-15 36 0v7Z"/><path fill="#e4b582" d="M13 18h22v11q-2 12-11 12T13 29Z"/><path fill="#63533a" d="m9 18 4-13h22l4 13Z"/><path fill="#8c794b" d="M4 17h40v6H4Z"/><path fill="#d2ad58" d="M13 12h22v5H13Z"/><path d="M18 28h1m10 0h1m-10 7h8" stroke-linecap="round"/></g></svg>
-    <span class="player-hearts"><i>♥</i><i>♥</i><i>♥</i></span>
+    ${icon("runner-portrait", "player-portrait")}
+    <span class="player-hearts">${Array.from({length:3}, () =>
+      `<i>${icon("heart-full", "filled-heart")}${icon("heart-empty", "empty-heart")}</i>`).join("")}</span>
   </div>
   <div id="combat-floats" aria-hidden="true"></div>
   <div id="ammo-pickup" class="ammo-pickup" hidden aria-hidden="true"></div>
@@ -208,7 +209,8 @@ const ammoSlots = nightHud.querySelector<HTMLElement>(".ammo-slots")!;
 const playerHealth = document.querySelector<HTMLElement>("#player-health")!;
 const hearts = Array.from(playerHealth.querySelectorAll("i"));
 let shownHealth = -1;
-const floatNodes = new Map<string, HTMLElement>();
+let shownEnemyHit = 0;
+let shownPlayerHit = 0;
 const combatFloats = document.querySelector<HTMLElement>("#combat-floats")!;
 const ammoPopup = document.querySelector<HTMLElement>("#ammo-pickup")!;
 let ammoPopupAt = -Infinity;
@@ -378,6 +380,8 @@ function start() {
   game.nextWeapon = economy.state.equipped;
   game.begin(startAtNight);
   ammoPopupAt = -Infinity;
+  shownEnemyHit = 0;
+  combatFloats.replaceChildren();
   // Commit the directed exit now; visuals still load only near that section.
   game.track.at(CONFIG.forestLength);
   tutorial.resetRun(game);
@@ -556,8 +560,9 @@ function updateNightUi() {
   clockDot.setAttribute("transform", `rotate(${360 * dayTime(time) / DAY_LENGTH} 24 24)`);
   nightHud.hidden = !game.nightGearActive || game.mode === "over" || game.introducing || !!tutorial.guide;
   const age = game.worldTime - ammoPopupAt;
-  const anchor = world?.getPlayerAnchor();
-  ammoPopup.hidden = age < 0 || age >= 1.1 || !anchor?.visible || game.mode !== "running" || !!tutorial.guide;
+  const showingAmmo = age >= 0 && age < 1.1 && game.mode === "running" && !tutorial.guide;
+  const anchor = showingAmmo ? world?.getPlayerAnchor() : undefined;
+  ammoPopup.hidden = !anchor?.visible;
   if (!ammoPopup.hidden && anchor) {
     ammoPopup.style.left = `${anchor.x}px`;
     ammoPopup.style.top = `${anchor.y - age * 30}px`;
@@ -568,28 +573,7 @@ function updateNightUi() {
     shownHealth = game.health;
     hearts.forEach((heart,i)=>heart.classList.toggle("full",i<game.health));
   }
-  const activeFloats = new Set<string>();
-  const addFloat = (id:string,x:number,y:number,label:string,age:number,kind:string) => {
-    activeFloats.add(id);
-    let node=floatNodes.get(id);
-    if(!node) {
-      node=document.createElement("b");node.className=`damage-float ${kind}`;node.textContent=label;
-      combatFloats.append(node);floatNodes.set(id,node);
-    }
-    node.style.transform=`translate(${x}px,${y-age*55}px) translate(-50%,-50%)`;
-    node.style.opacity=String(Math.min(1,(1-age)*3));
-  };
-  if (!tutorial.guide && game.mode !== "rewinding") {
-    for (const e of game.nightCombat.damageEvents) {
-      const age=game.worldTime-e.at;
-      if(age<0||age>=1)continue;
-      const p=world?.getCombatAnchor(e.x,e.y,e.worldZ-game.distance);
-      if(p?.visible)addFloat(`enemy-${e.id}`,p.x,p.y,`−${e.amount}`,age,"enemy");
-    }
-    const age=game.worldTime-game.damagedAt;
-    if(anchor?.visible && age>=0 && age<1)addFloat(`player-${game.damageSerial}`,anchor.x,anchor.y-20,"−1",age,"player");
-  }
-  for(const [id,node] of floatNodes)if(!activeFloats.has(id)){node.remove();floatNodes.delete(id);}
+  updateDamageFloats();
   if (nightHud.hidden) return;
   const combat = game.nightCombat;
   if (nightHud.dataset.weapon !== combat.weapon) {
@@ -604,6 +588,35 @@ function updateNightUi() {
   shotMeter.style.transform = `scaleX(${1 - combat.cooldown / combat.weaponRules.cooldown})`;
   nightHud.classList.toggle("empty", combat.ammo === 0);
 
+}
+function updateDamageFloats() {
+  const suspended = !!tutorial.guide || game.mode === "paused";
+  combatFloats.classList.toggle("suspended", suspended);
+  if (game.mode === "rewinding" || game.mode === "ready") {
+    if (combatFloats.firstChild) combatFloats.replaceChildren();
+    return;
+  }
+  if (suspended) return;
+  const addFloat = (x: number, y: number, label: string, kind: string) => {
+    const node = document.createElement("b");
+    node.className = `damage-float ${kind}`;
+    node.textContent = label;
+    node.style.left = `${x}px`;
+    node.style.top = `${y}px`;
+    node.addEventListener("animationend", () => node.remove(), {once: true});
+    combatFloats.append(node);
+  };
+  for (const hit of game.nightCombat.damageEvents) {
+    if (hit.id <= shownEnemyHit) continue;
+    shownEnemyHit = hit.id;
+    const anchor = world?.getCombatAnchor(hit.x, hit.y, hit.worldZ - game.distance);
+    if (anchor?.visible) addFloat(anchor.x, anchor.y, `−${hit.amount}`, "enemy");
+  }
+  if (shownPlayerHit !== game.damageSerial) {
+    shownPlayerHit = game.damageSerial;
+    const anchor = world?.getPlayerAnchor();
+    if (anchor?.visible && game.worldTime - game.damagedAt < 0.5) addFloat(anchor.x, anchor.y - 20, "−1", "player");
+  }
 }
 function updateFeatureUi() {
   const state = economy.state;
@@ -1014,7 +1027,7 @@ window.addEventListener("pointerup", (event) => {
   if (!tap || activeDialog || tutorial.active || game.mode !== "running" || game.nightCombat.remaining === 0 ||
     game.boosting || game.icy || document.elementFromPoint(event.clientX, event.clientY) !== worldCanvas) return;
   const canvas = worldCanvas.getBoundingClientRect();
-  const id = world?.pickWolf(event.clientX - canvas.left, event.clientY - canvas.top);
+  const id = world?.pickWolf(event.clientX - canvas.left, event.clientY - canvas.top, game);
   if (id !== undefined && game.nightCombat.fire(id, game)) beep("shot");
 });
 window.addEventListener("pointercancel", (event) => {
