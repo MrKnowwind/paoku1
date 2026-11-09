@@ -219,8 +219,9 @@ export class RegionalCombat {
       const hit = a.side ? Math.hypot((game.wallY + 0.95 - a.y) / rules.wallRadius, dz / rules.targetRadius) < 1 :
         a.kind === "small" ? Math.abs(game.x - a.x) < rules.smallHalfWidth && Math.abs(dz) < rules.impactDepth && !game.sliding :
         Math.hypot(game.x - a.x, dz) < rules.targetRadius;
-      if (hit && !a.harmless && game.nightHit(a.kind === "small" ? "cold" : bat ? "bat" : "yeti"))
-        game.nightCombat.playerHitAt = time;
+      if (!hit || a.harmless) continue;
+      if (a.kind === "small" || a.kind === "snowball") game.nightHit(a.kind === "small" ? "cold" : "snowball");
+      else if (game.nightHit("bat")) game.nightCombat.playerHitAt = time;
     }
     s.droppings = s.droppings.filter(d => d.expires > time && d.worldZ > game.distance - 24);
     for (const d of s.droppings)

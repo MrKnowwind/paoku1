@@ -959,12 +959,19 @@ test("dropping slips once and cannot extend an existing slip or consume shields"
   game.update(0.01); assert.ok(game.iceRemaining > 0, "canyon keeps the sliding state");
 });
 
-test("small snowballs add cold once and a shield absorbs them without cold", () => {
-  const {game} = regionalFixture("snow");
-  game.shield = true; assert.equal(game.nightHit("cold"), true);
-  assert.equal(game.cold, 0); assert.equal(game.shield, false);
-  game.protectionTime = 0; game.nightHit("cold"); assert.equal(game.cold, 15);
-  assert.equal(game.nightHit("cold"), false); assert.equal(game.cold, 15);
+test("both snowball sizes add only cold and a shield absorbs the hit", () => {
+  for (const [kind, amount] of [["cold", CONFIG.regionalCombat.smallCold], ["snowball", CONFIG.regionalCombat.snowballCold]] as const) {
+    const {game} = regionalFixture("snow");
+    game.shield = true;
+    assert.equal(game.nightHit(kind), true);
+    assert.equal(game.cold, 0);
+    assert.equal(game.shield, false);
+    game.protectionTime = 0;
+    assert.equal(game.nightHit(kind), true);
+    assert.equal(game.cold, amount);
+    assert.equal(game.health, 3);
+    assert.equal(game.nightHit(kind), false);
+  }
 });
 
 test("bomb requires a usable target and committed inventory, then rewind drops pending pulses", () => {
@@ -1006,17 +1013,18 @@ test("dive circles require lane or wall height changes and miss on a lost surfac
   }
 });
 
-test("small snowballs respect sliding and lane changes but do not grant jump immunity", () => {
-  for(const action of ["slide","lane","jump"] as const) {
+test("sliding evades small snowballs, changing lanes evades either size, and hits only chill", () => {
+  for (const [kind, action, cold] of [["small","slide",0],["small","lane",0],["small","jump",15],["snowball","lane",0],["snowball","slide",25]] as const) {
     const {game,enemy,combat} = regionalFixture("snow");
-    combat.region.state.attacks.push({id:2000000001,enemy:enemy.id,kind:"small",start:game.worldTime-1.2,
+    combat.region.state.attacks.push({id:2000000001,enemy:enemy.id,kind,start:game.worldTime-1.2,
       lockAt:game.worldTime-1.2,impactAt:game.worldTime,x:0,y:0.95,worldZ:game.distance,side:0,
       fromX:3,fromY:1.25,fromZ:game.distance+8,spent:false,locked:true});
     if(action==="slide")game.slideTime=0.7;
     if(action==="lane")game.x=2.5;
     if(action==="jump")game.y=2;
     combat.update(game,0.01,()=>0.5,()=>false);combat.update(game,0.01,()=>0.5,()=>false);
-    assert.equal(game.cold,action==="jump"?15:0);
+    assert.equal(game.cold,cold);
+    assert.equal(game.health,3);
   }
 });
 

@@ -124,6 +124,14 @@ export class RunnerGame {
   track = new TrackPlan();
   nextTerrain: CoreBiome | null = null;
   cold = 0;
+  private snowballGraceUntil = 0;
+  private burnDamageAt = 0;
+  private lastIgnitingFire: number | undefined;
+  fireQteAt = 0;
+  fireQteHits = 0;
+  extinguishTime = 0;
+  get burning() { return this.burnDamageAt > 0; }
+  get fireQteReady() { return this.mode === "running" && this.burning && this.worldTime >= this.fireQteAt; }
   coldGrace = 0;
   coldDelta = 0;
   coldFeedback = 0;
@@ -333,7 +341,9 @@ export class RunnerGame {
     this.shattered = [];
     this.seed = 1 + Math.floor(this.random() * 2147483646);
     this.track = new TrackPlan(this.seed, this.nextTerrain);
-    this.cold = this.coldGrace = this.coldFeedback = this.coldDelta = 0;
+    this.cold = this.coldGrace = this.coldFeedback = this.coldDelta = this.snowballGraceUntil = 0;
+    this.clearBurn();
+    this.lastIgnitingFire = undefined;
     this.iceRemaining = this.iceRecover = this.iceX = this.drinkTime = 0;
     this.triggeredIce.clear(); this.firePasses.clear(); this.warmedFires.clear(); this.generatedSnow.clear();
     this.nextRow = this.nextLandRow = 65;
@@ -654,12 +664,30 @@ export class RunnerGame {
     this.cold = this.health > 0 ? CONFIG.coldMax * 0.6 : CONFIG.coldMax;
     if (this.health === 0) this.lastHit = "cold";
   }
-  nightHit(kind: "bat" | "yeti" | "cold") {
+  nightHit(kind: "bat" | "yeti" | "cold" | "snowball") {
     if (this.mode !== "running" || this.protectionTime > 0 || this.boosting) return false;
-    if (kind !== "cold" || this.shield) return this.collide(kind === "cold" ? "yeti" : kind);
-    this.collide("yeti");
-    this.changeCold(CONFIG.regionalCombat.smallCold);
+    if (kind === "bat" || kind === "yeti") return this.collide(kind);
+    if (this.worldTime < this.snowballGraceUntil) return false;
+    if (this.shield) return this.collide("yeti");
+    this.changeCold(kind === "cold" ? CONFIG.regionalCombat.smallCold : CONFIG.regionalCombat.snowballCold);
+    this.snowballGraceUntil = this.worldTime + 0.35;
+    this.snowHitX = this.x;
+    this.snowHitSerial++;
     if (this.cold >= CONFIG.coldMax) this.frostDamage();
+    return true;
+  }
+  private clearBurn() {
+    this.burnDamageAt = this.fireQteAt = this.fireQteHits = this.extinguishTime = 0;
+  }
+  private extinguish() {
+    if (!this.burning) return;
+    this.clearBurn();
+    this.extinguishTime = CONFIG.burn.extinguishDuration;
+  }
+  tapExtinguish() {
+    if (!this.fireQteReady) return false;
+    if (++this.fireQteHits >= CONFIG.burn.qteHits) this.extinguish();
+    else this.fireQteAt = this.worldTime + CONFIG.burn.qteDelay;
     return true;
   }
   private snowCollision(item: TrackItem, flying: boolean, travel: number) {
@@ -679,7 +707,14 @@ export class RunnerGame {
       }
     } else if (item.type === "fire") {
       if (lane && Math.abs(item.z) < 0.9 && this.y < CONFIG.fireHeight) {
-        this.collide(item);
+        if (this.lastIgnitingFire !== item.id) {
+          this.lastIgnitingFire = item.id;
+          if (!this.burning) {
+            this.extinguishTime = 0;
+            this.burnDamageAt = this.worldTime + CONFIG.burn.damageInterval;
+            this.fireQteAt = this.worldTime + CONFIG.burn.qteDelay;
+          }
+        }
       } else if (crossed && lane && this.y >= CONFIG.fireHeight && !this.icy) {
         this.firePasses.add(item.id);
       }
@@ -697,6 +732,7 @@ export class RunnerGame {
     } else if (lane && Math.abs(item.z) < 0.8 && this.y < (item.type === "snowman" ? 1.7 : 0.65)) {
       this.cleared.add(item.id); this.changeCold(item.type === "snowman" ? CONFIG.snowmanCold : CONFIG.snowdriftCold);
       this.snowHitX = item.lane * 2.5; this.snowHitSerial++;
+      this.extinguish();
     }
   }
   // Fixed hazards stay out of the safe column. Schools leave its escape height open.
@@ -864,17 +900,20 @@ export class RunnerGame {
       if (typeof hit !== "string") this.cleared.add(hit.id);
       this.shieldBreakSerial++;
     } else {
-      this.health = Math.max(0, this.health - 1);
-      this.damageSerial++;
-      this.damagedAt = this.worldTime;
+      this.loseHealth(typeof hit === "string" ? hit : hit.type);
       this.protectionTime = 1.1;
       if (typeof hit !== "string") this.cleared.add(hit.id);
-      if (this.health === 0) {
-        this.mode = "over";
-        this.lastHit = typeof hit === "string" ? hit : hit.type;
-      }
     }
     return true;
+  }
+  private loseHealth(cause: NonNullable<RunnerGame["lastHit"]>) {
+    this.health = Math.max(0, this.health - 1);
+    this.damageSerial++;
+    this.damagedAt = this.worldTime;
+    if (this.health === 0) {
+      this.mode = "over";
+      this.lastHit = cause;
+    }
   }
   private safeLanding() {
     if (this.transitioning) return false;
@@ -965,6 +1004,9 @@ export class RunnerGame {
     this.rewindFromTime = this.runClock;
     this.history.push(this.snapshot());
     this.nightCombat.clearShots();
+    this.clearBurn();
+    this.snowballGraceUntil = 0;
+    this.lastIgnitingFire = undefined;
     this.mode = "rewinding";
     return true;
   }
@@ -1083,12 +1125,15 @@ export class RunnerGame {
       this.coldGrace = Math.max(0, this.coldGrace - step);
       this.coldFeedback = Math.max(0, this.coldFeedback - step);
       this.drinkTime = Math.max(0, this.drinkTime - step);
+      this.extinguishTime = Math.max(0, this.extinguishTime - step);
       if (this.iceRemaining > 0) {
         this.iceRemaining = Math.max(0, this.iceRemaining - travel);
         if (this.iceRemaining === 0) this.iceRecover = CONFIG.iceRecovery;
       } else this.iceRecover = Math.max(0, this.iceRecover - step);
       if (!this.inSnow && this.terrain.biome !== "canyon") this.iceRemaining = this.iceRecover = 0;
-      if (this.inSnow && !flying && this.coldGrace === 0) this.cold += step * CONFIG.coldRate * (this.blizzard > 0 ? CONFIG.blizzardColdMultiplier : 1);
+      if (this.inSnow && !flying && this.coldGrace === 0)
+        this.cold += step * CONFIG.coldRate * (this.blizzard > 0 ? CONFIG.blizzardColdMultiplier : 1) *
+          (this.burning ? CONFIG.burn.coldMultiplier : 1);
       if (!wasSwimming && this.swimming) {
         this.waterLevel = 1; this.waterY = CONFIG.waterHeights[1]; this.lane = 0;
         this.y = this.velocity = this.slideTime = 0; this.fastFalling = false;
@@ -1228,6 +1273,10 @@ export class RunnerGame {
             (item.type === "arch" && !this.sliding))
         )
           this.collide(item);
+      }
+      if (this.mode === "running" && this.burning && this.worldTime >= this.burnDamageAt) {
+        this.burnDamageAt += CONFIG.burn.damageInterval;
+        this.loseHealth("fire");
       }
       if (this.mode === "running" && this.inSnow && this.cold >= CONFIG.coldMax) {
         this.frostDamage();

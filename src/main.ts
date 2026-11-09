@@ -117,6 +117,10 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       `<i>${icon("heart-full", "filled-heart")}${icon("heart-empty", "empty-heart")}</i>`).join("")}</span>
   </div>
   <div id="combat-floats" aria-hidden="true"></div>
+  <button type="button" id="fire-qte" class="fire-qte" data-action="extinguish" data-label="extinguish" hidden>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C9 7 5 11 5 15a7 7 0 0 0 14 0c0-4-4-8-7-13Z"/><path d="M8.5 15.5a3.5 3.5 0 0 0 3.5 3"/></svg>
+    <span aria-hidden="true"><i></i><i></i><i></i></span>
+  </button>
   <canvas id="snow-weather" aria-hidden="true" hidden></canvas>
   <section id="cold-hud" class="cold-hud" hidden role="meter" aria-valuemin="0" aria-valuemax="${CONFIG.coldMax}">
     <svg class="cold-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M3.34 7l17.32 10M3.34 17 20.66 7M9 5l3 3 3-3M9 19l3-3 3 3M4.44 11l4.09-1.1-1.1-4.1M19.56 13l-4.09 1.1 1.1 4.1M7.43 18.2l1.1-4.1-4.09-1.1M16.57 5.8l-1.1 4.1 4.09 1.1"/></svg>
@@ -211,6 +215,10 @@ let shownHealth = -1;
 let shownEnemyHit = 0;
 let shownPlayerHit = 0;
 const combatFloats = document.querySelector<HTMLElement>("#combat-floats")!;
+const fireQte = document.querySelector<HTMLButtonElement>("#fire-qte")!;
+let fireQteAt = -1;
+let fireQteX = 0;
+let fireQteY = 0;
 const shotMeter = nightHud.querySelector<HTMLElement>(".shot-meter i")!;
 
 function beep(kind: Sound) {
@@ -377,6 +385,7 @@ function start() {
   game.nextWeapon = economy.state.equipped;
   game.begin(startAtNight);
   shownEnemyHit = 0;
+  fireQteAt = -1;
   combatFloats.replaceChildren();
   // Commit the directed exit now; visuals still load only near that section.
   game.track.at(CONFIG.forestLength);
@@ -612,6 +621,24 @@ function updateDamageFloats() {
     if (game.worldTime - game.damagedAt < 0.5) showCombatFloat(anchor, "−1", "player");
   }
 }
+function updateFireQte() {
+  if (!game.fireQteReady || tutorial.guide || activeDialog) {
+    fireQte.hidden = true;
+    return;
+  }
+  const anchor = world?.getPlayerAnchor();
+  fireQte.hidden = !anchor?.visible;
+  if (!anchor?.visible) return;
+  if (fireQteAt !== game.fireQteAt) {
+    fireQteAt = game.fireQteAt;
+    fireQteX = (Math.random() < 0.5 ? -1 : 1) * (66 + Math.random() * 24);
+    fireQteY = 14 + Math.random() * 58;
+    fireQte.dataset.hits = String(game.fireQteHits);
+  }
+  const x = Math.max(36, Math.min(innerWidth - 36, anchor.x + fireQteX));
+  const y = Math.max(76, Math.min(innerHeight - 100, anchor.y + fireQteY));
+  fireQte.style.transform = `translate3d(${x - 27}px, ${y - 27}px, 0)`;
+}
 function updateFeatureUi() {
   const state = economy.state;
   const wallet = n(state.wallet);
@@ -649,8 +676,13 @@ function updateFeatureUi() {
   bombButton.disabled = state.bombs <= 0 || !!activeDialog || !!tutorial.active || !game.nightCombat.canBomb(game);
   setText(document.querySelector("#bomb-status")!, game.nightCombat.bombCooldown > 0 ? `${Math.ceil(game.nightCombat.bombCooldown)}s` : `×${n(state.bombs)}`);
   updateNightUi();
+  updateFireQte();
 }
 function act(action: string) {
+  if (action === "extinguish") {
+    if (!activeDialog && !tutorial.guide && game.tapExtinguish()) fireQte.hidden = true;
+    return;
+  }
   if (tutorial.guide && !activeDialog) { guideAction(action); return; }
   if (action === "terrain-override") {
     terrainOverride = !terrainOverride; save("terrain-override", String(terrainOverride)); renderDialog(); return;

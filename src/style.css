@@ -2010,3 +2010,10 @@ html[lang="ko-KR"] .intro h1 {
   55% { opacity:1; }
   to { transform:translate(-50%,calc(-50% - 44px)); opacity:0; }
 }
+
+.fire-qte { position:fixed; left:0; top:0; width:54px; height:54px; z-index:15; display:grid; place-content:center; justify-items:center; gap:3px; padding:0; border:2px solid #f1f8ffd9; border-radius:50%; color:#e9f8ff; background:#255d79a8; box-shadow:0 0 0 1px #182b38; touch-action:manipulation; }
+.fire-qte[hidden] { display:none; }
+.fire-qte svg { width:25px; height:25px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.fire-qte span { display:flex; gap:3px; }
+.fire-qte i { width:5px; height:5px; border:1px solid currentColor; border-radius:50%; }
+.fire-qte[data-hits="1"] i:first-child, .fire-qte[data-hits="2"] i:nth-child(-n+2) { background:currentColor; }

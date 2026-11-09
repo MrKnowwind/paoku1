@@ -86,26 +86,65 @@ test("cold freezes during pause and teaching, warms before the cap check, and cl
   game.start(); game.distance = 1259.99; game.cold = 80; game.update(0.01); assert.equal(game.cold, 0);
 });
 
-test("soft snow is a one-time cold penalty; shields only block physical snow obstacles", () => {
+test("high and low snow piles add cold once, put out fire and spare health and shields", () => {
   for (const [type, amount] of [["snowdrift", CONFIG.snowdriftCold], ["snowman", CONFIG.snowmanCold]] as const) {
-    const game = snowGame(); game.shield = true; game.protectionTime = 5; game.addItem(type, 0, 0);
-    game.update(0.02); assert.equal(game.mode, "running"); assert.ok(game.cold >= amount && game.cold < amount + 0.1); assert.equal(game.shield, true);
-    game.update(0.05); assert.ok(game.cold < amount + 0.2);
-  }
-  for (const type of ["pool", "fire"] as const) {
-    const game = snowGame(); game.shield = true; game.protectionTime = 5; game.addItem(type, 0, 0);
+    const game = snowGame();
+    game.shield = true;
+    game.addItem("fire", 0, 0);
     game.update(0.01);
-    if(type === "pool") { assert.equal(game.lastHit, type); assert.equal(game.health,0); }
-    else { assert.equal(game.mode,"running"); assert.equal(game.health,3); }
+    assert.equal(game.burning, true);
+    game.addItem(type, 0, 0);
+    game.update(0.02);
+    assert.equal(game.burning, false);
+    assert.equal(game.health, 3);
+    assert.equal(game.shield, true);
+    assert.ok(game.cold >= amount && game.cold < amount + 0.1);
+    game.update(0.05);
+    assert.equal(game.burning, false);
+    assert.ok(game.cold < amount + 0.3);
   }
-  {
-    const game=snowGame();game.addItem("fire",0,0);game.update(0.01);
-    assert.equal(game.health,2);assert.equal(game.mode,"running");
-  }
+  const pool = snowGame();
+  pool.shield = true;
+  pool.addItem("pool", 0, 0);
+  pool.update(0.01);
+  assert.equal(pool.lastHit, "pool");
+  assert.equal(pool.health, 0);
   for (const type of ["stump", "snow-log"] as const) {
     const game = snowGame(); game.shield = true; game.addItem(type, 0, 0); game.update(0.01);
     assert.equal(game.mode, "running"); assert.equal(game.shield, false);
   }
+});
+
+test("fire halves blizzard cold, ticks health every ten running seconds, and needs three QTE hits", () => {
+  const game = snowGame();
+  const start = game.terrain.start;
+  const blizzardDistance = Array.from({length: 450}, (_, i) => start + i).find(distance => {
+    game.distance = distance;
+    return game.blizzard === 1;
+  });
+  assert.notEqual(blizzardDistance, undefined);
+  game.addItem("fire", 0, 0);
+  game.update(0.01);
+  assert.equal(game.health, 3);
+  const before = game.cold;
+  game.update(0.4);
+  assert.ok(Math.abs(game.cold - before - CONFIG.coldRate * CONFIG.blizzardColdMultiplier * 0.5 * 0.4) < 0.001);
+  game.pause(); game.update(12); game.resume();
+  game.update(9.4);
+  assert.equal(game.health, 3);
+  game.shield = true;
+  game.update(0.3);
+  assert.equal(game.health, 2);
+  assert.equal(game.shield, true);
+  game.update(10);
+  assert.equal(game.health, 1);
+  for (let tap = 0; tap < 3; tap++) {
+    assert.equal(game.tapExtinguish(), true);
+    assert.equal(game.tapExtinguish(), false);
+    if (tap < 2) { assert.equal(game.burning, true); game.update(0.8); }
+  }
+  assert.equal(game.burning, false);
+  assert.ok(game.extinguishTime > 0);
 });
 
 test("ice freezes lateral motion and all active controls for exactly one controlled slide", () => {

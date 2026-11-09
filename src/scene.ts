@@ -102,6 +102,7 @@ export class ForestScene {
   private arms: Limb[] = [];
   private contact!: Mesh;
   private shock!: Mesh;
+  private burnFlames: Mesh[] = [];
   private shockLife = 0;
   private motion = new RunnerMotion();
   private chunks: TransformNode[] = [];
@@ -1607,7 +1608,41 @@ export class ForestScene {
     this.engine.setHardwareScalingLevel(this.high ? highScale : Math.max(pixelLimit, 1.25));
   }
 
+  private updateBurnPose(game: RunnerGame) {
+    const burning = game.burning && game.mode !== "ready" && !game.introducing;
+    for (let i = 0; i < this.burnFlames.length; i++) {
+      const flame = this.burnFlames[i];
+      const enabled = burning && (this.high || i < 2);
+      flame.setEnabled(enabled);
+      if (!enabled) continue;
+      const phase = game.worldTime * 18 + i * 2.1;
+      flame.scaling.y = 0.88 + Math.sin(phase) * 0.22;
+      flame.rotation.z = Math.cos(phase) * 0.24;
+    }
+    if (game.extinguishTime <= 0 || game.mode === "over") return;
+    const progress = 1 - game.extinguishTime / CONFIG.burn.extinguishDuration;
+    const weight = Math.sin(progress * Math.PI);
+    this.torso.rotation.x += weight * 0.16;
+    for (const arm of this.arms) {
+      const pat = 0.5 + Math.sin(progress * Math.PI * 6 + (arm.side > 0 ? Math.PI : 0)) * 0.5;
+      arm.upper.rotation.x += (-0.95 - arm.upper.rotation.x) * weight;
+      arm.upper.rotation.z += (arm.side * (0.48 - 0.43 * pat) - arm.upper.rotation.z) * weight;
+      arm.lower.rotation.x += ((-0.75 - 0.78 * pat) - arm.lower.rotation.x) * weight;
+    }
+  }
+
   private createRunEffects() {
+    const profile = [new Vector3(0,0,0),new Vector3(0.13,0.08,0),new Vector3(0.15,0.21,0),
+      new Vector3(0.08,0.43,0),new Vector3(0,0.72,0)];
+    for (let i = 0; i < 3; i++) {
+      const flame = CreateLathe("runner-burn", {shape: profile, tessellation: 8}, this.scene);
+      flame.parent = this.torso;
+      flame.position.set((i - 1) * 0.28, 0.18 + i % 2 * 0.2, i === 1 ? -0.33 : 0.03);
+      flame.material = this.mat(i === 1 ? "#ffca59" : "#ff7136", true);
+      flame.isPickable = false;
+      flame.setEnabled(false);
+      this.burnFlames.push(flame);
+    }
     this.shieldAura = new TransformNode("orbiting-shields", this.scene);
     this.shieldAura.parent = this.runner;
     this.shieldAura.position.y = 1.15;
@@ -2505,6 +2540,7 @@ export class ForestScene {
     }
     this.snowPose(game);
     this.updateNightCombat(game);
+    this.updateBurnPose(game);
     const impactDistance = CONFIG.iceDistance - ICE_IMPACT_METRES;
     if (running && game.iceRemaining > 0 && this.lastIceRemaining > impactDistance && game.iceRemaining <= impactDistance)
       this.burst(new Vector3(game.x, 0.17, -0.2), "#e4f4ff", this.high ? 24 : 12, 3.1, 0.48, 0.18, 2);

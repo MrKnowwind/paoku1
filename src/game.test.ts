@@ -334,7 +334,7 @@ test("three hearts absorb ordinary damage with grace, shields take priority, and
   assert.equal(game.nightHit("bat"),true);assert.equal(game.health,2);assert.equal(game.mode,"running");
   assert.equal(game.nightHit("bat"),false);assert.equal(game.health,2);
   game.protectionTime=0;game.shield=true;game.nightHit("yeti");assert.equal(game.health,2);
-  game.protectionTime=0;game.nightHit("cold");assert.equal(game.health,1);assert.equal(game.cold,15);
+  game.protectionTime=0;game.nightHit("yeti");assert.equal(game.health,1);
   game.protectionTime=0;game.nightHit("bat");assert.equal(game.health,0);assert.equal(game.mode,"over");
   game.start();assert.equal(game.health,3);
 });
