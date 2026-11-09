@@ -77,11 +77,15 @@ export class NightCombat {
   }
   get weaponRules() { return CONFIG.weapons[this.weapon]; }
   get enemies(): (Wolf | RegionalEnemy)[] { return [...this.hunt.wolves, ...this.region.state.enemies]; }
-  hurt(enemy: Wolf | RegionalEnemy, amount: number, time: number) {
+  hurt(enemy: Wolf | RegionalEnemy, amount: number, time: number, game?: RunnerGame) {
     if (this.health(enemy) <= 0) return;
     enemy.hitAt = time;
     this.damage.set(enemy.id, (this.damage.get(enemy.id) ?? 0) + amount);
     if (this.health(enemy) <= 0) {
+      if(game&&"kind" in enemy) {
+        const p=this.position(enemy,game);
+        enemy.fall={x:p.x,y:p.y,worldZ:game.distance+p.z,yaw:p.yaw};
+      }
       this.hunt.attacks = this.hunt.attacks.filter(a => a.wolf !== enemy.id);
       this.region.cancel(enemy.id);
     }
@@ -212,7 +216,7 @@ export class NightCombat {
       const length = Math.hypot(dx, dy, dz);
       if (this.aim?.wolf === enemy.id) Object.assign(this.aim, {x: p.x, z: p.z});
       const travel = rules.stoneSpeed * dt;
-      if (travel >= length) { this.hurt(enemy, stone.damage, time); return false; }
+      if (travel >= length) { this.hurt(enemy, stone.damage, time, game); return false; }
       stone.dx = dx / length; stone.dy = dy / length; stone.dz = dz / length;
       stone.x += stone.dx * travel; stone.y += stone.dy * travel; stone.z += stone.dz * travel;
       return true;
@@ -223,7 +227,7 @@ export class NightCombat {
         for (const e of this.enemies) {
           const p = this.position(e, game);
           if (Math.hypot(p.x - bomb.x, p.y - bomb.y, p.z + game.distance - bomb.worldZ) <= CONFIG.bomb.radius)
-            this.hurt(e, 1, time);
+            this.hurt(e, 1, time, game);
         }
       }
     }

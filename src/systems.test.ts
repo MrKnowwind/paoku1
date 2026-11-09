@@ -1,3 +1,4 @@
+import { releaseTime, yetiMotion } from "./yeti-motion.ts";
 import { fishPosition, fishSafeLevel, fishWarning } from "./fish.ts";
 import { coastFloor, coastWeights, coastSandUV } from "./coast-layout.ts";
 import { TrackPlan } from "./track.ts";
@@ -1080,5 +1081,57 @@ test("enemies enter from outside the view in a stagger and cannot attack during 
     if(biome==="canyon")assert.ok(p.y>12);
     else {assert.ok(Math.abs(p.x)>=14);assert.ok(p.z<0);}
     combat.update(game,0.01,()=>0.5,()=>false);assert.equal(combat.region.state.attacks.length,0);
+  }
+});
+
+
+test("bats and yetis face forward while accompanying the runner, turning only to attack", () => {
+  for(const biome of ["canyon","snow"] as const) {
+    const {game,enemy,combat}=regionalFixture(biome);game.worldTime+=1;
+    assert.equal(combat.position(enemy,game).yaw,0);
+    combat.region.state.attacks.push({id:1,enemy:enemy.id,kind:biome==="canyon"?"dive":"small",
+      start:game.worldTime-.4,lockAt:game.worldTime-.4,impactAt:game.worldTime+.8,
+      x:0,y:.95,worldZ:game.distance,side:0,fromX:enemy.homeX,fromY:enemy.homeY,fromZ:game.distance+enemy.homeZ,spent:false,locked:true});
+    assert.ok(Math.abs(combat.position(enemy,game).yaw)>1);
+    combat.region.state.attacks=[];assert.equal(combat.position(enemy,game).yaw,0);
+  }
+});
+
+test("charge crosses the road continuously and settles on the opposite side", () => {
+  const {game,enemy,combat}=regionalFixture("snow");enemy.homeX=4.3;game.protectionTime=999;
+  const a={id:1,enemy:enemy.id,kind:"charge" as const,start:game.worldTime,lockAt:game.worldTime,
+    impactAt:game.worldTime+1.36,x:0,y:.95,worldZ:game.distance+game.speed*1.36,side:0,
+    fromX:4.3,fromY:1.25,fromZ:game.distance+6,spent:false,locked:true};
+  combat.region.state.attacks=[a];
+  for(const boundary of [a.impactAt-.16,a.impactAt+.16]) {
+    game.worldTime=boundary-.0001;const before=combat.position(enemy,game);
+    game.worldTime=boundary+.0001;const after=combat.position(enemy,game);
+    assert.ok(Math.hypot(before.x-after.x,before.z-after.z)<.02);
+  }
+  game.worldTime=a.impactAt+.751;combat.update(game,.01,()=>.5,()=>false);
+  assert.equal(enemy.homeX,-4.3);assert.equal(combat.position(enemy,game).x,-4.3);
+});
+
+test("a killed charging yeti falls at its hit location rather than teleporting home", () => {
+  const {game,enemy,combat}=regionalFixture("snow");enemy.homeX=4.3;
+  combat.region.state.attacks=[{id:1,enemy:enemy.id,kind:"charge",start:game.worldTime-1.36,lockAt:game.worldTime-1.36,
+    impactAt:game.worldTime,x:0,y:.95,worldZ:game.distance,side:0,fromX:4.3,fromY:1.25,fromZ:game.distance+6,spent:false,locked:true}];
+  const before=combat.position(enemy,game);combat.hurt(enemy,5,game.worldTime,game);
+  const after=combat.position(enemy,game);
+  assert.equal(after.x,before.x);assert.equal(after.z,before.z);assert.equal(combat.region.state.attacks.length,0);
+});
+
+test("yeti hands and held snowball share continuous roll lift and release targets", () => {
+  for(const kind of ["small","snowball"] as const) {
+    const a={id:1,enemy:1,kind,start:10,lockAt:kind==="snowball"?11.4:10,impactAt:kind==="snowball"?12.6:11.2,
+      releaseAt:kind==="snowball"?11.64:10.9,x:0,y:.95,worldZ:0,side:0,fromX:0,fromY:0,fromZ:0,spent:false,locked:true};
+    let previous=yetiMotion(10,a);
+    for(let time=10.01;time<releaseTime(a);time+=.01) {
+      const pose=yetiMotion(time,a);assert.ok(pose.ball);
+      if(previous.ball)assert.ok(Math.hypot(...pose.ball.map((v,i)=>v-previous.ball![i]))<.25);
+      assert.ok(pose.action>=0&&pose.action<=1);previous=pose;
+    }
+    assert.equal(yetiMotion(releaseTime(a)+.001,a).ball,undefined);
+    if(kind==="snowball")assert.ok(yetiMotion(a.lockAt,a).ball![1]-yetiMotion(a.lockAt,a).radius>2.8);
   }
 });

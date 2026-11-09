@@ -3,3 +3,4 @@ dist/
 .sites-runtime/
 *.tar.gz
 *.log
+.qa/

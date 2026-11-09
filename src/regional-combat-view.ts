@@ -10,13 +10,15 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
 import { CONFIG } from "./config.ts";
 import { RegionalEnemyModel } from "./regional-enemy-model.ts";
+import { YetiModel } from "./yeti-model.ts";
+import { releaseTime, yetiMotion } from "./yeti-motion.ts";
 import type { RunnerGame } from "./game.ts";
 
 type Paint = "danger" | "countdown" | "strip" | "shadow" | "splat" | "shock";
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
 
 export class RegionalCombatView {
-  private models = new Map<number, RegionalEnemyModel>();
+  private models = new Map<number, RegionalEnemyModel | YetiModel>();
   private effects = new Map<string, Mesh>();
   private paints = new Map<Paint, StandardMaterial>();
   private high = true;
@@ -97,16 +99,14 @@ export class RegionalCombatView {
     };
     for(const e of state.enemies) {
       let model=this.models.get(e.id);
-      if(!model) {model=new RegionalEnemyModel(this.scene,e.id,e.kind,this.material,high);this.models.set(e.id,model);}
+      if(!model) {model=e.kind==="yeti"?new YetiModel(this.scene,e.id,this.material,high):new RegionalEnemyModel(this.scene,e.id,"bat",this.material,high);this.models.set(e.id,model);}
       const p=combat.position(e,game),health=combat.health(e),since=time-e.hitAt;
       const entry=clamp((time-e.enteredAt)/CONFIG.regionalCombat.entrance);
       model.root.setEnabled(time>=e.enteredAt);
       model.root.position.set(p.x,e.kind==="bat"?p.y:0.06,p.z);model.root.rotation.y=p.yaw;
       const a=state.attacks.find(a=>a.enemy===e.id);
-      let throwing=a?.kind==="snowball"?clamp((time-a.start-CONFIG.regionalCombat.snowballRoll+0.4)/0.4):
-        a?.kind==="small"?clamp((time-a.start)/CONFIG.regionalCombat.smallWarning):0;
-      if(a)throwing*=1-clamp((time-a.impactAt)/0.4);
-      model.animate(time+e.id,health,p.crouch,throwing,health<=0?clamp(since/0.35):0,1-clamp(since/0.2),entry);
+      if(model instanceof YetiModel)model.animate(time,health,entry,since,a);
+      else model.animate(time+e.id,health,p.crouch,0,health<=0?clamp(since/0.35):0,1-clamp(since/0.2),entry);
       if(since>=0&&since<0.35&&game.mode!=="rewinding")particles(`hit-${e.id}`,p.x,p.y,p.z,since,0.35,health>0?"#ffe5ad":"#d8def4",high?10:6,1.4);
       if(e.kind==="yeti"&&entry>0&&entry<1)particles(`entry-${e.id}`,p.x,0.1,p.z,(time-e.enteredAt)%0.3,0.3,"#d3e7eb",4,0.65);
     }
@@ -118,7 +118,15 @@ export class RegionalCombatView {
         const area=effect(`warn-${a.id}`,strip?"strip":"ring","#ff4059",dropping?"shadow":strip?"strip":"danger");
         area.position.set(a.kind==="charge"?0:a.x,a.side?a.y:0.065,z);
         if(a.side)area.rotation.z=Math.PI/2;
-        if(a.kind==="small") {area.scaling.set(rules.smallHalfWidth*2,1,Math.max(1.2,Math.abs(z)));area.position.z=z*0.5;}
+        if(a.kind==="small") {
+          const enemy=state.enemies.find(e=>e.id===a.enemy)!,pose=yetiMotion(time,a),root=this.models.get(a.enemy)!.root;
+          root.computeWorldMatrix(true);
+          const source=pose.ball?Vector3.TransformCoordinates(new Vector3(...pose.ball),root.getWorldMatrix()):combat.position(enemy,game);
+          const dx=a.x-source.x,dz=-source.z,length=Math.hypot(dx,dz);
+          area.position.set(source.x+dx*0.5,0.065,source.z+dz*0.5);
+          area.rotation.y=Math.atan2(dx,dz);area.scaling.set(rules.smallHalfWidth*2,1,length);
+          area.setEnabled(time<releaseTime(a));
+        }
         else if(a.kind==="charge") {area.rotation.y=Math.PI/2;area.scaling.set(0.7,1,7.4);}
         else area.scaling.set(rules.targetRadius,1,rules.targetRadius);
         if(a.side)area.scaling.x=rules.wallRadius;
@@ -131,16 +139,18 @@ export class RegionalCombatView {
       }
       if(["dropping","small","snowball"].includes(a.kind)&&!a.spent) {
         const ball=effect(`projectile-${a.id}`,"ball",a.kind==="dropping"?"#fff6dd":"#d9eef4");
-        let p=a.kind==="small"?clamp((time-a.start-rules.smallWarning)/rules.smallFlight):progress;
-        if(a.kind==="snowball"&&!locked) {
-          const enemy=state.enemies.find(e=>e.id===a.enemy)!,pos=combat.position(enemy,game);
-          const roll=clamp((time-a.start)/rules.snowballRoll),diameter=0.2+Math.min(1,roll/0.72)*(rules.targetRadius*2-0.2),lift=clamp((roll-0.72)/0.28);
-          ball.position.set(pos.x,diameter/2+(2.75-diameter/2)*lift,pos.z-0.6);ball.scaling.setAll(diameter);
-          ball.rotation.x=roll*8;
+        const releasing=a.kind==="small"||a.kind==="snowball";
+        let p=releasing?clamp((time-releaseTime(a))/(a.impactAt-releaseTime(a))):progress;
+        if(releasing&&time<releaseTime(a)) {
+          const pose=yetiMotion(time,a);
+          const local=new Vector3(...pose.ball!);
+          const root=this.models.get(a.enemy)!.root;root.computeWorldMatrix(true);
+          ball.position.copyFrom(Vector3.TransformCoordinates(local,root.getWorldMatrix()));
+          ball.scaling.setAll(pose.radius*2);ball.rotation.x=time*3;
         } else {
           if(a.kind==="dropping")p*=p;
           ball.position.set(a.fromX+(a.x-a.fromX)*p,a.fromY+(a.y-a.fromY)*p+(a.kind==="snowball"?Math.sin(p*Math.PI)*2:0),a.fromZ+(a.worldZ-a.fromZ)*p-game.distance);
-          ball.scaling.setAll(a.kind==="snowball"?rules.targetRadius*2:a.kind==="small"?0.3:0.28);ball.rotation.x=progress*9;
+          ball.scaling.setAll(a.kind==="snowball"?rules.targetRadius*2:a.kind==="small"?0.3:0.28);ball.rotation.x=p*9;
           if(a.kind==="dropping")ball.scaling.y=0.5+progress*0.2;
         }
         if(a.kind==="snowball")for(let i=0;i<(high?7:4);i++) {

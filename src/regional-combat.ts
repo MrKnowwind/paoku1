@@ -2,9 +2,11 @@ import { CONFIG } from "./config.ts";
 import { DAY_LENGTH, dayTime } from "./daylight.ts";
 import type { RunnerGame } from "./game.ts";
 import { obstacleAllowed } from "./track.ts";
+import { releaseTime, yetiMotion } from "./yeti-motion.ts";
 
 const rules = CONFIG.regionalCombat;
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const smooth = (n: number) => clamp(n) ** 2 * (3 - 2 * clamp(n));
 export type RegionalAttackKind = "dive" | "dropping" | "small" | "charge" | "snowball";
 export interface RegionalEnemy {
@@ -16,6 +18,7 @@ export interface RegionalEnemy {
   enteredAt: number;
   readyAt: number;
   hitAt: number;
+  fall?: {x: number; y: number; worldZ: number; yaw: number};
 }
 export interface RegionalAttack {
   id: number;
@@ -33,6 +36,8 @@ export interface RegionalAttack {
   fromZ: number;
   spent: boolean;
   locked: boolean;
+  releaseAt?: number;
+  launched?: boolean;
 }
 export interface Dropping {
   id: number;
@@ -70,11 +75,12 @@ export class RegionalCombat {
   cancel(id: number) { this.state.attacks = this.state.attacks.filter(a => a.enemy !== id); }
 
   position(enemy: RegionalEnemy, game: RunnerGame) {
+    if(enemy.fall)return {...enemy.fall,z:enemy.fall.worldZ-game.distance,crouch:0,leap:0,bite:0};
     const time = game.worldTime;
     const entry = smooth((time - enemy.enteredAt) / rules.entrance);
     const side = Math.sign(enemy.homeX) || 1;
     let x = enemy.homeX, z = enemy.homeZ, y = enemy.homeY;
-    let yaw = -side * 0.15;
+    let yaw = 0;
     if (enemy.kind === "bat") {
       y += (1 - entry) * 13;
       z += (1 - entry) * 8;
@@ -84,27 +90,38 @@ export class RegionalCombat {
     } else {
       x += (side * 15 - x) * (1 - entry);
       z += (-14 - z) * (1 - entry);
-      yaw = (Math.atan2(enemy.homeX - side * 15, enemy.homeZ + 14) + Math.PI) * (1 - entry) + yaw * entry;
+      if(entry<1)yaw = Math.atan2(enemy.homeX - side * 15, enemy.homeZ + 14) * (1 - entry);
     }
     const a = this.state.attacks.find(a => a.enemy === enemy.id);
     let crouch = 0, leap = 0, bite = 0;
     if (a) {
+      if(a.kind!=="dropping") {
+        const targetZ=a.kind==="dive"?a.worldZ-game.distance:0;
+        const turn=smooth((time-a.start)/0.38)*(1-smooth((time-a.impactAt)/0.55));
+        yaw=Math.atan2(a.x-enemy.homeX,targetZ-enemy.homeZ)*turn;
+      }
       const p = clamp((time - a.lockAt) / (a.impactAt - a.lockAt));
       crouch = a.kind === "snowball" ? clamp((time - a.start) / rules.snowballRoll) : 1 - p;
-      if (a.kind === "dive" || a.kind === "charge") {
+      if (a.kind === "dive") {
         const approach = clamp((p - 0.7) / 0.3);
         const back = clamp((time - a.impactAt) / 0.5);
         const weight = approach * (1 - back);
         x += (a.x - x) * weight; z += (a.worldZ - game.distance - z) * weight;
-        if (a.kind === "dive") y += (a.y - y) * weight;
+        y += (a.y - y) * weight;
         bite = weight;
-        if (a.kind === "charge") {
-          const sweep = clamp((time - a.impactAt + 0.16) / 0.32);
-          if (time >= a.impactAt - 0.16) {
-            x = Math.sign(enemy.homeX) * (4.3 - sweep * 8.6);
-            z = a.worldZ - game.distance;
-            yaw = Math.sign(enemy.homeX) * Math.PI / 2;
-          }
+      }
+      if(a.kind==="charge") {
+        const side=Math.sign(enemy.homeX),dashStart=a.impactAt-0.16,dashEnd=a.impactAt+0.16;
+        const targetZ=a.worldZ-game.distance;
+        crouch=smooth((time-a.start)/0.5)*(1-smooth((time-dashStart)/0.18));
+        if(time<dashStart) {
+          x=enemy.homeX;z=lerp(enemy.homeZ,targetZ,smooth((time-a.start)/rules.chargeWarning));
+          yaw=-side*Math.PI/2*smooth((time-a.start)/0.6);
+        } else if(time<=dashEnd) {
+          x=side*(4.3-clamp((time-dashStart)/0.32)*8.6);z=targetZ;yaw=-side*Math.PI/2;
+        } else {
+          const settle=smooth((time-dashEnd)/0.58);
+          x=-side*4.3;z=lerp(targetZ,enemy.homeZ,settle);yaw=-side*Math.PI/2*(1-settle);
         }
       }
       if (a.kind === "small" || a.kind === "snowball") leap = Math.sin(p * Math.PI) * 0.1;
@@ -155,8 +172,12 @@ export class RegionalCombat {
       s.nextPack = time + (bat ? rules.batSpawnMin + random(pack, 206) * (rules.batSpawnMax - rules.batSpawnMin) : rules.yetiPackInterval);
     }
     if (game.boosting) { s.attacks = []; s.droppings = []; return; }
+    for(const a of s.attacks) if(a.kind==="charge"&&time>=a.impactAt+0.75) {
+      const enemy=s.enemies.find(e=>e.id===a.enemy);
+      if(enemy)enemy.homeX=-enemy.homeX;
+    }
     s.attacks = s.attacks.filter(a => s.enemies.some(e => e.id === a.enemy && health(e) > 0) &&
-      time < a.impactAt + 0.5 && (a.side ? game.wallSide === a.side : !game.wallSide));
+      time < a.impactAt + (a.kind === "charge" ? 0.75 : 0.6) && (a.side ? game.wallSide === a.side : !game.wallSide));
     for (const a of s.attacks) {
       if (!a.locked && time >= a.lockAt) {
         a.locked = true; a.x = game.wallSide ? game.wallSide * 5.4 : game.x;
@@ -165,6 +186,15 @@ export class RegionalCombat {
         const enemy = s.enemies.find(e => e.id === a.enemy)!;
         const p = this.position(enemy, game);
         a.fromX = p.x; a.fromY = p.y + (a.kind === "snowball" ? 1.5 : 0); a.fromZ = game.distance + p.z;
+      }
+      if(a.releaseAt!==undefined&&!a.launched&&time>=a.releaseAt) {
+        const enemy=s.enemies.find(e=>e.id===a.enemy)!;
+        const pose=this.position(enemy,game),local=yetiMotion(releaseTime(a)-0.0001,a).ball!;
+        const cos=Math.cos(pose.yaw),sin=Math.sin(pose.yaw);
+        a.fromX=pose.x+local[0]*cos+local[2]*sin;
+        a.fromY=0.06+local[1];
+        a.fromZ=game.distance+pose.z-local[0]*sin+local[2]*cos;
+        a.launched=true;
       }
       if (a.spent || time < a.impactAt - (a.kind === "charge" ? 0.16 : 0)) continue;
       if (a.kind === "charge") {
@@ -218,6 +248,8 @@ export class RegionalCombat {
       y: kind === "dropping" ? 0.07 : game.wallSide ? game.wallY + 0.95 : 0.95,
       worldZ: kind === "dropping" ? droppingZ : game.distance + game.speed * duration,
       side: game.wallSide, fromX: p.x, fromY: p.y, fromZ: game.distance + p.z,
+      releaseAt: kind === "small" ? time + rules.smallWarning : kind === "snowball" ? lockAt + 0.24 : undefined,
+      launched: false,
       spent: false, locked: kind !== "snowball"});
     enemy.readyAt = time + duration + rules.attackMin + random(sequence, 208) * (rules.attackMax - rules.attackMin);
   }
