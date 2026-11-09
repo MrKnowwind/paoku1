@@ -81,10 +81,10 @@ test("returning to the menu restores the idle pose even during a slide", () => {
   game.start();
   game.slide();
   for (let i = 0; i < 20; i++) motion.update(game, 1 / 60);
-  game.mode = "ready";
-  for (let i = 0; i < 30; i++) motion.update(game, 1 / 60);
-  assert.ok(motion.pose.slide < 0.01);
-  assert.ok(motion.pose.hipY > 0.9);
+  game.returnHome();
+  const idle = motion.update(game, 0);
+  assert.equal(idle.slide, 0);
+  assert.equal(idle.hipY, 0.95);
 });
 
 test("swimming blends out the running pose and freezes on pause", () => {
@@ -100,4 +100,9 @@ test("swimming blends out the running pose and freezes on pause", () => {
   const before = {...motion.pose};
   motion.update(game, 1);
   assert.deepEqual(motion.pose, before);
+  game.begin();
+  const opening = motion.update(game, 0);
+  assert.equal(opening.swim, 0);
+  assert.equal(opening.turn, 0);
+  assert.equal(opening.hipY, 0.95);
 });

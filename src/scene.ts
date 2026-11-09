@@ -176,12 +176,12 @@ export class ForestScene {
   private lastSnowHit = 0;
   private lastIceRemaining = 0;
   private get snowProps() { return this.snow ??= new SnowProps(this.scene, this.props); }
-  private drinkPose(remaining: number, falling: boolean) {
+  private drinkPose(remaining: number, blocked: boolean) {
     if (!this.drinkBottle) return;
     const {lift, swallow} = sipPose(remaining);
-    // Set the bottle down during the impact and keep the recovering arm free.
-    this.drinkBottle.setEnabled(lift > 0.025 && !falling);
-    if (lift <= 0.025 || falling) return;
+    // Leave the hand free when another action owns the arms.
+    this.drinkBottle.setEnabled(lift > 0.025 && !blocked);
+    if (lift <= 0.025 || blocked) return;
     const arm = this.arms[1];
     this.head.rotation.x -= swallow * 0.19;
     this.head.rotation.y += swallow * 0.09;
@@ -210,7 +210,7 @@ export class ForestScene {
     Quaternion.FromUnitVectorsToRef(Vector3.Up(), axisInHand, lower).toEulerAnglesToRef(this.drinkBottle.rotation);
   }
 
-  private snowPose(game: RunnerGame) {
+  private snowPose(game: RunnerGame, canDrink: boolean) {
     if (game.icy) {
       const {brace, fall, rise} = iceFallPose(game.iceRemaining, game.iceRecover);
       this.hips.position.y += (0.29 - this.hips.position.y) * fall + 0.08 * rise;
@@ -235,13 +235,13 @@ export class ForestScene {
       this.torso.rotation.z += Math.sin(game.worldTime * 35) * 0.028;
       this.head.rotation.z = Math.sin(game.worldTime * 35 + 1) * 0.035;
     }
-    if (game.drinkTime > 0 && !this.drinkBottle) {
+    if (canDrink && game.drinkTime > 0 && !this.drinkBottle) {
       this.drinkBottle = this.snowProps.create("liquor", false);
       this.drinkBottle.parent = this.arms[1].lower;
       this.drinkBottle.position.set(0, -0.34, 0.018);
       this.drinkBottle.scaling.setAll(0.55);
     }
-    this.drinkPose(game.drinkTime, game.icy || game.mode === "over");
+    this.drinkPose(game.drinkTime, !canDrink);
     if (game.lastHit === "pool" || game.lastHit === "gap") {
       this.runner.position.y -= this.motion.pose.death * 3.5;
       this.runner.rotation.x = this.motion.pose.death * 0.35;
@@ -1609,7 +1609,7 @@ export class ForestScene {
     this.engine.setHardwareScalingLevel(this.high ? highScale : Math.max(pixelLimit, 1.25));
   }
 
-  private updateBurnPose(game: RunnerGame) {
+  private updateBurnPose(game: RunnerGame, useArms: boolean) {
     const burning = game.burning && game.mode !== "ready" && !game.introducing;
     const patting = game.extinguishTime > 0 && game.mode !== "over";
     const duration = burning ? CONFIG.burn.patDuration : CONFIG.burn.extinguishDuration;
@@ -1627,14 +1627,16 @@ export class ForestScene {
     }
     if (!patting) return;
     const side = game.extinguishSerial % 2 ? 1 : -1;
-    this.torso.rotation.x += reach * 0.13;
-    this.torso.rotation.z += side * reach * 0.14;
-    for (const arm of this.arms) {
-      if (arm.side !== side) continue;
-      arm.upper.rotation.x += (-1.15 - arm.upper.rotation.x) * reach;
-      arm.upper.rotation.z += (arm.side * 0.26 - arm.upper.rotation.z) * reach;
-      arm.upper.rotation.y += (-arm.side * 0.38 - arm.upper.rotation.y) * reach;
-      arm.lower.rotation.x += (-1.45 - arm.lower.rotation.x) * reach;
+    if (useArms) {
+      this.torso.rotation.x += reach * 0.13;
+      this.torso.rotation.z += side * reach * 0.14;
+      for (const arm of this.arms) {
+        if (arm.side !== side) continue;
+        arm.upper.rotation.x += (-1.15 - arm.upper.rotation.x) * reach;
+        arm.upper.rotation.z += (arm.side * 0.26 - arm.upper.rotation.z) * reach;
+        arm.upper.rotation.y += (-arm.side * 0.38 - arm.upper.rotation.y) * reach;
+        arm.lower.rotation.x += (-1.45 - arm.lower.rotation.x) * reach;
+      }
     }
     if (age >= 0.07 && game.extinguishSerial !== this.lastExtinguishSerial) {
       this.lastExtinguishSerial = game.extinguishSerial;
@@ -2084,7 +2086,7 @@ export class ForestScene {
     }
   }
 
-  private updateNightCombat(game: RunnerGame) {
+  private updateNightCombat(game: RunnerGame, useArms: boolean) {
     const combat = game.nightCombat;
     this.regionalCombatView ??= new RegionalCombatView(this.scene, (color, glow) => this.mat(color, glow));
     this.regionalCombatView.update(game, this.high);
@@ -2158,14 +2160,15 @@ export class ForestScene {
       mesh.trail.lookAt(mesh.core.position);
     });
 
-    const aim = game.mode !== "over" && !game.boosting ? combat.aim : undefined;
-    this.slingshot?.setEnabled(!!aim && combat.weapon === "slingshot");
-    this.bow?.setEnabled(!!aim && combat.weapon === "bow");
-    if (!aim) return;
-    if (combat.shotAt !== this.lastShotAt && game.mode === "running") {
+    const shotAge = game.worldTime - combat.shotAt;
+    if (combat.shotAt !== this.lastShotAt && game.mode === "running" && shotAge >= 0 && shotAge < 0.2) {
       this.lastShotAt = combat.shotAt;
       this.burst(new Vector3(game.x - 0.22, game.y + (game.sliding ? 0.65 : 1.43), 0.45), "#fff2b1", 14, 4.2, 0.28, 0.18, 1.1);
     }
+    const aim = useArms ? combat.aim : undefined;
+    this.slingshot?.setEnabled(!!aim && combat.weapon === "slingshot");
+    this.bow?.setEnabled(!!aim && combat.weapon === "bow");
+    if (!aim) return;
     const hand = this.arms.find(arm => arm.side < 0)!;
     if (combat.weapon === "bow" && !this.bow) {
       const root = this.joint("hunting-bow", [0, -0.35, 0.08], hand.lower);
@@ -2550,9 +2553,13 @@ export class ForestScene {
         if (leg.foot) leg.foot.rotation.x = mix(leg.foot.rotation.x, 0.2 + Math.sin(kick - 0.9) * 0.08);
       }
     }
-    this.snowPose(game);
-    this.updateNightCombat(game);
-    this.updateBurnPose(game);
+    // Compose one hand action on the current frame's locomotion pose.
+    const handsFree = !opening && game.mode !== "over" && !game.icy && !game.boosting;
+    const patArms = handsFree && game.extinguishTime > 0;
+    const aimArms = handsFree && !patArms && !!game.nightCombat.aim;
+    this.snowPose(game, handsFree && !patArms && !aimArms && !game.swimming);
+    this.updateNightCombat(game, aimArms);
+    this.updateBurnPose(game, patArms);
     const impactDistance = CONFIG.iceDistance - ICE_IMPACT_METRES;
     if (running && game.iceRemaining > 0 && this.lastIceRemaining > impactDistance && game.iceRemaining <= impactDistance)
       this.burst(new Vector3(game.x, 0.17, -0.2), "#e4f4ff", this.high ? 24 : 12, 3.1, 0.48, 0.18, 2);

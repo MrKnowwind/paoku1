@@ -17,7 +17,16 @@ export class RunnerMotion {
   private distance = 0;
   update(game: RunnerGame, dt: number) {
     if (game.mode === "paused") return this.pose;
-    if (game.distance < this.distance || game.mode === "ready") {
+    if (game.mode === "ready" || game.introducing) {
+      const pose = this.pose;
+      pose.swim = pose.slide = pose.dive = pose.phase = pose.landing = 0;
+      pose.turn = pose.death = pose.run = pose.air = 0;
+      pose.hipY = 0.95;
+      this.airborne = false;
+      this.distance = game.distance;
+      return pose;
+    }
+    if (game.distance < this.distance) {
       this.airborne = false;
       this.pose.death = 0;
       this.pose.landing = 0;
