@@ -30,6 +30,10 @@ export class RegionalCombatView {
     const texture = new DynamicTexture(`combat-${kind}`, 256, this.scene, false);
     texture.hasAlpha = true; texture.isBlocking = false;
     const ctx = texture.getContext(); ctx.clearRect(0, 0, 256, 256);
+    const ellipse = (x: number, y: number, rx: number, ry: number, rotation = 0) => {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rotation); ctx.scale(rx, ry);
+      ctx.beginPath(); ctx.arc(0, 0, 1, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    };
     if (kind === "danger" || kind === "countdown" || kind === "shock") {
       const color = kind === "shock" ? "255,204,117" : kind === "countdown" ? "255,228,202" : "255,68,94";
       const glow = ctx.createRadialGradient(128,128,95,128,128,128);
@@ -53,13 +57,13 @@ export class RegionalCombatView {
       ctx.fillStyle=gradient;ctx.fillRect(0,0,256,256);
       ctx.strokeStyle="#fff1cba0";ctx.lineWidth=2;ctx.beginPath();ctx.arc(128,128,84,0,Math.PI*2);ctx.stroke();
     } else {
-      ctx.fillStyle="#51446280";ctx.beginPath();ctx.ellipse(132,136,91,83,0,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle="#51446280";ellipse(132,136,91,83);
       ctx.fillStyle="#f2edcf";ctx.beginPath();
       for(let i=0;i<=64;i++) {
         const a=i*Math.PI/32,r=79+Math.sin(a*5)*9+Math.cos(a*9)*6;
         const x=128+Math.cos(a)*r,y=128+Math.sin(a)*r; if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
       }
-      ctx.closePath();ctx.fill();ctx.fillStyle="#fffcee";ctx.beginPath();ctx.ellipse(112,111,48,31,-0.35,0,Math.PI*2);ctx.fill();
+      ctx.closePath();ctx.fill();ctx.fillStyle="#fffcee";ellipse(112,111,48,31,-0.35);
       for(let i=0;i<7;i++) {const a=i*2.4;ctx.beginPath();ctx.arc(128+Math.cos(a)*106,128+Math.sin(a)*103,4+i%3*2,0,Math.PI*2);ctx.fill();}
     }
     texture.update();
