@@ -82,6 +82,7 @@ let activeDialog:
   | null = null;
 let runFinalized = false;
 let buyBusyUntil = 0;
+let shopPage = 0;
 let shopCategory: "weapons" | "tools" | "characters" = "weapons";
 let toastTimer = 0;
 let statusMarkup = "";
@@ -222,7 +223,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <section class="run-status" id="run-status" hidden aria-label="${t("powerStatus")}"></section>
   <button class="active-tool" id="booster-button" data-action="boost" data-label="activateBoost" hidden>${icon("rocket")}<span id="booster-status"></span></button>
   <button class="active-tool bomb-tool" id="bomb-button" data-action="bomb" data-label="bomb" hidden>${icon("cluster-bomb")}<span id="bomb-status"></span></button>
-  <button class="active-tool reserve-tool" id="reserve-button" data-action="reserve" data-label="reserveAmmo" hidden>${icon("ammo-pouch")}<span id="reserve-status"></span></button>
+  <button class="active-tool reserve-tool" id="reserve-button" data-action="reserve" data-label="reserveAmmo" hidden>${icon("reserve-ammo")}<span id="reserve-status"></span></button>
   <div class="notice-toast" id="notice-toast" hidden role="status"></div>
   <div class="tutorial-overlay" id="tutorial-overlay" hidden>
     <div class="tutorial-prompt" id="tutorial-prompt">
@@ -251,7 +252,7 @@ const clockDot = document.querySelector<SVGCircleElement>("#clock-dot")!;
 const nightHud = document.querySelector<HTMLElement>("#night-hud")!;
 const ammoSlots = nightHud.querySelector<HTMLElement>(".ammo-slots")!;
 const playerHealth = document.querySelector<HTMLElement>("#player-health")!;
-const hearts = Array.from(playerHealth.querySelectorAll("i"));
+let hearts = Array.from(playerHealth.querySelectorAll("i"));
 let shownHealth = -1;
 let shownEnemyHit = 0;
 let shownPlayerHit = 0;
@@ -302,17 +303,20 @@ function renderDialog() {
     const weapon = (id: WeaponId) => {
       const spec = CONFIG.weapons[id], owned = id === "slingshot" || state.bowOwned, equipped = state.equipped === id;
       const unavailable = !owned && state.wallet < spec.price;
-      return `<article class="supply-card"><span class="supply-icon">${icon(id)}</span><div><h3>${t(id)}</h3><p class="supply-stats" aria-label="${t("weaponStats").replace("{damage}", n(spec.damage)).replace("{ammo}", n(spec.ammo))}">${icon("bolt")}${n(spec.damage)} ${icon(id === "bow" ? "arrow-ammo" : "stone")}${n(spec.ammo)}</p><small>${t(owned ? "owned" : "permanent")}</small></div><div class="purchase-row">${owned ? "" : `<span>${icon("coin")}${n(spec.price)}</span>`}<button class="secondary-button" data-action="${owned ? `equip-${id}` : "buy-bow"}" ${equipped || unavailable ? "disabled" : ""}>${t(equipped ? "equipped" : owned ? "equip" : unavailable ? "insufficient" : "buy")}</button></div></article>`;
+      return `<article class="supply-card"><span class="supply-icon">${icon(id)}</span><div><h3>${t(id)}</h3><p class="supply-stats" aria-label="${t("weaponStats").replace("{damage}", n(spec.damage)).replace("{ammo}", n(spec.ammo))}">${icon("bolt")}${n(spec.damage)} ${icon(id === "bow" ? "arrow-ammo" : "stone")}${n(spec.ammo)}</p></div><div class="purchase-row">${owned ? "" : `<span>${icon("coin")}${n(spec.price)}</span>`}<button class="secondary-button" data-action="${owned ? `equip-${id}` : "buy-bow"}" ${equipped || unavailable ? "disabled" : ""}>${t(equipped ? "equipped" : owned ? "equip" : unavailable ? "insufficient" : "buy")}</button></div></article>`;
     };
     const categories = (["weapons", "tools", "characters"] as const).map(category => `<button class="${shopCategory === category ? "selected" : ""}" data-action="category-${category}" aria-pressed="${shopCategory === category}">${t(category)}</button>`).join("");
     const character = (id: CharacterId) => {
       const owned = id === "runner" || state.officerOwned, equipped = state.character === id;
       const unavailable = !owned && state.wallet < CONFIG.officer.price;
-      return `<article class="supply-card character-card"><img class="character-art" src="${characterAsset(id, true)}" alt="" width="128" height="128"><div><h3>${t(id)}</h3><p>${t(id === "officer" ? "officerSkills" : "runnerSkills")}</p><small>${t(owned ? "owned" : "permanent")} · ${t("nextRunHint")}</small></div><div class="purchase-row">${owned ? "" : `<span>${icon("coin")}${n(CONFIG.officer.price)}</span>`}<button class="secondary-button" data-action="${owned ? `character-${id}` : "buy-officer"}" ${equipped || unavailable ? "disabled" : ""}>${t(equipped ? "equipped" : owned ? "equip" : unavailable ? "insufficient" : "buy")}</button></div></article>`;
+      return `<article class="supply-card character-card"><img class="character-art" src="${characterAsset(id, true)}" alt="" width="128" height="128"><div><h3>${t(id)}</h3><p class="character-health" aria-label="${t("maxHealth")} ${CONFIG.characters[id].health}">${icon("heart-full")}<b>×${CONFIG.characters[id].health}</b></p>${id === "officer" ? `<p class="character-skills">${t("autoAttack")}</p><p class="character-skills">${icon("reserve-ammo")}${t("reserveAmmo")} · 120s</p>` : ""}</div><div class="purchase-row">${owned ? "" : `<span>${icon("coin")}${n(CONFIG.officer.price)}</span>`}<button class="secondary-button" data-action="${owned ? `character-${id}` : "buy-officer"}" ${equipped || unavailable ? "disabled" : ""}>${t(equipped ? "selectedCharacter" : owned ? "deployCharacter" : unavailable ? "insufficient" : "buy")}</button></div></article>`;
     };
-    const content = shopCategory === "characters" ? character("runner") + character("officer") :
-      shopCategory === "weapons" ? weapon("slingshot") + weapon("bow") :
-      product("booster", "rocket", CONFIG.boosterPrice) + product("hourglass", "hourglass", CONFIG.hourglassPrice) + product("bomb", "cluster-bomb", CONFIG.bomb.price);
+    const cards = shopCategory === "characters" ? [character("runner"), character("officer")] :
+      shopCategory === "weapons" ? [weapon("slingshot"), weapon("bow")] :
+      [product("booster", "rocket", CONFIG.boosterPrice), product("hourglass", "hourglass", CONFIG.hourglassPrice), product("bomb", "cluster-bomb", CONFIG.bomb.price)];
+    const pages = Math.ceil(cards.length / 2);
+    shopPage = Math.min(shopPage, pages - 1);
+    const content = `<div class="shop-page">${cards.slice(shopPage * 2, shopPage * 2 + 2).join("")}</div><nav class="shop-pagination"><button class="secondary-button" data-action="shop-prev" aria-label="${t("guidePrev")}" ${shopPage === 0 ? "disabled" : ""}>‹</button><span>${shopPage + 1} / ${pages}</span><button class="secondary-button" data-action="shop-next" aria-label="${t("guideNext")}" ${shopPage === pages - 1 ? "disabled" : ""}>›</button></nav>`;
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("shop")}</span><h2 id="dialog-title">${t("shop")}</h2></div><div class="shop-wallet" aria-label="${t("wallet")}"><strong>${icon("coin")}<span class="wallet-count">${n(state.wallet)}</span></strong></div><nav class="shop-categories" aria-label="${t("shop")}">${categories}</nav>${content}`;
   } else if (activeDialog === "revive") {
     const usable = game.canRewind && economy.state.hourglasses > 0;
@@ -621,6 +625,10 @@ function updateNightUi() {
   clockDot.setAttribute("transform", `rotate(${360 * dayTime(time) / DAY_LENGTH} 24 24)`);
   nightHud.hidden = !game.nightGearActive || game.mode === "over" || game.introducing || !!tutorial.guide;
   playerHealth.hidden = !["running", "paused", "rewinding"].includes(game.mode) || !!tutorial.guide;
+  if (hearts.length !== game.maxHealth) {
+    playerHealth.querySelector(".player-hearts")!.innerHTML = Array.from({length: game.maxHealth}, () => `<i>${icon("heart-full", "filled-heart")}${icon("heart-empty", "empty-heart")}</i>`).join("");
+    hearts = Array.from(playerHealth.querySelectorAll("i")); shownHealth = -1;
+  }
   if (shownHealth !== game.health) {
     shownHealth = game.health;
     hearts.forEach((heart,i)=>heart.classList.toggle("full",i<game.health));
@@ -835,9 +843,16 @@ function act(action: string) {
       openDialog("shop");
     return;
   }
+  if (action === "shop-prev" || action === "shop-next") {
+    if (activeDialog !== "shop") return;
+    const pages = shopCategory === "tools" ? 2 : 1;
+    shopPage = Math.max(0, Math.min(pages - 1, shopPage + (action === "shop-next" ? 1 : -1)));
+    renderDialog();
+    return;
+  }
   if (action.startsWith("category-")) {
     const category = action.slice(9);
-    if (activeDialog === "shop" && (category === "weapons" || category === "tools" || category === "characters")) { shopCategory = category; renderDialog(); }
+    if (activeDialog === "shop" && (category === "weapons" || category === "tools" || category === "characters")) { shopCategory = category; shopPage = 0; renderDialog(); }
     return;
   }
   if (action === "equip-slingshot" || action === "equip-bow") {

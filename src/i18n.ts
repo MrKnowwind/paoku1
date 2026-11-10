@@ -1,5 +1,9 @@
 export const messages = {
   zh: {
+    deployCharacter: "出战",
+    selectedCharacter: "已出战",
+    autoAttack: "自动攻击",
+    maxHealth: "生命值",
     runner: "探险家",
     officer: "巡警",
     runnerSkills: "手动瞄准，自由选择武器。",
@@ -234,6 +238,10 @@ export const messages = {
     wolfHit: "你被森林狼扑倒了。跳跃或换道可以避开红条。",
   },
   en: {
+    deployCharacter: "Play as",
+    selectedCharacter: "Selected",
+    autoAttack: "Auto attack",
+    maxHealth: "Health",
     runner: "Explorer",
     officer: "Officer",
     runnerSkills: "Aim manually with your chosen weapon.",
@@ -472,6 +480,10 @@ export const messages = {
     wolfHit: "A forest wolf brought you down. Jump or switch lanes to dodge the red strip.",
   },
   ja: {
+    deployCharacter: "出撃",
+    selectedCharacter: "選択中",
+    autoAttack: "自動攻撃",
+    maxHealth: "ライフ",
     runner: "探検家",
     officer: "巡査",
     runnerSkills: "選んだ武器で手動攻撃。",
@@ -708,6 +720,10 @@ export const messages = {
     wolfHit: "森のオオカミに襲われた。赤い帯はジャンプかレーン移動で避けよう。",
   },
   ko: {
+    deployCharacter: "출전",
+    selectedCharacter: "선택됨",
+    autoAttack: "자동 공격",
+    maxHealth: "체력",
     runner: "탐험가",
     officer: "순경",
     runnerSkills: "선택한 무기로 직접 조준해 공격합니다.",

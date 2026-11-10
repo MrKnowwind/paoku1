@@ -1,4 +1,5 @@
 export const artIcons = new Set([
+  "reserve-ammo",
   "coin",
   "magnet",
   "shield",

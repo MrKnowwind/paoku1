@@ -1,4 +1,5 @@
 export const CONFIG = {
+  characters: {runner: {health: 3}, officer: {health: 3}},
   officer: {price: 2000, refillCooldown: 120, pistolChance: 0.005, pistolDamage: 5},
   squid: {health: 4, packInterval: 25, inkWarning: 1.1, inkFlight: 0.5, grabWarning: 1.4,
     halfWidth: 1.05, halfHeight: 1.25, halfDepth: 1.3,
