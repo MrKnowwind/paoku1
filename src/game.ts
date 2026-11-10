@@ -117,7 +117,7 @@ export class RunnerGame {
   nextWeapon: WeaponId = "slingshot";
   nextCharacter: CharacterId = "runner";
   character: CharacterId = "runner";
-  get maxHealth() { return CONFIG.characters[this.character].health; }
+  get maxHealth(): number { return CONFIG.characters[this.character].health; }
   reserveCooldown = 0;
   struggleNeedsGuide = true;
   get struggling() { return this.nightCombat.ocean.struggling; }
@@ -198,7 +198,7 @@ export class RunnerGame {
   pickupSerial = 0;
   lastPickup: "magnet" | "shield" = "magnet";
   shieldBreakSerial = 0;
-  health = CONFIG.characters.runner.health;
+  health: number = CONFIG.characters.runner.health;
   damageSerial = 0;
   damagedAt = -Infinity;
   clearSerial = 0;
