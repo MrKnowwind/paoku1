@@ -194,7 +194,6 @@ export class SnowProps {
       this.ball("snowman-compressed-seam", root, [1.15, 0.18, 1.06], [-0.07, 1.05, 0.02]).rotation.z = 0.13;
       this.cylinder("knitted-hat-cuff", root, 0.15, 0.77, 0.76, [0, 2.57, 0], "#a53e36");
       this.ball("knitted-hat-crown", root, [0.7, 0.38, 0.7], [0, 2.71, 0], "#a53e36");
-      this.ball("snow-hat-pom", root, [0.2, 0.2, 0.2], [0.06, 2.93, 0]);
       for (let i = 0; i < 5; i++) {
         const a = (i - 2) * 0.2;
         this.ball("coal-smile", root, [0.045, 0.045, 0.04], [Math.sin(a) * 0.34, 2.06 + Math.abs(a) * 0.09, -0.35], "#263f4b");

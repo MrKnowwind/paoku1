@@ -89,6 +89,17 @@ export class TrackPlan {
 }
 export const defaultTrack = new TrackPlan();
 export function sectionAt(distance: number, plan = defaultTrack): TrackSection { return plan.at(distance); }
+// Debug lead-ins and combat extensions need not align with the renderer's 10m cells.
+export function terrainCellSpans(start: number, end: number, plan = defaultTrack) {
+  const spans: {start: number; end: number; section: TrackSection}[] = [];
+  for (let at = start; at < end;) {
+    const section = plan.at(at);
+    const stop = Math.min(end, section.end);
+    spans.push({start: at, end: stop, section});
+    at = stop;
+  }
+  return spans;
+}
 export function snowBlend(distance: number, plan = defaultTrack): number {
   const s = plan.at(distance);
   const t = Math.max(0, Math.min(1, (distance - s.start) / (s.end - s.start)));

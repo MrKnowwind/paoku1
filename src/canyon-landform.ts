@@ -28,10 +28,12 @@ const wallRows = 24;
 // The rock continues from the crest across the shoulder and down to the valley floor.
 const shoulder = [[0.16, 0.02], [0.33, 0.11], [0.55, 0.21], [0.8, 0.58], [1, 1]] as const;
 
-export function canyonRidgeGeometry(side: number, world: number, strengthAt: (distance: number) => number) {
+export function canyonRidgeGeometry(side: number, world: number, strengthAt: (distance: number) => number, length = 10) {
   const positions: number[] = [], indices: number[] = [], uvs: number[] = [], colors: number[] = [];
   const stride = wallRows + 1 + shoulder.length;
-  for (let z = 0; z <= 10; z++) {
+  const steps = Math.ceil(length);
+  for (let step = 0; step <= steps; step++) {
+    const z = length * step / steps;
     const distance = world + z;
     const strength = strengthAt(distance);
     const offset = 7 * (1 - smooth(strength / joinHeight));
@@ -61,9 +63,9 @@ export function canyonRidgeGeometry(side: number, world: number, strengthAt: (di
       const y = top + (floorY - top) * drop;
       vertex(x, y, top + x - rim);
     }
-    if (z === 10) continue;
+    if (step === steps) continue;
     for (let row = 0; row < stride - 1; row++) {
-      const a = z * stride + row, b = a + stride;
+      const a = step * stride + row, b = a + stride;
       if (side < 0) indices.push(a, b, a + 1, a + 1, b, b + 1);
       else indices.push(a, a + 1, b, a + 1, b + 1, b);
     }

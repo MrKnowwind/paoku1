@@ -1,5 +1,6 @@
 import { CONFIG } from "./config.ts";
-import { defaultTrack, sectionAt } from "./track.ts";
+import { defaultTrack, sectionAt, snowBlend } from "./track.ts";
+import { winterGroundHeight } from "./snow-layout.ts";
 
 const smooth = (value: number) => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
 
@@ -8,6 +9,26 @@ export function coastFloor(distance: number, plan = defaultTrack): number {
   if (s.biome === "beach") return 0.06 + (CONFIG.seabedHeight - 0.06) * smooth((distance - s.end + 24) / 24);
   if (s.biome === "shore") return CONFIG.seabedHeight + (0.06 - CONFIG.seabedHeight) * smooth((distance - s.start) / 60);
   return s.biome === "water" ? CONFIG.seabedHeight : 0.06;
+}
+
+// The same height profile drives coastal meshes, water depth and scenery placement.
+export function coastHeight(x: number, distance: number, plan = defaultTrack): number {
+  const s = sectionAt(distance, plan), ax = Math.abs(x);
+  const edge = s.biome === "beach" ? smooth((distance - s.start) / 24)
+    : s.biome === "shore" ? 1 - smooth((distance - s.start - 50) / 30) : s.biome === "water" ? 1 : 0;
+  const submerged = s.biome === "beach" ? smooth((distance - s.end + 24) / 24)
+    : s.biome === "shore" ? 1 - smooth((distance - s.start) / 60) : s.biome === "water" ? 1 : 0;
+  const dunes = (Math.exp(-Math.pow((ax - 11) / 5, 2)) * 1.2 - smooth((ax - 18) / 18) * 5) * edge;
+  const seabed = (Math.sin(x * 0.27 + distance * 0.07) * 0.65 + Math.cos(x * 0.5 - distance * 0.04) * 0.3) * smooth((ax - 4) / 7);
+  const forest = s.biome === "beach" && s.from === "forest" ? 1 - smooth((distance - s.start) / 24)
+    : s.biome === "shore" && s.to === "forest" ? smooth((distance - s.start - 60) / 20) : s.biome === "forest" ? 1 : 0;
+  const canyon = s.biome === "beach" && s.from === "canyon" ? 1 - smooth((distance - s.start) / 30)
+    : s.biome === "shore" && s.to === "canyon" ? smooth((distance - s.end + 30) / 30) : s.biome === "canyon" ? 1 : 0;
+  const snow = snowBlend(distance, plan);
+  const verge = -0.06 * forest * smooth((ax - 4.3) / 1.4);
+  const valley = (-18 - 0.06) * canyon * smooth((ax - 5.7) / 7);
+  return coastFloor(distance, plan) + ((1 - submerged) * dunes + submerged * seabed + verge + valley) * (1 - snow)
+    + snow * (winterGroundHeight(x, distance, 1, 4.3) - 0.06);
 }
 
 // One full-width surface blends textures, rather than collapsing UVs into a wedge.

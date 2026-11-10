@@ -1,13 +1,14 @@
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
-import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
-import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Color4 } from "@babylonjs/core/Maths/math.color";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import type { Scene } from "@babylonjs/core/scene";
-import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import "@babylonjs/core/Rendering/edgesRenderer.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder.js";
+import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder.js";
+import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder.js";
+import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { Color4 } from "@babylonjs/core/Maths/math.color.js";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import type { Scene } from "@babylonjs/core/scene.js";
+import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
 import type { RunnerGame } from "./game.ts";
 import { CONFIG } from "./config.ts";
 
