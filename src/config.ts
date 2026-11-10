@@ -1,4 +1,8 @@
 export const CONFIG = {
+  officer: {price: 2000, refillCooldown: 120, pistolChance: 0.005, pistolDamage: 5},
+  squid: {health: 4, packInterval: 25, inkWarning: 1.1, inkFlight: 0.5, grabWarning: 1.4,
+    halfWidth: 1.05, halfHeight: 1.25, halfDepth: 1.3,
+    escapeSeconds: 8, escapeGain: 35, escapeLoss: 20, safeWidth: 0.3, tapStep: 0.08},
   daylight: 180,
   dusk: 30,
   night: 90,

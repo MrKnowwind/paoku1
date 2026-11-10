@@ -1,6 +1,7 @@
 import { CONFIG } from "./config.ts";
 export type WeaponId = keyof typeof CONFIG.weapons;
-export type ProductId = "booster" | "hourglass" | "bomb" | "bow";
+export type CharacterId = "runner" | "officer";
+export type ProductId = "booster" | "hourglass" | "bomb" | "bow" | "officer";
 
 export interface ProgressSave {
   version: 3;
@@ -10,6 +11,8 @@ export interface ProgressSave {
   bombs: number;
   bowOwned: boolean;
   equipped: WeaponId;
+  officerOwned: boolean;
+  character: CharacterId;
 }
 export interface SaveStorage {
   getItem(key: string): string | null;
@@ -28,7 +31,7 @@ export class Economy {
     wallet: 0,
     boosters: 0,
     hourglasses: 0,
-    bombs: 0, bowOwned: false, equipped: "slingshot",
+    bombs: 0, bowOwned: false, equipped: "slingshot", officerOwned: false, character: "runner",
   };
   private storage: SaveStorage;
   constructor(storage: SaveStorage) {
@@ -46,6 +49,8 @@ export class Economy {
           bombs: integer(data.bombs),
           bowOwned: data.bowOwned === true,
           equipped: data.equipped === "bow" && data.bowOwned === true ? "bow" : "slingshot",
+          officerOwned: data.officerOwned === true,
+          character: data.character === "officer" && data.officerOwned === true ? "officer" : "runner",
         };
     } catch {
       /* Old settings and best scores live under separate, untouched keys. */
@@ -78,20 +83,26 @@ export class Economy {
   }
   buy(product: ProductId): PurchaseResult {
     if (product === "bow" && this.value.bowOwned) return "owned";
+    if (product === "officer" && this.value.officerOwned) return "owned";
     const price =
       product === "booster" ? CONFIG.boosterPrice : product === "hourglass" ? CONFIG.hourglassPrice :
-      product === "bow" ? CONFIG.weapons.bow.price : CONFIG.bomb.price;
+      product === "bow" ? CONFIG.weapons.bow.price : product === "officer" ? CONFIG.officer.price : CONFIG.bomb.price;
     if (this.value.wallet < price) return "funds";
     const next = { ...this.value, wallet: this.value.wallet - price };
     if (product === "booster") next.boosters++;
     else if (product === "hourglass") next.hourglasses++;
     else if (product === "bomb") next.bombs++;
-    else next.bowOwned = true;
+    else if (product === "bow") next.bowOwned = true;
+    else next.officerOwned = true;
     return this.commit(next, true) ? "ok" : "storage";
   }
   equip(weapon: WeaponId): boolean {
     if (weapon !== "slingshot" && (weapon !== "bow" || !this.value.bowOwned)) return false;
     return this.commit({...this.value, equipped: weapon}, true);
+  }
+  equipCharacter(character: CharacterId): boolean {
+    if (character !== "runner" && (character !== "officer" || !this.value.officerOwned)) return false;
+    return this.commit({...this.value, character}, true);
   }
   consumeBomb(): boolean {
     return this.value.bombs > 0 && this.commit({...this.value, bombs: this.value.bombs - 1}, true);

@@ -11,7 +11,7 @@ const smooth = (n: number) => clamp(n) ** 2 * (3 - 2 * clamp(n));
 export type RegionalAttackKind = "dive" | "dropping" | "small" | "charge" | "snowball";
 export interface RegionalEnemy {
   id: number;
-  kind: "bat" | "yeti";
+  kind: "bat" | "yeti" | "squid";
   homeX: number;
   homeZ: number;
   homeY: number;

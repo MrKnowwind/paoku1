@@ -5,6 +5,8 @@ import { daylightBlend } from "./daylight.ts";
 import { NightSky } from "./night-sky.ts";
 import { WolfModel } from "./wolf-model.ts";
 import { RegionalCombatView } from "./regional-combat-view.ts";
+import { SquidView } from "./squid-view.ts";
+import type { CharacterId } from "./economy.ts";
 import "@babylonjs/core/Engines/thinEngine.scissor";
 import "@babylonjs/core/Culling/ray";
 import { Engine } from "@babylonjs/core/Engines/engine";
@@ -124,6 +126,13 @@ export class ForestScene {
   private slingshot?: TransformNode;
   private bow?: TransformNode;
   private regionalCombatView?: RegionalCombatView;
+  private squidView?: SquidView;
+  private visualCharacter: CharacterId = "runner";
+  private pistol?: TransformNode;
+  private holsteredPistol?: TransformNode;
+  private gunFlash?: Mesh;
+  private struggleCamera = 0;
+  private failedStruggleTime = 0;
   private materials = new Map<string, StandardMaterial>();
   private templates = new Map<string, Mesh>();
   private particles: Particle[] = [];
@@ -379,6 +388,13 @@ export class ForestScene {
     parent?: TransformNode,
     detail = 12,
   ) {
+    if (this.visualCharacter === "officer") {
+      const palette: Record<string, string> = {"#dd7445":"#263b73", "#b95e38":"#1b294e",
+        "#c7673e":"#263b73", "#345d50":"#202e52", "#3e6c5b":"#26375c",
+        "#5b4935":"#211e2a", "#c68d56":"#1b2030", "#82664d":"#141b2a",
+        "#e4d9b6":"#20283b", "#e9dcc0":"#101624", "#f1ddb3":"#293247"};
+      color = palette[color] ?? color;
+    }
     const sculpted = [
       "padded-jacket",
       "face",
@@ -1304,6 +1320,85 @@ export class ForestScene {
         );
       this.arms.push({ upper: shoulder, lower: elbow, side });
     }
+    if (this.visualCharacter === "officer") this.createOfficerUniform();
+  }
+
+  private createOfficerUniform() {
+    const hidden = new Set(["canvas-hat", "hat-brim", "hat-band", "hat-band-buckle", "bag-strap",
+      "strap-adjuster", "jacket-zip", "zipper-pull", "pocket-flap-stitch", "scarf-collar", "hair-lock"]);
+    for (const mesh of this.runner.getChildMeshes()) {
+      if (hidden.has(mesh.name)) mesh.setEnabled(false);
+      if (mesh.name === "eye") mesh.scaling.scaleInPlace(1.9);
+      if (mesh.name === "eye-glint") { mesh.scaling.scaleInPlace(1.7); mesh.position.z += 0.022; }
+    }
+    this.backpack.setEnabled(false); this.scarf.setEnabled(false);
+    this.head.scaling.setAll(1.12);
+    this.part("sphere", "officer-bob", [0.78,0.63,0.53], "#211e2a", [0,0.24,-0.16], this.head);
+    for (const side of [-1,1]) {
+      this.part("capsule", "officer-side-hair", [0.17,0.48,0.28], "#211e2a", [side*0.31,0.21,0], this.head);
+      const epaulette=this.part("box", "officer-epaulette", [0.24,0.05,0.22], "#40588e", [side*0.34,0.67,0], this.torso);
+      epaulette.rotation.z=-side*0.12;
+      this.part("sphere", "officer-shoulder-button", [0.055,0.035,0.055], "#ffd16f", [side*0.3,0.705,0.02], this.torso);
+      const collar=this.part("box", "officer-collar", [0.16,0.18,0.06], "#40588e", [side*0.09,0.64,0.22], this.torso);
+      collar.rotation.z=side*0.48;
+    }
+    for (let i=0;i<5;i++) this.part("capsule", "officer-fringe", [0.13,0.21,0.075], "#211e2a", [(i-2)*0.115,0.43,0.27], this.head);
+    const cap=this.part("sphere", "officer-cap-crown", [0.98,0.36,0.82], "#2e427b", [0,0.66,0], this.head,24);
+    cap.rotation.x=-0.08;
+    const band=CreateCylinder("officer-cap-gold-band", {height:0.065,diameter:0.76,tessellation:32},this.scene);
+    band.parent=this.head;band.position.set(0,0.535,0);band.material=this.mat("#ffcf64");
+    const visor=this.part("sphere", "officer-gloss-visor", [0.8,0.075,0.5], "#171d33", [0,0.48,0.22], this.head,24);
+    (visor.material as StandardMaterial).specularColor.setAll(0.4);
+    this.part("sphere", "officer-visor-shine", [0.26,0.015,0.1], "#8b9bbc", [-0.17,0.52,0.33], this.head);
+    const badge=(parent:TransformNode,x:number,y:number,z:number,scale:number)=>{
+      const root=this.joint("officer-shield-badge",[x,y,z],parent);root.scaling.setAll(scale);
+      this.part("sphere","badge-shield",[0.2,0.23,0.055],"#e99a30",[0,0,0],root);
+      const outline=[[-0.095,0.08],[-0.07,0.1],[0,0.14],[0.07,0.1],[0.095,0.08],[0.08,-0.04],[0,-0.12],[-0.08,-0.04],[-0.095,0.08]];
+      this.seam("badge-gold-rim",outline.map(([a,b])=>[a,b,0.03] as Triple),0.012,"#ffdc7e",root);
+      const star:Triple[]=Array.from({length:11},(_,i)=>{
+        const angle=Math.PI/2+i*Math.PI/5,r=i%2?0.033:0.075;return [Math.cos(angle)*r,Math.sin(angle)*r+0.015,0.038];});
+      this.seam("badge-star",star,0.012,"#ffe187",root);
+      return root;
+    };
+    badge(this.head,0,0.68,0.405,1.05);badge(this.torso,0.2,0.44,0.265,0.77);
+    for(const side of [-1,1])for(let i=0;i<4;i++) {
+      const leaf=this.part("sphere","cap-laurel",[0.035,0.07,0.025],"#ffd16f",[side*(0.15+i*0.028),0.57+i*0.023,0.384-i*0.012],this.head);
+      leaf.rotation.z=side*-0.7;
+    }
+    this.part("box","officer-tie",[0.085,0.3,0.045],"#171d33",[0,0.45,0.28],this.torso);
+    this.part("sphere","officer-tie-knot",[0.11,0.1,0.06],"#171d33",[0,0.61,0.255],this.torso);
+    this.part("box","officer-radio",[0.14,0.19,0.09],"#222936",[-0.29,0.54,0.27],this.torso);
+    for(let i=0;i<3;i++)this.part("box","radio-speaker",[0.1,0.018,0.012],"#7c8c9e",[-0.29,0.58-i*0.04,0.322],this.torso);
+    this.part("capsule","radio-antenna",[0.02,0.16,0.02],"#171d33",[-0.32,0.69,0.27],this.torso);
+    this.part("capsule","officer-belt",[0.65,0.09,0.46],"#171d33",[0,-0.01,0],this.hips);
+    this.part("box","officer-belt-buckle",[0.1,0.09,0.035],"#ffd16f",[0,-0.01,0.245],this.hips);
+    this.part("box","officer-holster",[0.14,0.24,0.16],"#171d33",[0.36,-0.13,0],this.hips);
+    this.holsteredPistol=this.createPistol(this.hips,[0.36,-0.1,0]);
+    this.holsteredPistol.rotation.x=Math.PI;
+    this.pistol=this.createPistol(this.arms.find(a=>a.side>0)!.lower,[0,-0.36,0.09]);
+    this.pistol.setEnabled(false);
+    this.gunFlash=CreateSphere("pistol-muzzle-flash",{diameter:1,segments:6},this.scene);
+    this.gunFlash.parent=this.pistol;this.gunFlash.position.set(0,0.04,0.47);this.gunFlash.scaling.set(0.3,0.3,0.7);
+    this.gunFlash.material=this.mat("#ffe6a0",true);this.gunFlash.setEnabled(false);
+  }
+  private createPistol(parent:TransformNode,position:Triple) {
+    const root=this.joint("officer-pistol",position,parent);
+    this.part("box","pistol-slide",[0.1,0.1,0.34],"#505969",[0,0.04,0.14],root);
+    this.part("box","pistol-grip",[0.085,0.18,0.1],"#141b2a",[0,-0.065,0.04],root);
+    this.part("box","pistol-barrel",[0.055,0.055,0.11],"#151c29",[0,0.04,0.34],root);
+    return root;
+  }
+  private selectCharacter(character:CharacterId) {
+    if(this.visualCharacter===character)return;
+    const previous=new Set(this.runner.getChildMeshes());
+    for(const mesh of previous)this.shadows?.removeShadowCaster(mesh,false);
+    this.shadowCasters=this.shadowCasters.filter(m=>!previous.has(m));
+    this.runner.dispose();this.legs=[];this.arms=[];
+    this.slingshot=this.bow=this.drinkBottle=this.pistol=this.holsteredPistol=undefined;
+    this.gunFlash=undefined;this.visualCharacter=character;this.createRunner();
+    const meshes=this.runner.getChildMeshes();this.shadowCasters.push(...meshes);
+    for(const mesh of meshes)this.shadows?.addShadowCaster(mesh,false);
+    this.motion=new RunnerMotion();this.struggleCamera=0;
   }
 
   private fishSignTexture?: DynamicTexture;
@@ -1988,7 +2083,7 @@ export class ForestScene {
   }
 
   pickWolf(x: number, y: number, game: RunnerGame) {
-    if (!this.wolves.size && !this.regionalCombatView?.size) return;
+    if (!this.wolves.size && !this.regionalCombatView?.size && !this.squidView?.size) return;
     const hit = this.scene.pick(x, y, mesh => typeof mesh.metadata?.wolfId === "number" && mesh.isPickable && mesh.isEnabled() &&
       mesh.isVisible && mesh.visibility > 0.05 && (mesh.material?.alpha ?? 1) >= 0.98 &&
       !mesh.material?.needAlphaBlendingForMesh(mesh), false, this.camera);
@@ -2090,6 +2185,10 @@ export class ForestScene {
     const combat = game.nightCombat;
     this.regionalCombatView ??= new RegionalCombatView(this.scene, (color, glow) => this.mat(color, glow));
     this.regionalCombatView.update(game, this.high);
+    if (game.swimming || this.squidView) {
+      this.squidView ??= new SquidView(this.scene, (color, glow) => this.mat(color, glow));
+      this.squidView.update(game, this.high);
+    }
     const forest = game.terrain.biome === "forest";
     const wolves = forest ? combat.hunt.wolves : [];
     for (const [id, wolf] of this.wolves) {
@@ -2153,7 +2252,10 @@ export class ForestScene {
         mesh = {core, trail};
         this.stones.push(mesh);
       }
-      mesh.core.scaling.set(combat.weapon === "bow" ? 0.24 : 1, combat.weapon === "bow" ? 0.24 : 1, combat.weapon === "bow" ? 5 : 1);
+      mesh.core.scaling.set(stone.pistol ? 0.3 : combat.weapon === "bow" ? 0.24 : 1, stone.pistol ? 0.3 : combat.weapon === "bow" ? 0.24 : 1, stone.pistol ? 12 : combat.weapon === "bow" ? 5 : 1);
+      mesh.core.material=this.mat(stone.pistol?"#ffe6a0":combat.weapon==="bow"?"#cd9b58":"#d3e2f8",true);
+      mesh.trail.material=this.mat(stone.pistol?"#ffe6a0":"#8bd3ff",true);
+      for(const child of mesh.core.getChildMeshes())child.setEnabled(!stone.pistol);
       mesh.core.position.set(stone.x, stone.y, stone.z);
       mesh.core.lookAt(new Vector3(stone.x + stone.dx, stone.y + stone.dy, stone.z + stone.dz));
       mesh.trail.position.set(stone.x - stone.dx * 0.85, stone.y - stone.dy * 0.85, stone.z - stone.dz * 0.85);
@@ -2163,12 +2265,27 @@ export class ForestScene {
     const shotAge = game.worldTime - combat.shotAt;
     if (combat.shotAt !== this.lastShotAt && game.mode === "running" && shotAge >= 0 && shotAge < 0.2) {
       this.lastShotAt = combat.shotAt;
-      this.burst(new Vector3(game.x - 0.22, game.y + (game.sliding ? 0.65 : 1.43), 0.45), "#fff2b1", 14, 4.2, 0.28, 0.18, 1.1);
+      this.burst(new Vector3(game.x + (combat.pistolShot ? 0.22 : -0.22), game.visualWaterY + game.y + (game.sliding ? 0.65 : 1.43), 0.45), "#fff2b1", combat.pistolShot ? 22 : 14, 4.2, 0.28, 0.18, 1.1);
     }
     const aim = useArms ? combat.aim : undefined;
-    this.slingshot?.setEnabled(!!aim && combat.weapon === "slingshot");
-    this.bow?.setEnabled(!!aim && combat.weapon === "bow");
+    const pistol = !!aim && combat.pistolShot && shotAge < 0.5;
+    this.pistol?.setEnabled(pistol);
+    this.holsteredPistol?.setEnabled(!pistol);
+    this.gunFlash?.setEnabled(pistol && shotAge >= 0.05 && shotAge < 0.17);
+    this.slingshot?.setEnabled(!!aim && !pistol && combat.weapon === "slingshot");
+    this.bow?.setEnabled(!!aim && !pistol && combat.weapon === "bow");
     if (!aim) return;
+    if (pistol) {
+      const yaw = Math.atan2(aim.x-game.x,Math.max(0.6,aim.z));
+      const raise=smooth(shotAge/0.075)*(1-smooth((shotAge-0.3)/0.2));
+      const recoil=Math.sin(Math.max(0,Math.min(1,(shotAge-0.08)/0.16))*Math.PI);
+      this.torso.rotation.y=yaw*0.6;this.head.rotation.y=yaw*0.25;
+      for(const arm of this.arms){
+        arm.upper.rotation.set(-1.48*raise-recoil*0.14,yaw*0.4,arm.side>0?-0.13:0.32);
+        arm.lower.rotation.set(-0.15-raise*0.12-recoil*0.3,0,0);
+      }
+      return;
+    }
     const hand = this.arms.find(arm => arm.side < 0)!;
     if (combat.weapon === "bow" && !this.bow) {
       const root = this.joint("hunting-bow", [0, -0.35, 0.08], hand.lower);
@@ -2201,9 +2318,11 @@ export class ForestScene {
   }
 
   update(game: RunnerGame, dt: number, showWallEntryMarkers = false, guide: TerrainGuideId | null = null, guideStep = 0) {
+    this.selectCharacter(game.mode === "ready" ? game.nextCharacter : game.character);
     const newTrack = this.track !== game.track;
     if (newTrack) {
       this.openingMistTime = 0;
+      this.struggleCamera = this.failedStruggleTime = 0;
       this.lastShotAt = this.lastWolfImpact = -Infinity;
     }
     this.track = game.track;
@@ -2554,12 +2673,26 @@ export class ForestScene {
       }
     }
     // Compose one hand action on the current frame's locomotion pose.
-    const handsFree = !opening && game.mode !== "over" && !game.icy && !game.boosting;
+    const handsFree = !opening && !game.struggling && game.mode !== "over" && !game.icy && !game.boosting;
     const patArms = handsFree && game.extinguishTime > 0;
     const aimArms = handsFree && !patArms && !!game.nightCombat.aim;
     this.snowPose(game, handsFree && !patArms && !aimArms && !game.swimming);
     this.updateNightCombat(game, aimArms);
     this.updateBurnPose(game, patArms);
+    const struggle=game.nightCombat.ocean.struggle;
+    if(struggle && game.mode!=="rewinding") {
+      if(struggle.phase==="failed")this.failedStruggleTime=Math.min(1.5,this.failedStruggleTime+dt);
+      else this.failedStruggleTime=0;
+      const t=struggle.elapsed+struggle.ending+this.failedStruggleTime;
+      const release=struggle.phase==="released"?smooth(struggle.ending/0.7):0;
+      const effort=struggle.phase==="failed"?1-smooth(this.failedStruggleTime/0.8):1;
+      this.runner.rotation.set(0.1,Math.sin(t*5)*0.23*effort,Math.sin(t*8)*0.15*effort);
+      this.runner.position.z=-release*0.7;
+      this.torso.rotation.x=-0.12+Math.sin(t*9)*0.1*effort;
+      if(struggle.phase==="failed") { this.head.rotation.x+=smooth(this.failedStruggleTime)*0.65;this.runner.position.y-=smooth(this.failedStruggleTime)*0.45; }
+      for(const arm of this.arms){arm.upper.rotation.set(-1.05+Math.sin(t*8+arm.side)*0.3*effort,0,arm.side*0.6);arm.lower.rotation.set(-0.85,0,0);}
+      for(const leg of this.legs){leg.upper.rotation.x=Math.sin(t*7+leg.side*2)*0.4*effort+release*0.6;leg.lower.rotation.x=0.5;}
+    }
     const impactDistance = CONFIG.iceDistance - ICE_IMPACT_METRES;
     if (running && game.iceRemaining > 0 && this.lastIceRemaining > impactDistance && game.iceRemaining <= impactDistance)
       this.burst(new Vector3(game.x, 0.17, -0.2), "#e4f4ff", this.high ? 24 : 12, 3.1, 0.48, 0.18, 2);
@@ -2808,27 +2941,30 @@ export class ForestScene {
           )
         : 1;
     const mobile = innerWidth < 700;
+    const wrestling=!!game.nightCombat.ocean.struggle && game.mode!=="rewinding";
+    this.struggleCamera=damp(this.struggleCamera,wrestling?1:0,6,dt);
+    const closeup=this.struggleCamera;
     const homeCameraX = 0.5;
     this.camera.position.x = damp(
       this.camera.position.x,
-      homeCameraX * (1 - cameraProgress) +
+      (game.x + 5.2) * closeup + (1-closeup) * (homeCameraX * (1 - cameraProgress) +
         game.x * 0.05 * cameraProgress +
-        game.wallVisualSide * 0.9 * game.wallBlend,
+        game.wallVisualSide * 0.9 * game.wallBlend),
       5,
       dt,
     );
     this.camera.position.y = damp(
       this.camera.position.y,
-      3.1 +
+      (game.visualWaterY+2.6)*closeup+(1-closeup)*(3.1 +
         1.3 * cameraProgress +
         game.wallBlend * (1 + game.wallY * 0.7) +
-        game.boostBlend * 2.5 * (1 - immersed) + immersed * (game.waterY + 2 - 4.4),
+        game.boostBlend * 2.5 * (1 - immersed) + immersed * (game.waterY + 2 - 4.4)),
       5,
       dt,
     );
     this.camera.position.z = damp(
       this.camera.position.z,
-      -7.4 - (mobile ? 5.4 : 4.0) * cameraProgress - game.wallBlend * 2.6,
+      -5.6*closeup+(1-closeup)*(-7.4 - (mobile ? 5.4 : 4.0) * cameraProgress - game.wallBlend * 2.6),
       4,
       dt,
     );
@@ -2842,6 +2978,7 @@ export class ForestScene {
         game.boostBlend * 3.2 * (1 - immersed) + immersed * (game.waterY + 0.95 - 1),
       1.5 + 9.0 * cameraProgress,
     );
+    if(closeup>0.001)Vector3.LerpToRef(target,new Vector3(game.x,game.visualWaterY+1.2,0.3),closeup,target);
     Vector3.LerpToRef(
       this.lookTarget,
       target,

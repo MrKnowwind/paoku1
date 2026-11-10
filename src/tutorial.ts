@@ -8,7 +8,7 @@ const onPath = (item: TrackItem, x: number) =>
     : Math.abs(item.lane * 2.5 - x) < 1.1;
 
 export type TerrainGuideId = "snow" | "ocean";
-const guidePageCounts = { basic: 1, ocean: 3, snow: 3, night: 3, burn: 1 } as const;
+const guidePageCounts = { basic: 1, ocean: 3, snow: 3, night: 3, burn: 1, squid: 3 } as const;
 export type GuideId = keyof typeof guidePageCounts;
 export type LessonId =
   | GuideId
@@ -180,6 +180,16 @@ export class Tutorial {
   }
   update(game: RunnerGame, dt: number, _boosterUnlocked: boolean) {
     if (game.mode !== "running") return;
+    // Only the actual grab teaches squid mechanics. Spawning and ink never open this guide.
+    if (game.struggling) {
+      if (!this.knows("squid") && !this.active) this.openGuide("squid");
+      if (this.knows("squid")) {
+        game.struggleNeedsGuide = false;
+        const q = game.nightCombat.ocean.struggle;
+        if (q) q.waiting = false;
+      }
+      return;
+    }
     this.cooldown = Math.max(0, this.cooldown - dt);
     if (this.active) {
       const id = this.active.id;

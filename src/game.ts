@@ -6,7 +6,7 @@ import { CONFIG } from "./config.ts";
 import { NIGHT_START, dayPhase } from "./daylight.ts";
 import { NightCombat } from "./night-combat.ts";
 import type { Hunt } from "./night-combat.ts";
-import type { WeaponId } from "./economy.ts";
+import type { WeaponId, CharacterId } from "./economy.ts";
 import { WINTER_HAZARD_HALF_WIDTH } from "./snow-layout.ts";
 import { underRockShelf } from "./rock-shelf.ts";
 import type { RockShelf } from "./rock-shelf.ts";
@@ -115,6 +115,21 @@ export class RunnerGame {
   worldTime = 0;
   nightCombat = new NightCombat();
   nextWeapon: WeaponId = "slingshot";
+  nextCharacter: CharacterId = "runner";
+  character: CharacterId = "runner";
+  reserveCooldown = 0;
+  struggleNeedsGuide = true;
+  get struggling() { return this.nightCombat.ocean.struggling; }
+  shotRandom(sequence: number) { return this.hash(sequence, 481); }
+  reserveAmmo() {
+    if (this.character !== "officer" || this.mode !== "running" || this.struggling || this.icy ||
+      this.transitioning || this.boosting || this.reserveCooldown > 0) return false;
+    const combat = this.nightCombat, gain = combat.weaponRules.ammo - combat.ammo;
+    if (gain <= 0) return false;
+    combat.ammo += gain; combat.refillGain = gain; combat.refillFlash = 0.65; combat.refillSerial++;
+    this.reserveCooldown = CONFIG.officer.refillCooldown;
+    return true;
+  }
   get phase() { return dayPhase(this.worldTime); }
   get nightGearActive() { return this.phase === "night" || this.nightCombat.remaining > 0; }
   get swimming() { return this.terrain.biome === "water"; }
@@ -165,7 +180,7 @@ export class RunnerGame {
   introTime = 0;
   openingPrepared = false;
   coins = 0;
-  lastHit: ItemType | "gap" | "cold" | "wolf" | "bat" | "yeti" | null = null;
+  lastHit: ItemType | "gap" | "cold" | "wolf" | "bat" | "yeti" | "squid" | null = null;
   items: TrackItem[] = [];
   magnetTime = 0;
   shieldTime = 0;
@@ -307,6 +322,9 @@ export class RunnerGame {
     this.waterY = CONFIG.waterHeights[1];
     this.worldTime = startAtNight ? NIGHT_START : 0;
     this.nightCombat = new NightCombat(this.nextWeapon);
+    this.character = this.nextCharacter;
+    this.reserveCooldown = 0;
+    this.struggleNeedsGuide = true;
     this.idBase = ++this.runSerial * 1000000000000;
     this.nextId = 800000000000;
     this.mode = "running";
@@ -356,7 +374,7 @@ export class RunnerGame {
     this.capture();
   }
   move(direction: number) {
-    if (this.mode !== "running" || this.icy || this.boosting || this.wallSide || this.transitioning) return false;
+    if (this.mode !== "running" || this.struggling || this.icy || this.boosting || this.wallSide || this.transitioning) return false;
     const side = Math.sign(direction);
     const gap = entryAt(this.distance, this.seed, this.track);
     if (this.lane === side && gap && Math.abs(this.x - side * 2.5) < 0.8) {
@@ -394,6 +412,7 @@ export class RunnerGame {
     return true;
   }
   jump() {
+    if (this.struggling) return false;
     if (this.mode !== "running" || this.icy || this.boosting) return false;
     if (this.transitioning) return false;
     if (this.swimming) { this.waterLevel = Math.min(2, this.waterLevel + 1); return true; }
@@ -405,6 +424,7 @@ export class RunnerGame {
     return true;
   }
   slide() {
+    if (this.struggling) return false;
     if (this.mode !== "running" || this.icy || this.boosting) return false;
     if (this.transitioning) return false;
     if (this.swimming) { this.waterLevel = Math.max(0, this.waterLevel - 1); return true; }
@@ -432,7 +452,7 @@ export class RunnerGame {
     if (
       !available ||
       this.mode !== "running" ||
-      this.boosting || this.icy ||
+      this.boosting || this.icy || this.struggling ||
       this.boostCooldown > 0 ||
       !consume()
     )
@@ -691,7 +711,7 @@ export class RunnerGame {
     this.extinguishSerial++;
   }
   tapExtinguish() {
-    if (!this.fireQteReady) return false;
+    if (!this.fireQteReady || this.struggling) return false;
     if (++this.fireQteHits >= CONFIG.burn.qteHits) this.extinguish();
     else {
       this.fireQteAt = this.worldTime + CONFIG.burn.qteDelay;
@@ -983,7 +1003,7 @@ export class RunnerGame {
     };
   }
   private capture() {
-    if (this.boosting || this.runClock - this.lastSnapshot < 0.1) return;
+    if (this.boosting || this.struggling || this.runClock - this.lastSnapshot < 0.1) return;
     this.lastSnapshot = this.runClock;
     this.history.push(this.snapshot());
     while (this.history.length > 1 && this.history[1].time < this.runClock - 6)
@@ -1016,6 +1036,7 @@ export class RunnerGame {
     this.rewindFromTime = this.runClock;
     this.history.push(this.snapshot());
     this.nightCombat.clearShots();
+    this.nightCombat.ocean.clearInteraction();
     this.clearBurn();
     this.snowballGraceUntil = 0;
     this.lastTouchedFire = undefined;
@@ -1114,7 +1135,13 @@ export class RunnerGame {
     const coinsBefore = this.coins;
     while (dt > 0 && this.mode === "running") {
       const step = Math.min(dt, 1 / 120);
+      if (this.struggling) {
+        this.nightCombat.ocean.updateStruggle(this, step);
+        dt -= step;
+        continue;
+      }
       this.runClock += step;
+      this.reserveCooldown = Math.max(0, this.reserveCooldown - step);
       this.worldTime += step;
       this.launchTime = Math.min(LAUNCH_DURATION, this.launchTime + step);
       this.magnetTime = Math.max(0, this.magnetTime - step);

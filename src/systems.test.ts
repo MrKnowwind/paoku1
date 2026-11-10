@@ -6,9 +6,11 @@ import { makeCoral, touchesCoral, waterSafeLane } from "./coral.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONFIG } from "./config.ts";
+import { DAY_LENGTH } from "./daylight.ts";
 import { Economy, PROGRESS_KEY } from "./economy.ts";
 import { RunnerGame } from "./game.ts";
 import { NightCombat } from "./night-combat.ts";
+import { Tutorial } from "./tutorial.ts";
 import { rockShelfSpan } from "./rock-shelf.ts";
 import {
   sectionAt,
@@ -1173,4 +1175,177 @@ test("cluster bomb pulses keep their release-time offset as the runner advances"
     game.distance+=game.speed*0.3;combat.update(game,0.001,()=>0.5,()=>false);
     assert.equal(combat.health(enemy),4-pulse);
   }
+});
+
+test("old v3 saves retain equipment and migrate to the explorer; character purchases are atomic", () => {
+  let raw = JSON.stringify({version:3,wallet:3000,boosters:2,hourglasses:1,bombs:3,bowOwned:true,equipped:"bow"});
+  let failing = false;
+  const storage = {getItem:()=>raw,setItem:(_key:string,value:string)=>{if(failing)throw Error("full");raw=value;}};
+  const economy = new Economy(storage);
+  assert.equal(economy.state.character,"runner");
+  assert.equal(economy.state.equipped,"bow");
+  assert.equal(economy.equipCharacter("officer"),false);
+  failing=true;
+  assert.equal(economy.buy("officer"),"storage");
+  assert.equal(economy.state.wallet,3000);assert.equal(economy.state.officerOwned,false);
+  failing=false;
+  assert.equal(economy.buy("officer"),"ok");assert.equal(economy.buy("officer"),"owned");
+  assert.equal(economy.state.wallet,1000);assert.equal(economy.state.bombs,3);
+  failing=true;assert.equal(economy.equipCharacter("officer"),false);
+  assert.equal(economy.state.character,"runner");
+  failing=false;assert.equal(economy.equipCharacter("officer"),true);
+  assert.deepEqual(new Economy(storage).state,economy.state);
+});
+
+function squidFixture(character: "runner" | "officer" = "runner", weapon: "slingshot" | "bow" = "slingshot") {
+  const game = new RunnerGame({autoSpawn:false,random:()=>0.5});
+  game.nextCharacter=character;game.nextWeapon=weapon;game.nextTerrain="water";game.start(true);
+  game.distance=CONFIG.forestLength+CONFIG.beachLength+160;
+  const combat=game.nightCombat,ocean=combat.ocean;
+  const enemy={id:2000000010,kind:"squid" as const,homeX:-4.7,homeY:game.visualWaterY+1,
+    homeZ:7,enteredAt:game.worldTime-4,readyAt:Infinity,hitAt:-Infinity};
+  ocean.state.section=game.terrain.start;ocean.state.nextPack=Infinity;ocean.state.enemies=[enemy];
+  return {game,combat,ocean,enemy};
+}
+function squidImpact(f: ReturnType<typeof squidFixture>, kind: "ink" | "grab", x=0, y=f.game.visualWaterY+0.95) {
+  const {game,ocean,enemy}=f;
+  ocean.state.attacks.push({id:1,enemy:enemy.id,kind,start:game.worldTime-1.5,releaseAt:game.worldTime-0.4,
+    impactAt:game.worldTime+0.01,x,y,worldZ:game.distance+game.speed*0.01,
+    fromX:enemy.homeX,fromY:enemy.homeY,fromZ:game.distance+7,spent:false});
+  game.update(0.02);
+}
+
+for (const weapon of ["slingshot","bow"] as const) for (const pistol of [false,true]) {
+  test(`${weapon}: accepted officer shots consume once and deal ${pistol?"pistol":"weapon"} damage underwater`,()=>{
+    const {game,combat,enemy}=squidFixture("officer",weapon);
+    game.shotRandom=()=>pistol?0:0.5;
+    const ammo=combat.ammo;
+    assert.equal(combat.fire(enemy.id,game),true);
+    assert.equal(combat.fire(enemy.id,game),undefined);
+    assert.equal(combat.ammo,ammo-1);assert.equal(combat.shotSerial,1);
+    game.update(0.3);
+    assert.equal(combat.health(enemy),Math.max(0,4-(pistol?5:CONFIG.weapons[weapon].damage)));
+    assert.equal(combat.damageEvents[0].amount,pistol?4:CONFIG.weapons[weapon].damage);
+    const serial=combat.shotSerial,snapshot=combat.snapshot();
+    combat.restore(snapshot,game.worldTime,true);
+    assert.equal(combat.shotSerial,serial);assert.equal(combat.ammo,ammo-1);
+  });
+}
+
+test("only the officer attacks automatically; selection changes apply next run",()=>{
+  for (const character of ["runner","officer"] as const) {
+    const {game,combat}=squidFixture(character);game.shotRandom=()=>0.5;
+    game.nextCharacter=character==="runner"?"officer":"runner";
+    game.update(0.05);
+    assert.equal(combat.ammo,combat.weaponRules.ammo-(character==="officer"?1:0));
+    assert.equal(game.character,character);
+    game.start();assert.equal(game.character,game.nextCharacter);
+  }
+});
+
+test("reserve ammo fills each weapon, starts cooldown only on use, and survives rewind restore",()=>{
+  for(const weapon of ["slingshot","bow"] as const) {
+    const {game,combat}=squidFixture("officer",weapon);
+    assert.equal(game.reserveAmmo(),false);assert.equal(game.reserveCooldown,0);
+    combat.ammo=1;assert.equal(game.reserveAmmo(),true);
+    assert.equal(combat.ammo,CONFIG.weapons[weapon].ammo);assert.equal(game.reserveCooldown,120);
+    game.pause();game.update(2);assert.equal(game.reserveCooldown,120);game.resume();
+    combat.restore(combat.snapshot(),game.worldTime,true);assert.equal(game.reserveCooldown,120);
+    game.update(0.1);assert.ok(game.reserveCooldown<120);assert.equal(game.reserveAmmo(),false);
+  }
+});
+
+test("ink does not hurt or consume shields; both swimming axes dodge squid attacks",()=>{
+  const hit=squidFixture();hit.game.shield=true;
+  squidImpact(hit,"ink");
+  assert.equal(hit.game.health,3);assert.equal(hit.game.shield,true);assert.equal(hit.ocean.inkCovered,true);
+  assert.equal(hit.game.struggling,false);
+  hit.ocean.clearInk();assert.equal(hit.ocean.inkCovered,false);
+  for(const kind of ["ink","grab"] as const) for(const axis of ["lane","height"] as const) {
+    const f=squidFixture();
+    squidImpact(f,kind,axis==="lane"?2.5:0,axis==="height"?CONFIG.waterHeights[0]+0.95:f.game.visualWaterY+0.95);
+    assert.equal(f.ocean.inkCovered,false);assert.equal(f.game.struggling,false);
+  }
+  const shield=squidFixture();shield.game.shield=true;squidImpact(shield,"grab");
+  assert.equal(shield.game.shield,false);assert.equal(shield.game.health,3);assert.equal(shield.game.struggling,false);
+});
+
+test("squid guide opens after a real grab, pauses its timer, and remains separately reviewable",()=>{
+  const f=squidFixture(),tutorial=new Tutorial(["basics","move","ocean"],()=>{});
+  tutorial.update(f.game,0,false);assert.equal(tutorial.guide,null);
+  squidImpact(f,"ink");tutorial.update(f.game,0,false);assert.equal(tutorial.guide,null);
+  squidImpact(f,"grab");assert.equal(f.game.struggling,true);
+  tutorial.update(f.game,0,false);assert.equal(tutorial.guide,"squid");
+  f.game.update(2);assert.equal(f.ocean.struggle?.elapsed,0);
+  assert.equal(tutorial.timeScale(f.game),0);
+  tutorial.turnGuide(1);tutorial.turnGuide(1);tutorial.finishGuide();tutorial.update(f.game,0,false);
+  f.game.update(0.1);assert.ok(f.ocean.struggle!.elapsed>0);
+  tutorial.reviewGuide("squid");assert.equal(tutorial.timeScale(f.game),0);
+  tutorial.closeGuideReview();assert.equal(tutorial.knows("squid"),true);
+});
+
+test("struggle freezes the world and tools, supports escape, and times out regardless of hearts",()=>{
+  for (const outcome of ["escape","timeout"] as const) {
+    const f=squidFixture("officer");f.game.struggleNeedsGuide=false;
+    f.combat.ammo=1;f.game.reserveAmmo();squidImpact(f,"grab");
+    const {game,ocean,combat}=f,distance=game.distance,time=game.worldTime,cd=game.reserveCooldown;
+    assert.equal(game.health,3);assert.equal(game.move(1),false);assert.equal(game.jump(),false);
+    assert.equal(game.reserveAmmo(),false);assert.equal(combat.fire(f.enemy.id,game),undefined);
+    assert.equal(combat.throwBomb(game,()=>{throw Error("must not consume");}),false);
+    const elapsed=ocean.struggle!.elapsed;
+    game.pause();game.update(2);assert.equal(ocean.struggle!.elapsed,elapsed);game.resume();
+    if(outcome==="timeout")for(let i=0;i<8;i++)ocean.tap(-1);
+    for(let i=0;i<810&&ocean.struggle?.phase==="playing";i++) {
+      if(outcome==="escape") {
+        const q=ocean.struggle!;
+        if(Math.abs(q.cursor-q.safe)>0.04)ocean.tap(Math.sign(q.safe-q.cursor));
+      }
+      game.update(0.01);
+    }
+    assert.equal(game.distance,distance);assert.equal(game.worldTime,time);assert.equal(game.reserveCooldown,cd);
+    if(outcome==="escape") {
+      assert.equal(ocean.struggle?.phase,"released");game.update(0.7);
+      assert.equal(game.struggling,false);assert.ok(game.protectionTime>=1.9);
+    } else {
+      assert.equal(game.health,0);assert.equal(game.lastHit,"squid");assert.equal(game.canRewind,true);
+      assert.equal(game.useHourglass(()=>true),true);game.update(CONFIG.rewindDuration+0.01);
+      assert.equal(game.mode,"running");assert.equal(game.struggling,false);assert.equal(ocean.inkCovered,false);
+      assert.ok(game.reserveCooldown>110);
+    }
+  }
+});
+
+test("squid packs stay bounded, survive sunrise, and retire on leaving the ocean",()=>{
+  for(const roll of [0,0.99]) {
+    const {game,combat,ocean}=squidFixture();
+    ocean.state.enemies=[];ocean.state.nextPack=0;
+    ocean.update(game,()=>roll,e=>combat.health(e));
+    assert.equal(ocean.state.enemies.length,roll===0?1:2);
+    assert.ok(ocean.state.enemies.every(e=>combat.health(e)===4));
+    const ids=ocean.state.enemies.map(e=>e.id);
+    game.worldTime+=26;ocean.update(game,()=>roll,e=>combat.health(e));
+    assert.deepEqual(ocean.state.enemies.map(e=>e.id),ids);
+    game.worldTime=DAY_LENGTH+1;ocean.update(game,()=>roll,e=>combat.health(e));
+    assert.deepEqual(ocean.state.enemies.map(e=>e.id),ids);
+    game.distance=0;ocean.update(game,()=>roll,e=>combat.health(e));
+    assert.equal(ocean.state.enemies.length,0);assert.equal(ocean.state.attacks.length,0);
+  }
+});
+
+test("underwater cluster bombs share damage and cancel a defeated squid's grab",()=>{
+  const f=squidFixture(),{game,combat,ocean,enemy}=f;
+  assert.equal(combat.throwBomb(game,()=>true),true);
+  const start=game.worldTime;
+  for(let pulse=0;pulse<3;pulse++) {
+    game.worldTime=start+CONFIG.bomb.flight+pulse*CONFIG.bomb.interval+0.001;
+    combat.update(game,0,()=>0.5,()=>false);
+  }
+  assert.equal(combat.health(enemy),1);
+  ocean.state.attacks.push({id:7,enemy:enemy.id,kind:"grab",start:game.worldTime,releaseAt:game.worldTime+1.4,
+    impactAt:game.worldTime+1.4,x:0,y:game.visualWaterY+0.95,worldZ:game.distance+game.speed*1.4,
+    fromX:enemy.homeX,fromY:enemy.homeY,fromZ:game.distance+7,spent:false});
+  combat.hurt(enemy,1,game.worldTime,game);
+  assert.equal(ocean.state.attacks.length,0);
+  const snapshot=combat.snapshot();combat.restore(snapshot,game.worldTime,true);
+  assert.equal(ocean.state.enemies.length,0);assert.equal(game.struggling,false);
 });

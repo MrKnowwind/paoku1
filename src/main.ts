@@ -5,7 +5,8 @@ import "./style.css";
 import { RunnerGame } from "./game.ts";
 import { ForestScene } from "./scene.ts";
 import { Economy } from "./economy.ts";
-import type { ProductId, WeaponId } from "./economy.ts";
+import type { ProductId, WeaponId, CharacterId } from "./economy.ts";
+import { InkOverlay } from "./ink-overlay.ts";
 import { coreBiomes } from "./track.ts";
 import type { CoreBiome } from "./track.ts";
 import { CONFIG } from "./config.ts";
@@ -27,6 +28,7 @@ const guideCategories = [
   { id: "snow", title: "snowGuide", glyph: "snowflake" },
   { id: "night", title: "nightGuide", glyph: "moon" },
   { id: "burn", title: "burnGuide", glyph: "fire-pat" },
+  { id: "squid", title: "squidGuide", glyph: "squid" },
 ] as const satisfies readonly {id: GuideId; title: MessageKey; glyph: string}[];
 const guideGlyph = (name: string) => {
   const paths: Record<string, string> = {
@@ -34,6 +36,9 @@ const guideGlyph = (name: string) => {
     snowflake: "M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M8.5 4.5 12 8l3.5-3.5m-7 15 3.5-3.5 3.5 3.5",
     moon: "M19 15.6A9 9 0 0 1 8.4 5a8.5 8.5 0 1 0 10.6 10.6Z M17 4v6m-3-3h6",
     strip: "M3 14v-4h18v4Z M6 12h1m4 0h1m4 0h1",
+    squid: "M7 11C3 3 9 2 12 2s9 1 5 9l-2 3H9Zm2 4c-5 0-7 7-3 7m5-7v5m2-5v5m2-5c5 0 7 7 3 7M9 10h.1m5.8 0h.1",
+    cube: "m12 2 9 5v10l-9 5-9-5V7Zm0 10L3 7m9 5 9-5m-9 5v10",
+    escape: "M2 9h20v7H2Zm6 0v7m8-7v7M12 5v15M5 3 2 5l3 2m14-4 3 2-3 2",
   };
   return paths[name] ? `<svg class="guide-symbol ${name}" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]}"/></svg>` : icon(name);
 };
@@ -95,6 +100,7 @@ const economy = new Economy({
   setItem: (key, value) => localStorage.setItem(key, value),
 });
 const game = new RunnerGame({ onCoins: (count) => economy.credit(count) });
+game.nextCharacter = economy.state.character;
 let testTutorials = read("test-tutorials") === "true";
 let learnedLessons: string[] = [];
 try {
@@ -123,6 +129,13 @@ const clockSegments = [
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <canvas id="world" aria-label="3D"></canvas>
+  <canvas id="ink-overlay" aria-hidden="true" hidden></canvas>
+  <section id="struggle-hud" class="struggle-hud" hidden aria-labelledby="struggle-title">
+    <div class="struggle-heading"><strong id="struggle-title"></strong><b id="struggle-time"></b></div>
+    <div class="escape-track" aria-hidden="true"><i id="escape-safe"></i><b id="escape-cursor"></b></div>
+    <div class="escape-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i id="escape-fill"></i></div>
+    <small id="escape-hint"></small>
+  </section>
   <aside id="night-hud" class="night-hud" hidden>
     <div class="night-weapon"><span class="weapon-icon"></span><div class="shot-meter"><i></i></div></div>
     <div class="ammo-slots"></div>
@@ -209,6 +222,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <section class="run-status" id="run-status" hidden aria-label="${t("powerStatus")}"></section>
   <button class="active-tool" id="booster-button" data-action="boost" data-label="activateBoost" hidden>${icon("rocket")}<span id="booster-status"></span></button>
   <button class="active-tool bomb-tool" id="bomb-button" data-action="bomb" data-label="bomb" hidden>${icon("cluster-bomb")}<span id="bomb-status"></span></button>
+  <button class="active-tool reserve-tool" id="reserve-button" data-action="reserve" data-label="reserveAmmo" hidden>${icon("ammo-pouch")}<span id="reserve-status"></span></button>
   <div class="notice-toast" id="notice-toast" hidden role="status"></div>
   <div class="tutorial-overlay" id="tutorial-overlay" hidden>
     <div class="tutorial-prompt" id="tutorial-prompt">
@@ -220,6 +234,17 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 `;
 
 const worldCanvas = document.querySelector<HTMLCanvasElement>("#world")!;
+const ink = new InkOverlay(document.querySelector<HTMLCanvasElement>("#ink-overlay")!, () => game.nightCombat.ocean.clearInk());
+let shownInk = 0, clearedInk = 0, heardShot = 0;
+const struggleHud = document.querySelector<HTMLElement>("#struggle-hud")!;
+const escapeSafe = document.querySelector<HTMLElement>("#escape-safe")!;
+const escapeCursor = document.querySelector<HTMLElement>("#escape-cursor")!;
+const escapeFill = document.querySelector<HTMLElement>("#escape-fill")!;
+const escapeProgress = document.querySelector<HTMLElement>(".escape-progress")!;
+const escapeTime = document.querySelector<HTMLElement>("#struggle-time")!;
+function characterAsset(character: CharacterId, portrait = false) {
+  return character === "officer" ? `${import.meta.env.BASE_URL}art/characters/officer-${portrait ? "portrait" : "avatar"}.webp` : iconAsset("runner-portrait");
+}
 const dayClock = document.querySelector<HTMLElement>("#day-clock")!;
 const clockDay = document.querySelector<SVGTextElement>("#clock-day")!;
 const clockDot = document.querySelector<SVGCircleElement>("#clock-dot")!;
@@ -277,7 +302,12 @@ function renderDialog() {
       return `<article class="supply-card"><span class="supply-icon">${icon(id)}</span><div><h3>${t(id)}</h3><p class="supply-stats" aria-label="${t("weaponStats").replace("{damage}", n(spec.damage)).replace("{ammo}", n(spec.ammo))}">${icon("bolt")}${n(spec.damage)} ${icon(id === "bow" ? "arrow-ammo" : "stone")}${n(spec.ammo)}</p><small>${t(owned ? "owned" : "permanent")}</small></div><div class="purchase-row">${owned ? "" : `<span>${icon("coin")}${n(spec.price)}</span>`}<button class="secondary-button" data-action="${owned ? `equip-${id}` : "buy-bow"}" ${equipped || unavailable ? "disabled" : ""}>${t(equipped ? "equipped" : owned ? "equip" : unavailable ? "insufficient" : "buy")}</button></div></article>`;
     };
     const categories = (["weapons", "tools", "characters"] as const).map(category => `<button class="${shopCategory === category ? "selected" : ""}" data-action="category-${category}" aria-pressed="${shopCategory === category}">${t(category)}</button>`).join("");
-    const content = shopCategory === "characters" ? `<p class="shop-coming-soon">${t("comingSoon")}</p>` :
+    const character = (id: CharacterId) => {
+      const owned = id === "runner" || state.officerOwned, equipped = state.character === id;
+      const unavailable = !owned && state.wallet < CONFIG.officer.price;
+      return `<article class="supply-card character-card"><img class="character-art" src="${characterAsset(id, true)}" alt="" width="128" height="128"><div><h3>${t(id)}</h3><p>${t(id === "officer" ? "officerSkills" : "runnerSkills")}</p><small>${t(owned ? "owned" : "permanent")} · ${t("nextRunHint")}</small></div><div class="purchase-row">${owned ? "" : `<span>${icon("coin")}${n(CONFIG.officer.price)}</span>`}<button class="secondary-button" data-action="${owned ? `character-${id}` : "buy-officer"}" ${equipped || unavailable ? "disabled" : ""}>${t(equipped ? "equipped" : owned ? "equip" : unavailable ? "insufficient" : "buy")}</button></div></article>`;
+    };
+    const content = shopCategory === "characters" ? character("runner") + character("officer") :
       shopCategory === "weapons" ? weapon("slingshot") + weapon("bow") :
       product("booster", "rocket", CONFIG.boosterPrice) + product("hourglass", "hourglass", CONFIG.hourglassPrice) + product("bomb", "cluster-bomb", CONFIG.bomb.price);
     dialog.innerHTML = `${close}<div class="modal-heading"><span class="modal-symbol">${icon("shop")}</span><h2 id="dialog-title">${t("shop")}</h2></div><div class="shop-wallet" aria-label="${t("wallet")}"><strong>${icon("coin")}<span class="wallet-count">${n(state.wallet)}</span></strong></div><nav class="shop-categories" aria-label="${t("shop")}">${categories}</nav>${content}`;
@@ -311,9 +341,13 @@ function renderDialog() {
   } else if (activeDialog === "over") {
     dialog.innerHTML = `<div class="result-heading"><span class="result-seal">${icon("trophy")}</span><h2 id="dialog-title">${t("over")}</h2>${newBest ? `<span class="record-tag">${t("newBest")}</span>` : ""}</div><div class="final-score"><span>${t("score")}</span><strong>${n(game.score)}</strong></div><div class="result-stats"><div><span class="stat-label" aria-label="${t("totalDistance")}">${icon("route")}</span><strong>${n(game.distance)}<small>m</small></strong></div><div><span class="stat-label" aria-label="${t("collected")}">${icon("coin")}</span><strong>${n(game.coins)}</strong></div></div><div class="result-actions"><button class="primary-button" data-action="restart">${icon("restart")}${t("again")}</button><button class="secondary-button" data-action="home">${icon("home")}${t("home")}</button></div>`;
   }
+  if ((activeDialog === "revive" || activeDialog === "over") && game.lastHit === "squid")
+    dialog.insertAdjacentHTML("beforeend", `<p class="revive-copy">${t("squidFailure")}</p>`);
 }
 
 function openDialog(type: NonNullable<typeof activeDialog>) {
+  gesture = guideSwipe = null;
+  ink.cancel();
   focusBeforeDialog = document.activeElement as HTMLElement;
   resumeOnClose = game.mode === "running" || game.mode === "intro";
   if (resumeOnClose) game.pause();
@@ -387,13 +421,17 @@ function start() {
   document.body.classList.remove("crashed");
   game.nextTerrain = terrainOverride ? terrainTarget : null;
   game.nextWeapon = economy.state.equipped;
+  game.nextCharacter = economy.state.character;
   game.begin(startAtNight, terrainOverride);
+  gesture = guideSwipe = null;
+  ink.reset(); shownInk = clearedInk = heardShot = 0;
   shownEnemyHit = 0;
   fireQteAt = -1;
   combatFloats.replaceChildren();
   // Commit the directed exit now; visuals still load only near that section.
   game.track.at(game.track.sections[0].end);
   tutorial.resetRun(game);
+  game.struggleNeedsGuide = !tutorial.knows("squid");
   syncView();
   (document.activeElement as HTMLElement)?.blur();
 }
@@ -433,6 +471,7 @@ const lessonTitles: Record<LessonId, MessageKey> = {
   burn: "burnGuide",
   snow: "snowGuide",
   ocean: "oceanGuide",
+  squid: "squidGuide",
   move: "lessonMove",
   jump: "lessonJump",
   slide: "lessonSlide",
@@ -471,17 +510,24 @@ const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?:
     {title: "nightSupplies", copy: "nightSuppliesCopy", symbols: ["ammo-pouch", "arrow-ammo"]},
   ],
   burn: [{title: "extinguish", copy: "burnGuideCopy", detail: "burnGuideDetail", symbols: ["fire-pat", "snowflake"]}],
+  squid: [
+    {title: "squidInk", copy: "squidInkCopy", symbols: ["squid", "drop"]},
+    {title: "squidGrab", copy: "squidGrabCopy", symbols: ["cube", "shield"]},
+    {title: "squidEscape", copy: "squidEscapeCopy", detail: "squidDeadline", symbols: ["escape", "clock"]},
+  ],
 };
 
 function updateGuideUi() {
   const guide = !activeDialog ? tutorial.guide : null;
   const step = tutorial.guideStep;
-  const key = `${guide}/${step}/${tutorial.guideLast}/${language}`;
+  const character = game.mode === "ready" ? game.nextCharacter : game.character;
+  const key = `${guide}/${step}/${tutorial.guideLast}/${language}/${character}`;
   const newlyOpened = guidePanel.hidden && !!guide;
   guidePanel.hidden = !guide;
   document.body.classList.toggle("terrain-teaching", !!guide);
   if (guide && (newlyOpened || guidePanel.dataset.page !== key)) {
     gesture = guideSwipe = null;
+    ink.cancel();
     guidePanel.dataset.page = key;
     guidePanel.dataset.terrain = guide;
     guideCopy.scrollTop = 0;
@@ -501,10 +547,10 @@ function updateGuideUi() {
     const page = guidePages[guide][step - 1];
     const symbols = document.querySelector<HTMLElement>("#guide-symbols")!;
     symbols.hidden = !page.symbols;
-    symbols.innerHTML = page.symbols?.map(guideGlyph).join("") ?? "";
+    symbols.innerHTML = (guide === "basic" ? `<img class="guide-character" src="${characterAsset(character, true)}" alt="${t(character)}" width="128" height="128">` : "") + (page.symbols?.map(guideGlyph).join("") ?? "");
     document.querySelector("#guide-page-title")!.textContent = t(page.title);
     document.querySelector("#guide-copy")!.textContent = guideText(page.copy);
-    document.querySelector("#guide-detail")!.textContent = page.detail ? guideText(page.detail) : "";
+    document.querySelector("#guide-detail")!.textContent = guide === "basic" && character === "officer" ? t("reserveHint") : page.detail ? guideText(page.detail) : "";
     const labels = (keys: MessageKey[] = []) => keys.map(label => `<span>${t(label)}</span>`).join("");
     document.querySelector("#guide-stage-top")!.innerHTML = labels(page.top);
     document.querySelector("#guide-stage-bottom")!.innerHTML = labels(page.bottom);
@@ -576,6 +622,10 @@ function updateNightUi() {
     shownHealth = game.health;
     hearts.forEach((heart,i)=>heart.classList.toggle("full",i<game.health));
   }
+  const portrait = playerHealth.querySelector<HTMLImageElement>(".player-portrait")!;
+  if (portrait.dataset.character !== game.character) {
+    portrait.dataset.character = game.character; portrait.src = characterAsset(game.character);
+  }
   updateDamageFloats();
   if (nightHud.hidden) return;
   const combat = game.nightCombat;
@@ -585,11 +635,15 @@ function updateNightUi() {
     ammoSlots.innerHTML = Array.from({length: combat.weaponRules.ammo}, () => icon(combat.weapon === "bow" ? "arrow-ammo" : "stone")).join("");
   }
   const ammo = `${n(combat.ammo)} / ${n(combat.weaponRules.ammo)}`;
-  nightHud.setAttribute("aria-label", `${t(combat.weapon)} · ${t("ammo")} ${ammo}`);
-  Array.from(ammoSlots.children).forEach((slot, index) => slot.classList.toggle("spent", index >= combat.ammo));
+  const ammoKey = `${combat.weapon}/${combat.ammo}/${language}`;
+  if (nightHud.dataset.ammo !== ammoKey) {
+    nightHud.dataset.ammo = ammoKey;
+    nightHud.setAttribute("aria-label", `${t(combat.weapon)} · ${t("ammo")} ${ammo}`);
+    Array.from(ammoSlots.children).forEach((slot, index) => slot.classList.toggle("spent", index >= combat.ammo));
+    nightHud.classList.toggle("empty", combat.ammo === 0);
+  }
   nightHud.classList.toggle("refilled", combat.refillFlash > 0);
   shotMeter.style.transform = `scaleX(${1 - combat.cooldown / combat.weaponRules.cooldown})`;
-  nightHud.classList.toggle("empty", combat.ammo === 0);
 
 }
 function showCombatFloat(
@@ -609,7 +663,7 @@ function showCombatFloat(
   combatFloats.append(node);
 }
 function updateDamageFloats() {
-  const suspended = !!tutorial.guide || game.mode === "paused";
+  const suspended = !!tutorial.guide || game.mode === "paused" || game.struggling;
   combatFloats.classList.toggle("suspended", suspended);
   if (game.mode === "rewinding" || game.mode === "ready") {
     if (combatFloats.firstChild) combatFloats.replaceChildren();
@@ -625,11 +679,11 @@ function updateDamageFloats() {
   if (shownPlayerHit !== game.damageSerial) {
     shownPlayerHit = game.damageSerial;
     const anchor = world?.getPlayerAnchor();
-    if (game.worldTime - game.damagedAt < 0.5) showCombatFloat(anchor, "−1", "player");
+    if (game.worldTime - game.damagedAt < 0.5) showCombatFloat(anchor, game.lastHit === "squid" ? "×" : "−1", "player");
   }
 }
 function updateFireQte() {
-  if (!game.fireQteReady || tutorial.guide || activeDialog) {
+  if (!game.fireQteReady || game.struggling || tutorial.guide || activeDialog) {
     fireQte.hidden = true;
     return;
   }
@@ -644,6 +698,34 @@ function updateFireQte() {
   fireQteCenter.x = Math.max(39, Math.min(innerWidth - 39, anchor.x + fireQteX));
   fireQteCenter.y = Math.max(76, Math.min(innerHeight - 100, anchor.y + fireQteY));
   fireQte.style.transform = `translate3d(${fireQteCenter.x - 30}px, ${fireQteCenter.y - 30}px, 0)`;
+}
+function updateOceanUi() {
+  const ocean = game.nightCombat.ocean;
+  if (clearedInk !== ocean.clearInkSerial) {
+    clearedInk = ocean.clearInkSerial; ink.reset();
+  }
+  if (shownInk !== ocean.inkSerial) {
+    shownInk = ocean.inkSerial;
+    if (ocean.inkCovered) ink.splat();
+  }
+  ink.canvas.hidden = !ocean.inkCovered || game.struggling || !!tutorial.guide || !!activeDialog ||
+    !["running", "paused"].includes(game.mode);
+  if (ink.canvas.hidden) ink.cancel();
+  const q = ocean.struggle;
+  struggleHud.hidden = !q || q.phase === "failed" || !!tutorial.guide || !!activeDialog || game.mode !== "running";
+  if (!q || struggleHud.hidden) return;
+  setText(document.querySelector("#struggle-title")!, t(q.phase === "released" ? "escaped" : "struggling"));
+  setText(escapeTime, `${Math.max(0, CONFIG.squid.escapeSeconds - q.elapsed).toFixed(1)}s`);
+  setText(document.querySelector("#escape-hint")!, t("escapeTap"));
+  const inside = Math.abs(q.cursor - q.safe) <= CONFIG.squid.safeWidth / 2;
+  escapeSafe.style.left = `${(q.safe - CONFIG.squid.safeWidth / 2) * 100}%`;
+  escapeSafe.style.width = `${CONFIG.squid.safeWidth * 100}%`;
+  escapeCursor.style.left = `${q.cursor * 100}%`;
+  escapeFill.style.transform = `scaleX(${q.progress / 100})`;
+  struggleHud.classList.toggle("inside", inside);
+  const progress = String(Math.floor(q.progress));
+  if (escapeProgress.getAttribute("aria-valuenow") !== progress) escapeProgress.setAttribute("aria-valuenow", progress);
+  if (escapeProgress.getAttribute("aria-label") !== t("escapeProgress")) escapeProgress.setAttribute("aria-label", t("escapeProgress"));
 }
 function updateFeatureUi() {
   const state = economy.state;
@@ -672,7 +754,7 @@ function updateFeatureUi() {
   }
   const button = document.querySelector<HTMLButtonElement>("#booster-button")!;
   button.hidden = game.mode === "ready" || game.introducing;
-  button.disabled = state.boosters <= 0 || game.mode !== "running" || game.boosting || game.icy ||
+  button.disabled = state.boosters <= 0 || game.mode !== "running" || game.struggling || game.boosting || game.icy ||
     !!tutorial.guide || game.boostCooldown > 0;
   button.classList.toggle("tool-live", game.boosting);
   setText(document.querySelector("#booster-status")!, game.boosting ? "" :
@@ -681,6 +763,11 @@ function updateFeatureUi() {
   bombButton.hidden = game.mode === "ready" || game.introducing;
   bombButton.disabled = state.bombs <= 0 || !!activeDialog || !!tutorial.active || !game.nightCombat.canBomb(game);
   setText(document.querySelector("#bomb-status")!, game.nightCombat.bombCooldown > 0 ? `${Math.ceil(game.nightCombat.bombCooldown)}s` : `×${n(state.bombs)}`);
+  const reserve = document.querySelector<HTMLButtonElement>("#reserve-button")!;
+  reserve.hidden = game.character !== "officer" || game.mode === "ready" || game.introducing;
+  reserve.disabled = game.mode !== "running" || game.struggling || game.boosting || game.icy || game.transitioning ||
+    !!activeDialog || !!tutorial.guide || game.reserveCooldown > 0;
+  setText(document.querySelector("#reserve-status")!, game.reserveCooldown > 0 ? `${Math.ceil(game.reserveCooldown)}s` : "R");
   updateNightUi();
   updateFireQte();
 }
@@ -699,6 +786,22 @@ function act(action: string) {
     return;
   }
   if (tutorial.guide && !activeDialog) { guideAction(action); return; }
+  if (action === "reserve") {
+    if (activeDialog || tutorial.guide) return;
+    if (game.reserveAmmo()) {
+      beep("ammo");
+      showCombatFloat(world?.getPlayerAnchor(), `+${n(game.nightCombat.refillGain)}`, "ammo", game.nightCombat.weapon === "bow" ? "arrow-ammo" : "stone");
+    } else if (game.nightCombat.ammo === game.nightCombat.weaponRules.ammo) showToast(t("ammoFull"));
+    return;
+  }
+  if (action === "character-runner" || action === "character-officer") {
+    if (activeDialog !== "shop") return;
+    const equipped = economy.equipCharacter(action === "character-officer" ? "officer" : "runner");
+    if (equipped) game.nextCharacter = economy.state.character;
+    renderDialog();
+    if (!equipped) showToast(t("storageError"));
+    return;
+  }
   if (action === "terrain-override") {
     terrainOverride = !terrainOverride; save("terrain-override", String(terrainOverride)); renderDialog(); return;
   }
@@ -729,7 +832,7 @@ function act(action: string) {
     if (!equipped) showToast(t("storageError"));
     return;
   }
-  if (["buy-booster", "buy-hourglass", "buy-bomb", "buy-bow"].includes(action)) {
+  if (["buy-booster", "buy-hourglass", "buy-bomb", "buy-bow", "buy-officer"].includes(action)) {
     if (activeDialog !== "shop" || performance.now() < buyBusyUntil) return;
     buyBusyUntil = performance.now() + 400;
     const result = economy.buy(action.slice(4) as ProductId);
@@ -747,6 +850,7 @@ function act(action: string) {
     return;
   }
   if (action === "boost") {
+    if (activeDialog || tutorial.guide || game.struggling) return;
     if (game.activateBooster(economy.state.boosters > 0, () => {
       const consumed = economy.consumeBooster();
       if (!consumed) showToast(t("storageError"));
@@ -836,6 +940,7 @@ function act(action: string) {
     resultDelay = 0;
     document.body.classList.remove("crashed");
     game.returnHome();
+    ink.reset(); shownInk = clearedInk = heardShot = 0;
     tutorial.resetRun(game);
     syncView();
     localize();
@@ -960,6 +1065,12 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (activeDialog) return;
+  if (game.struggling && (event.code === "ArrowLeft" || event.code === "ArrowRight" || event.code === "KeyA" || event.code === "KeyD")) {
+    event.preventDefault();
+    if (!event.repeat && game.mode === "running") game.nightCombat.ocean.tap(event.code === "ArrowLeft" || event.code === "KeyA" ? -1 : 1);
+    return;
+  }
+  if (event.code === "KeyR") { event.preventDefault(); if (!event.repeat) act("reserve"); return; }
   if (event.code === "KeyB") {
     if (!event.repeat) act("boost");
     event.preventDefault();
@@ -1006,6 +1117,13 @@ window.addEventListener("pointerdown", (event) => {
       guideSwipe = {id: event.pointerId, x: event.clientX, y: event.clientY};
     return;
   }
+  if (game.mode === "running" && !activeDialog && !(event.target as HTMLElement).closest("button,a,dialog")) {
+    if (game.struggling) {
+      if (event.isPrimary && event.button === 0) game.nightCombat.ocean.tap(event.clientX < innerWidth / 2 ? -1 : 1);
+      return;
+    }
+    ink.down(event);
+  }
   if (
     game.mode !== "running" ||
     game.transitioning || game.icy || tutorial.guide ||
@@ -1026,6 +1144,8 @@ window.addEventListener("pointerdown", (event) => {
   };
 });
 window.addEventListener("pointermove", (event) => {
+  if (game.struggling || activeDialog || tutorial.guide || game.mode !== "running") { ink.cancel(); gesture = null; return; }
+  ink.move(event);
   if (game.icy || tutorial.guide) { gesture = null; return; }
   if (!gesture || gesture.id !== event.pointerId) return;
   if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 12) gesture.tap = false;
@@ -1057,6 +1177,7 @@ window.addEventListener("pointermove", (event) => {
   gesture.y = event.clientY;
 });
 window.addEventListener("pointerup", (event) => {
+  ink.up(event);
   if (guideSwipe?.id === event.pointerId) {
     const dx = event.clientX - guideSwipe.x, dy = event.clientY - guideSwipe.y;
     guideSwipe = null;
@@ -1072,9 +1193,10 @@ window.addEventListener("pointerup", (event) => {
     game.boosting || game.icy || document.elementFromPoint(event.clientX, event.clientY) !== worldCanvas) return;
   const canvas = worldCanvas.getBoundingClientRect();
   const id = world?.pickWolf(event.clientX - canvas.left, event.clientY - canvas.top, game);
-  if (id !== undefined && game.nightCombat.fire(id, game)) beep("shot");
+  if (id !== undefined) game.nightCombat.fire(id, game);
 });
 window.addEventListener("pointercancel", (event) => {
+  ink.up(event);
   if (guideSwipe?.id === event.pointerId) guideSwipe = null;
   if (gesture?.id === event.pointerId) gesture = null;
 });
@@ -1086,6 +1208,7 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("blur", () => {
   audio.silence();
   gesture = guideSwipe = null;
+  ink.cancel();
   if (game.mode === "running" || game.mode === "intro") openDialog("pause");
 });
 
@@ -1128,6 +1251,11 @@ try {
       const shieldBreakBefore = game.shieldBreakSerial;
       const clearBefore = game.clearSerial;
       game.update(simulationDt);
+      if (game.struggling) { gesture = null; ink.cancel(); tutorial.update(game, 0, economy.state.boosters > 0); }
+      if (heardShot !== game.nightCombat.shotSerial) {
+        heardShot = game.nightCombat.shotSerial;
+        beep(game.nightCombat.pistolShot ? "pistol" : "shot");
+      }
       const wolfImpactAge = game.worldTime - game.nightCombat.playerHitAt;
       document.body.classList.toggle("wolf-impact", game.mode !== "rewinding" && wolfImpactAge >= 0 && wolfImpactAge < 0.32);
       audio.update(game, !!activeDialog);
@@ -1150,6 +1278,7 @@ try {
         if (count) beep(count === "GO!" ? "start" : "tick");
       }
       updateGuideUi();
+      updateOceanUi();
       const guide = !activeDialog ? tutorial.guide : null;
       const idle = game.mode === "ready" || game.mode === "paused" || !!guide ||
         (game.mode === "over" && !!activeDialog);
@@ -1190,7 +1319,7 @@ try {
       lastCoins = game.coins;
       if (wasRunning && game.mode === "over") {
         beep("hit");
-        resultDelay = (game.lastHit === "pool" || game.lastHit === "gap") ? 1.8 : game.lastHit === "cold" ? 1.2 : 0.65;
+        resultDelay = (game.lastHit === "pool" || game.lastHit === "gap") ? 1.8 : game.lastHit === "cold" || game.lastHit === "squid" ? 1.2 : 0.65;
         document.body.classList.add("crashed");
       }
       if (game.mode === "over" && !activeDialog) {

@@ -1959,6 +1959,28 @@ html[lang="ko-KR"] .intro h1 {
 .shop-categories .selected { background: #405a38; color: #fff5dc; }
 .shop-coming-soon { display: grid; place-items: center; min-height: 200px; color: #607251; font-size: 22px; }
 .active-tool.bomb-tool { right: calc(94px + env(safe-area-inset-right, 0px)); }
+.active-tool.reserve-tool { right: calc(178px + env(safe-area-inset-right, 0px)); }
+.character-art { width: 100%; height: 112px; object-fit: contain; align-self: center; }
+.character-card p { font-size: 13px; line-height: 1.5; margin: 6px 0; }
+#ink-overlay { position: fixed; z-index: 2; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.struggle-hud { position: fixed; z-index: 4; bottom: max(132px, calc(env(safe-area-inset-bottom) + 112px)); left: 50%; transform: translateX(-50%); width: min(86vw, 450px); padding: 17px 22px; border: 1px solid #99c7d8; border-radius: 18px; color: #e8f6ff; background: #14293eeb; box-shadow: 0 8px 32px #06131a80; pointer-events: none; }
+.struggle-hud[hidden], #ink-overlay[hidden] { display: none; }
+.struggle-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.struggle-heading b { color: #ffcb7e; font-variant-numeric: tabular-nums; }
+.escape-track { position: relative; height: 26px; border: 1px solid #68849e; border-radius: 8px; background: #081729; margin: 5px 0 17px; }
+#escape-safe { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: #59c79c; box-shadow: inset 0 0 0 2px #b8efca; }
+#escape-cursor { position: absolute; top: -5px; bottom: -5px; width: 7px; transform: translateX(-50%); border: 1px solid white; border-radius: 4px; background: #ffb56a; box-shadow: 0 0 8px #ff945f; }
+.inside #escape-cursor { background: #f7ffe1; box-shadow: 0 0 10px #b6ffd3; }
+.escape-progress { height: 9px; border-radius: 8px; overflow: hidden; background: #071828; margin-bottom: 10px; }
+#escape-fill { display: block; height: 100%; background: #79e6b2; transform-origin: left; }
+.struggle-hud small { display: block; font-size: 12px; line-height: 1.5; opacity: .85; }
+.guide-symbols > .guide-character { width: clamp(75px, 25cqw, 128px); height: clamp(75px, 25cqw, 128px); object-fit: contain; }
+@media (max-width: 820px) {
+  .active-tool.reserve-tool { right: calc(170px + env(safe-area-inset-right, 0px)); }
+}
+@media (max-height: 480px) {
+  .struggle-hud { bottom: max(18px, env(safe-area-inset-bottom)); width: min(50vw, 400px); padding: 10px 18px; }
+}
 
 .player-health { position:fixed; left:max(14px,calc(env(safe-area-inset-left) + 8px)); bottom:max(14px,calc(env(safe-area-inset-bottom) + 8px)); z-index:8; pointer-events:none; display:flex; align-items:center; gap:8px; }
 .player-health[hidden] { display:none; }

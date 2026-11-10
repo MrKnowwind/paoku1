@@ -4,6 +4,8 @@ import type { RunnerGame } from "./game.ts";
 import type { WeaponId } from "./economy.ts";
 import { RegionalCombat } from "./regional-combat.ts";
 import type { RegionalEnemy, RegionalState } from "./regional-combat.ts";
+import { OceanCombat } from "./ocean-combat.ts";
+import type { OceanHunt } from "./ocean-combat.ts";
 
 const rules = CONFIG.nightCombat;
 const lead = rules.windup + rules.warning + rules.lunge;
@@ -30,6 +32,7 @@ interface Attack {
 }
 
 export interface Hunt {
+  ocean?: OceanHunt;
   region?: RegionalState;
   wolves: Wolf[];
   enteredAt: number;
@@ -42,6 +45,7 @@ export interface Hunt {
 }
 
 interface Stone {
+  pistol: boolean;
   damage: number;
   wolf: number;
   x: number;
@@ -56,6 +60,9 @@ export class NightCombat {
   readonly weapon: WeaponId;
   ammo: number;
   region = new RegionalCombat();
+  ocean = new OceanCombat();
+  shotSerial = 0;
+  pistolShot = false;
   bombs: {id: number; start: number; x: number; y: number; relativeZ: number; fromX: number; fromY: number; fromZ: number; pulses: number}[] = [];
   bombCooldown = 0;
   private bombSerial = 0;
@@ -67,6 +74,7 @@ export class NightCombat {
   shotAt = -Infinity;
   damageEvents: {id: number; at: number; amount: number; x: number; y: number; worldZ: number}[] = [];
   private damageSequence = 0;
+  private nextAutoCheck = 0;
   aim?: {wolf: number; x: number; z: number};
   stones: Stone[] = [];
   hunt: Hunt = {
@@ -78,7 +86,7 @@ export class NightCombat {
     this.weapon = weapon; this.ammo = this.weaponRules.ammo;
   }
   get weaponRules() { return CONFIG.weapons[this.weapon]; }
-  get enemies(): (Wolf | RegionalEnemy)[] { return [...this.hunt.wolves, ...this.region.state.enemies]; }
+  get enemies(): (Wolf | RegionalEnemy)[] { return [...this.hunt.wolves, ...this.region.state.enemies, ...this.ocean.state.enemies]; }
   hurt(enemy: Wolf | RegionalEnemy, amount: number, time: number, game?: RunnerGame) {
     if (this.health(enemy) <= 0) return;
     if (game) {
@@ -96,29 +104,34 @@ export class NightCombat {
       }
       this.hunt.attacks = this.hunt.attacks.filter(a => a.wolf !== enemy.id);
       this.region.cancel(enemy.id);
+      this.ocean.cancel(enemy.id);
     }
   }
 
   health(wolf: Wolf | RegionalEnemy) {
-    const maximum = "kind" in wolf ? wolf.kind === "bat" ? CONFIG.regionalCombat.batHealth : CONFIG.regionalCombat.yetiHealth : rules.wolfHealth;
+    const maximum = "kind" in wolf ? wolf.kind === "squid" ? CONFIG.squid.health : wolf.kind === "bat" ? CONFIG.regionalCombat.batHealth : CONFIG.regionalCombat.yetiHealth : rules.wolfHealth;
     return Math.max(0, maximum - (this.damage.get(wolf.id) ?? 0));
   }
   get remaining() {
     let count = 0;
-    for (const wolf of this.enemies)
+    for (const wolf of this.hunt.wolves)
       if (this.health(wolf) > 0) count++;
+    for (const enemy of this.region.state.enemies) if (this.health(enemy) > 0) count++;
+    for (const enemy of this.ocean.state.enemies) if (this.health(enemy) > 0) count++;
     return count;
   }
 
   snapshot(): Hunt {
     const hunt = this.hunt;
-    return {...hunt, region: this.region.snapshot(), wolves: hunt.wolves.map(wolf => ({...wolf})),
+    return {...hunt, ocean: this.ocean.snapshot(), region: this.region.snapshot(), wolves: hunt.wolves.map(wolf => ({...wolf})),
       attacks: hunt.attacks.map(attack => ({...attack}))};
   }
 
   restore(hunt: Hunt, time: number, reviving: boolean) {
     this.clearShots();
+    this.nextAutoCheck = time;
     this.region.restore(hunt.region, e => this.health(e));
+    this.ocean.restore(hunt.ocean, e => this.health(e), time, reviving);
     const wolves = hunt.wolves.filter(wolf => this.health(wolf) > 0).map(wolf => ({...wolf}));
     this.hunt = {
       ...hunt,
@@ -144,16 +157,18 @@ export class NightCombat {
 
   fire(id: number, game: RunnerGame) {
     const wolf = this.enemies.find(wolf => wolf.id === id);
-    if (game.mode !== "running" || game.boosting || game.icy || game.transitioning ||
+    if (game.mode !== "running" || game.struggling || game.boosting || game.icy || game.transitioning ||
       this.cooldown > 0 || this.ammo === 0 || !wolf || this.health(wolf) <= 0) return;
     const {x, y, z} = this.position(wolf, game);
     this.ammo--;
     this.cooldown = this.weaponRules.cooldown;
     this.shotAt = game.worldTime;
+    this.shotSerial++;
+    this.pistolShot = game.character === "officer" && game.shotRandom(this.shotSerial) < CONFIG.officer.pistolChance;
     this.aim = {wolf: id, x, z};
-    const stone = {wolf: id, damage: this.weaponRules.damage,
-      x: (game.wallSide ? game.wallSide * 5.4 : game.x) - 0.22,
-      y: game.wallSide ? game.wallY + 1.43 : game.y + (game.sliding ? 0.65 : 1.43), z: 0.45};
+    const stone = {wolf: id, pistol: this.pistolShot, damage: this.pistolShot ? CONFIG.officer.pistolDamage : this.weaponRules.damage,
+      x: (game.wallSide ? game.wallSide * 5.4 : game.x) + (this.pistolShot ? 0.22 : -0.22),
+      y: game.wallSide ? game.wallY + 1.43 : game.visualWaterY + game.y + (game.sliding ? 0.65 : 1.43), z: 0.45};
     const dx = x - stone.x, dy = y - stone.y, dz = z - stone.z;
     const length = Math.hypot(dx, dy, dz) || 1;
     this.stones.push({...stone, dx: dx / length, dy: dy / length, dz: dz / length});
@@ -161,6 +176,7 @@ export class NightCombat {
   }
 
   position(wolf: Wolf | RegionalEnemy, game: RunnerGame) {
+    if ("kind" in wolf && wolf.kind === "squid") return this.ocean.position(wolf, game);
     if ("kind" in wolf) return this.region.position(wolf, game);
     const enteredAt = wolf.enteredAt ?? this.hunt.enteredAt;
     const attack = this.hunt.attacks.find(attack => attack.wolf === wolf.id);
@@ -192,8 +208,8 @@ export class NightCombat {
 
   canBomb(game: RunnerGame) {
     const terrain = game.terrain;
-    return game.mode === "running" && !game.boosting && !game.icy && !game.transitioning &&
-      this.bombCooldown === 0 && ["forest", "canyon", "snow"].includes(terrain.biome) &&
+    return game.mode === "running" && !game.struggling && !game.boosting && !game.icy && !game.transitioning &&
+      this.bombCooldown === 0 && ["forest", "canyon", "snow", "water"].includes(terrain.biome) &&
       terrain.end - game.distance > CONFIG.exitSafety && this.enemies.some(e => this.health(e) > 0);
   }
   throwBomb(game: RunnerGame, consume: () => boolean) {
@@ -210,7 +226,7 @@ export class NightCombat {
     if (!consume()) return false;
     const target = targets[0];
     this.bombs.push({id: ++this.bombSerial, start: game.worldTime, x: target.x, y: target.y, relativeZ: target.z,
-      fromX: game.wallSide ? game.wallSide * 5.4 : game.x, fromY: game.wallSide ? game.wallY + 1.3 : game.y + 1.3,
+      fromX: game.wallSide ? game.wallSide * 5.4 : game.x, fromY: game.wallSide ? game.wallY + 1.3 : game.visualWaterY + game.y + 1.3,
       fromZ: game.distance, pulses: 0});
     this.bombCooldown = CONFIG.bomb.cooldown;
     return true;
@@ -263,12 +279,15 @@ export class NightCombat {
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.refillFlash = Math.max(0, this.refillFlash - dt);
     this.bombCooldown = Math.max(0, this.bombCooldown - dt);
-    if (this.cooldown < this.weaponRules.cooldown - 0.27) this.aim = undefined;
+    if (this.cooldown < this.weaponRules.cooldown - (this.pistolShot ? 0.5 : 0.27)) this.aim = undefined;
     const terrain = game.terrain;
     this.region.update(game, random, e => this.health(e));
-    if (!["forest", "canyon", "snow"].includes(terrain.biome) ||
+    if (!["forest", "canyon", "snow", "water"].includes(terrain.biome) ||
       terrain.biome !== "forest" && terrain.end - game.distance <= CONFIG.exitSafety) this.clearShots();
     this.updateProjectiles(game, dt);
+    this.ocean.update(game, random, e => this.health(e));
+    if (game.character === "officer" && time >= this.nextAutoCheck && this.ammo > 0 && this.cooldown === 0 && !game.struggling &&
+      !game.boosting && !game.icy && !game.transitioning) { this.nextAutoCheck=time+0.12; this.autoFire(game); }
     if (terrain.biome !== "forest") {
       hunt.wolves.length = 0;
       hunt.attacks.length = 0;
@@ -319,6 +338,25 @@ export class NightCombat {
       }
     }
     if (game.mode === "running") this.schedule(game, random);
+  }
+
+  private autoFire(game: RunnerGame) {
+    let target: Wolf | RegionalEnemy | undefined, bestUrgency = Infinity, bestDistance = Infinity;
+    // Scan only when a shot is due. At most one shot uses this shared cooldown.
+    for (const e of this.enemies) {
+      if (this.health(e) <= 0 || game.worldTime < (e.enteredAt ?? this.hunt.enteredAt)) continue;
+      const p = this.position(e, game);
+      if (p.z < -8 || p.z > 70) continue;
+      const urgency = this.ocean.state.attacks.find(a => a.enemy === e.id && !a.spent)?.impactAt ??
+        this.region.state.attacks.find(a => a.enemy === e.id && !a.spent)?.impactAt ??
+        ((this.hunt.attacks.find(a => a.wolf === e.id && !a.spent)?.start ?? Infinity) + lead);
+      const distance = Math.hypot(p.x - game.x, p.y - game.visualWaterY, p.z);
+      if (urgency < bestUrgency || urgency === bestUrgency &&
+        (distance < bestDistance || distance === bestDistance && e.id < (target?.id ?? Infinity))) {
+        target = e; bestUrgency = urgency; bestDistance = distance;
+      }
+    }
+    if (target) this.fire(target.id, game);
   }
 
   private schedule(game: RunnerGame, random: (key: number, salt: number) => number) {

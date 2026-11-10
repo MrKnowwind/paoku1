@@ -1,6 +1,6 @@
 import type { RunnerGame } from "./game.ts";
 
-export type Sound = "coin" | "jump" | "slide" | "hit" | "start" | "tick" | "splash" | "shot" | "ammo"
+export type Sound = "coin" | "jump" | "slide" | "hit" | "start" | "tick" | "splash" | "shot" | "pistol" | "ammo"
   | "step" | "swim" | "move" | "wall" | "magnet" | "shield" | "break" | "boost" | "rewind" | "clear" | "fire-pat" | "fire-out";
 
 // Original synthesized score and effects: no downloads or decoding on the play path.
@@ -79,6 +79,7 @@ export class GameAudio {
       case "wall": tone(260, 520, 0.17); tone(390, 780, 0.22, 0.045, 0.08); break;
       case "hit": this.hiss(now, 0.35, 0.16, 1000, this.effects); tone(130, 30, 0.4, 0.12, 0, "triangle"); break;
       case "shot": tone(620, 190, 0.13, 0.06, 0, "triangle"); this.hiss(now, 0.085, 0.065, 1800, this.effects); break;
+      case "pistol": this.hiss(now, 0.16, 0.32, 8200, this.effects); tone(145, 38, 0.2, 0.17, 0, "sawtooth"); tone(1700, 180, 0.065, 0.09, 0, "square"); break;
       case "ammo": tone(540, 720, 0.12, 0.05); tone(790, 970, 0.14, 0.05, 0.065); break;
       case "fire-pat": this.hiss(now, 0.10, 0.075, 1850, this.effects); tone(180, 95, 0.10, 0.04, 0, "triangle"); break;
       case "fire-out": this.hiss(now, 0.27, 0.08, 2950, this.effects); tone(350, 210, 0.18, 0.04, 0, "triangle"); break;
