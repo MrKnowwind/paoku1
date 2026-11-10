@@ -230,7 +230,7 @@ export const messages = {
     ammo: "弹药",
     ammoRefill: "已拾取弹药补给",
     ammoEmpty: "弹药用尽",
-    shotCooldown: "弹弓冷却中",
+    shotCooldown: "武器冷却中",
     wolfHit: "你被森林狼扑倒了。跳跃或换道可以避开红条。",
   },
   en: {

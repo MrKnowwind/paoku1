@@ -332,14 +332,15 @@ h1 span {
   color: #f5ead4;
   background: none;
 }
+.night-weapon { position: relative; display: grid; place-items: center; width: 46px; height: 46px; flex-shrink: 0; }
 .night-weapon .art-icon { display: block; width: 42px; height: 42px; }
-.shot-meter { height: 3px; background: #172624; border-radius: 3px; overflow: hidden; }
-.shot-meter i { display: block; height: 100%; background: #eec778; transform-origin: left; }
+.weapon-cooldown { position: absolute; inset: 0; display: grid; place-items: center; border: 1px solid #e7d8ad80; border-radius: 50%; background: conic-gradient(transparent 0deg var(--cooldown-sweep, 0deg), #07171bd9 var(--cooldown-sweep, 0deg) 360deg); pointer-events: none; }
+.weapon-cooldown[hidden] { display: none; }
+.weapon-cooldown b { color: #fff6dd; font-size: 13px; line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px #07171b, 1px 0 2px #07171b, -1px 0 2px #07171b; }
 .ammo-slots { display: flex; gap: 3px; }
 .ammo-slots .art-icon { width: 22px; height: 28px; object-fit: contain; }
 .ammo-slots .spent { opacity: 0.28; }
 .night-hud.refilled { border-color: #b6e097; }
-.night-hud.empty .shot-meter i { background: #dd7d69; }
 .supply-card .supply-stats { display: flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; }
 .supply-stats .art-icon { width: 20px; height: 20px; }
 @media (max-width: 480px) {

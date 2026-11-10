@@ -137,7 +137,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <small id="escape-hint"></small>
   </section>
   <aside id="night-hud" class="night-hud" hidden>
-    <div class="night-weapon"><span class="weapon-icon"></span><div class="shot-meter"><i></i></div></div>
+    <div class="night-weapon" role="img"><span class="weapon-icon"></span><div class="weapon-cooldown" hidden aria-hidden="true"><b></b></div></div>
     <div class="ammo-slots"></div>
   </aside>
   <div id="player-health" class="player-health" hidden aria-hidden="true">
@@ -261,7 +261,10 @@ let fireQteAt = -1;
 let fireQteX = 0;
 let fireQteY = 0;
 const fireQteCenter = {x: 0, y: 0};
-const shotMeter = nightHud.querySelector<HTMLElement>(".shot-meter i")!;
+const nightWeapon = nightHud.querySelector<HTMLElement>(".night-weapon")!;
+const weaponCooldown = nightHud.querySelector<HTMLElement>(".weapon-cooldown")!;
+const weaponCountdown = weaponCooldown.querySelector<HTMLElement>("b")!;
+let shownCooldown = "";
 
 function beep(kind: Sound) {
   audio.play(kind);
@@ -643,7 +646,19 @@ function updateNightUi() {
     nightHud.classList.toggle("empty", combat.ammo === 0);
   }
   nightHud.classList.toggle("refilled", combat.refillFlash > 0);
-  shotMeter.style.transform = `scaleX(${1 - combat.cooldown / combat.weaponRules.cooldown})`;
+  const remaining = Math.max(0, combat.cooldown);
+  const countdown = (Math.ceil(remaining * 100) / 100).toFixed(2);
+  const sweep = (360 * (1 - Math.min(1, remaining / combat.weaponRules.cooldown))).toFixed(1);
+  const cooldownKey = `${combat.weapon}/${countdown}/${sweep}/${language}`;
+  if (shownCooldown !== cooldownKey) {
+    shownCooldown = cooldownKey;
+    weaponCooldown.hidden = remaining === 0;
+    if (remaining > 0) {
+      weaponCooldown.style.setProperty("--cooldown-sweep", `${sweep}deg`);
+      setText(weaponCountdown, countdown);
+    }
+    nightWeapon.setAttribute("aria-label", remaining > 0 ? `${t(combat.weapon)} · ${t("shotCooldown")} ${countdown}s` : t(combat.weapon));
+  }
 
 }
 function showCombatFloat(

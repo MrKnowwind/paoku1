@@ -86,7 +86,7 @@ test("living wolves extend the forest across dawn, and clearing them opens the p
   for (const wolf of wolves) {
     for (let shot = 0; shot < CONFIG.nightCombat.wolfHealth; shot++) {
       game.nightCombat.fire(wolf.id, game);
-      game.update(0.6);
+      game.update(game.nightCombat.weaponRules.cooldown + 0.05);
       game.nightCombat.refill();
     }
     assert.equal(game.nightCombat.health(wolf), 0);

@@ -9,7 +9,7 @@ export const CONFIG = {
   nightCombat: {
     ammo: 6, damage: 1, refillFraction: 0.3,
     refillLookahead: 128, refillSpacing: 144, refillGrid: 4,
-    cooldown: 0.55, stoneSpeed: 64,
+    cooldown: 1, stoneSpeed: 64,
     packMin: 3, packMax: 5, wolfHealth: 2, packInterval: 25,
     forestExtensionLength: 120, forestExtensionLead: 200,
     entrance: 2.1, entryStagger: 0.24, windup: 0.3, warning: 1.1,
@@ -20,8 +20,8 @@ export const CONFIG = {
     biteHalfWidth: 0.96, biteHalfLength: 2.6, jumpClearance: 0.92,
   },
   weapons: {
-    slingshot: {ammo: 6, damage: 1, cooldown: 0.55, price: 0},
-    bow: {ammo: 5, damage: 2, cooldown: 0.7, price: 800},
+    slingshot: {ammo: 6, damage: 1, cooldown: 1, price: 0},
+    bow: {ammo: 5, damage: 2, cooldown: 1.25, price: 800},
   },
   regionalCombat: {
     batHealth: 1, batMin: 1, batMax: 3, batLimit: 7,
