@@ -4,6 +4,7 @@ import { CONFIG } from "./config.ts";
 import { daylightBlend } from "./daylight.ts";
 import { NightSky } from "./night-sky.ts";
 import { WolfModel } from "./wolf-model.ts";
+import { createOfficerHead } from "./officer-head.ts";
 import { RegionalCombatView } from "./regional-combat-view.ts";
 import { SquidView } from "./squid-view.ts";
 import type { CharacterId } from "./economy.ts";
@@ -824,180 +825,184 @@ export class ForestScene {
       );
     }
     this.head = this.joint("head-joint", [0, 0.75, 0], this.torso);
-    this.part(
-      "sphere",
-      "face",
-      [0.64, 0.68, 0.59],
-      "#e8b58a",
-      [0, 0.28, 0.03],
-      this.head,
-      24,
-    );
-    this.part(
-      "sphere",
-      "hair",
-      [0.69, 0.37, 0.62],
-      "#5b4935",
-      [0, 0.45, -0.06],
-      this.head,
-      16,
-    );
-    const hat = CreateLathe(
-      "canvas-hat",
-      {
-        shape: [
-          new Vector3(0.36, -0.145, 0),
-          new Vector3(0.355, -0.11, 0),
-          new Vector3(0.325, 0.065, 0),
-          new Vector3(0.3, 0.13, 0),
-          new Vector3(0.25, 0.15, 0),
-          new Vector3(0.12, 0.13, 0),
-          new Vector3(0, 0.115, 0),
-        ],
-        cap: Mesh.CAP_START,
-        tessellation: 40,
-      },
-      this.scene,
-    );
-    hat.position.set(0, 0.58, -0.015);
-    hat.material = this.mat("#d0b78d");
-    hat.parent = this.head;
-    const brim = CreateLathe(
-      "hat-brim",
-      {
-        shape: [
-          new Vector3(0.29, 0, 0),
-          new Vector3(0.37, -0.013, 0),
-          new Vector3(0.43, -0.004, 0),
-          new Vector3(0.475, 0.015, 0),
-          new Vector3(0.49, 0.025, 0),
-        ],
-        tessellation: 48,
-        sideOrientation: Mesh.DOUBLESIDE,
-      },
-      this.scene,
-    );
-    brim.scaling.z = 1.1;
-    brim.position.set(0, 0.43, 0.015);
-    brim.material = this.mat("#d0b78d");
-    brim.parent = this.head;
-    const hatBand = CreateCylinder(
-      "hat-band",
-      {
-        height: 0.065,
-        diameterTop: 0.713,
-        diameterBottom: 0.729,
-        tessellation: 32,
-      },
-      this.scene,
-    );
-    hatBand.position.set(0, 0.475, -0.015);
-    hatBand.material = this.mat("#82664d");
-    hatBand.parent = this.head;
-    this.part(
-      "capsule",
-      "hat-band-buckle",
-      [0.11, 0.075, 0.035],
-      "#e4bf75",
-      [-0.13, 0.474, 0.327],
-      this.head,
-    );
-    for (const side of [-1, 1]) {
+    if (this.visualCharacter === "officer") {
+      createOfficerHead(this.scene, this.head);
+    } else {
       this.part(
         "sphere",
-        "ear",
-        [0.14, 0.2, 0.13],
-        "#dba57d",
-        [side * 0.31, 0.22, 0.03],
+        "face",
+        [0.64, 0.68, 0.59],
+        "#e8b58a",
+        [0, 0.28, 0.03],
         this.head,
-        12,
+        24,
       );
       this.part(
         "sphere",
-        "inner-ear",
-        [0.065, 0.12, 0.04],
-        "#c68c6c",
-        [side * 0.35, 0.225, 0.082],
+        "hair",
+        [0.69, 0.37, 0.62],
+        "#5b4935",
+        [0, 0.45, -0.06],
+        this.head,
+        16,
+      );
+      const hat = CreateLathe(
+        "canvas-hat",
+        {
+          shape: [
+            new Vector3(0.36, -0.145, 0),
+            new Vector3(0.355, -0.11, 0),
+            new Vector3(0.325, 0.065, 0),
+            new Vector3(0.3, 0.13, 0),
+            new Vector3(0.25, 0.15, 0),
+            new Vector3(0.12, 0.13, 0),
+            new Vector3(0, 0.115, 0),
+          ],
+          cap: Mesh.CAP_START,
+          tessellation: 40,
+        },
+        this.scene,
+      );
+      hat.position.set(0, 0.58, -0.015);
+      hat.material = this.mat("#d0b78d");
+      hat.parent = this.head;
+      const brim = CreateLathe(
+        "hat-brim",
+        {
+          shape: [
+            new Vector3(0.29, 0, 0),
+            new Vector3(0.37, -0.013, 0),
+            new Vector3(0.43, -0.004, 0),
+            new Vector3(0.475, 0.015, 0),
+            new Vector3(0.49, 0.025, 0),
+          ],
+          tessellation: 48,
+          sideOrientation: Mesh.DOUBLESIDE,
+        },
+        this.scene,
+      );
+      brim.scaling.z = 1.1;
+      brim.position.set(0, 0.43, 0.015);
+      brim.material = this.mat("#d0b78d");
+      brim.parent = this.head;
+      const hatBand = CreateCylinder(
+        "hat-band",
+        {
+          height: 0.065,
+          diameterTop: 0.713,
+          diameterBottom: 0.729,
+          tessellation: 32,
+        },
+        this.scene,
+      );
+      hatBand.position.set(0, 0.475, -0.015);
+      hatBand.material = this.mat("#82664d");
+      hatBand.parent = this.head;
+      this.part(
+        "capsule",
+        "hat-band-buckle",
+        [0.11, 0.075, 0.035],
+        "#e4bf75",
+        [-0.13, 0.474, 0.327],
+        this.head,
+      );
+      for (const side of [-1, 1]) {
+        this.part(
+          "sphere",
+          "ear",
+          [0.14, 0.2, 0.13],
+          "#dba57d",
+          [side * 0.31, 0.22, 0.03],
+          this.head,
+          12,
+        );
+        this.part(
+          "sphere",
+          "inner-ear",
+          [0.065, 0.12, 0.04],
+          "#c68c6c",
+          [side * 0.35, 0.225, 0.082],
+          this.head,
+          12,
+        );
+        this.seam(
+          "eyebrow",
+          [
+            [side * 0.13 - 0.05, 0.366, side > 0 ? 0.312 : 0.27],
+            [side * 0.13, 0.38, 0.295],
+            [side * 0.13 + 0.05, 0.369, side > 0 ? 0.27 : 0.312],
+          ],
+          0.01,
+          "#5b4935",
+          this.head,
+        );
+        this.part(
+          "capsule",
+          "sideburn",
+          [0.1, 0.17, 0.08],
+          "#5b4935",
+          [side * 0.28, 0.4, -0.01],
+          this.head,
+        );
+        this.part(
+          "sphere",
+          "eye",
+          [0.064, 0.085, 0.035],
+          "#37433b",
+          [side * 0.13, 0.29, 0.302],
+          this.head,
+          12,
+        );
+        this.part(
+          "sphere",
+          "eye-glint",
+          [0.017, 0.02, 0.014],
+          "#fff9e5",
+          [side * 0.13 - 0.006, 0.31, 0.321],
+          this.head,
+          8,
+        );
+        this.part(
+          "sphere",
+          "cheek",
+          [0.09, 0.04, 0.025],
+          "#d79776",
+          [side * 0.18, 0.15, 0.29],
+          this.head,
+          12,
+        );
+        this.part(
+          "capsule",
+          "hair-lock",
+          [0.105, 0.16, 0.07],
+          "#5b4935",
+          [side * 0.19, 0.43, 0.24],
+          this.head,
+        ).rotation.z = side * 0.24;
+      }
+      this.part(
+        "sphere",
+        "nose",
+        [0.085, 0.095, 0.11],
+        "#dca078",
+        [0, 0.2, 0.32],
         this.head,
         12,
       );
       this.seam(
-        "eyebrow",
+        "smile",
         [
-          [side * 0.13 - 0.05, 0.366, side > 0 ? 0.312 : 0.27],
-          [side * 0.13, 0.38, 0.295],
-          [side * 0.13 + 0.05, 0.369, side > 0 ? 0.27 : 0.312],
+          [-0.05, 0.117, 0.284],
+          [-0.025, 0.105, 0.284],
+          [0, 0.102, 0.282],
+          [0.025, 0.105, 0.284],
+          [0.05, 0.117, 0.284],
         ],
-        0.01,
-        "#5b4935",
+        0.008,
+        "#8c634c",
         this.head,
       );
-      this.part(
-        "capsule",
-        "sideburn",
-        [0.1, 0.17, 0.08],
-        "#5b4935",
-        [side * 0.28, 0.4, -0.01],
-        this.head,
-      );
-      this.part(
-        "sphere",
-        "eye",
-        [0.064, 0.085, 0.035],
-        "#37433b",
-        [side * 0.13, 0.29, 0.302],
-        this.head,
-        12,
-      );
-      this.part(
-        "sphere",
-        "eye-glint",
-        [0.017, 0.02, 0.014],
-        "#fff9e5",
-        [side * 0.13 - 0.006, 0.31, 0.321],
-        this.head,
-        8,
-      );
-      this.part(
-        "sphere",
-        "cheek",
-        [0.09, 0.04, 0.025],
-        "#d79776",
-        [side * 0.18, 0.15, 0.29],
-        this.head,
-        12,
-      );
-      this.part(
-        "capsule",
-        "hair-lock",
-        [0.105, 0.16, 0.07],
-        "#5b4935",
-        [side * 0.19, 0.43, 0.24],
-        this.head,
-      ).rotation.z = side * 0.24;
     }
-    this.part(
-      "sphere",
-      "nose",
-      [0.085, 0.095, 0.11],
-      "#dca078",
-      [0, 0.2, 0.32],
-      this.head,
-      12,
-    );
-    this.seam(
-      "smile",
-      [
-        [-0.05, 0.117, 0.284],
-        [-0.025, 0.105, 0.284],
-        [0, 0.102, 0.282],
-        [0.025, 0.105, 0.284],
-        [0.05, 0.117, 0.284],
-      ],
-      0.008,
-      "#8c634c",
-      this.head,
-    );
     this.backpack = this.joint("backpack-joint", [0, 0.42, -0.33], this.torso);
     this.part(
       "sphere",
@@ -1324,32 +1329,26 @@ export class ForestScene {
   }
 
   private createOfficerUniform() {
-    const hidden = new Set(["canvas-hat", "hat-brim", "hat-band", "hat-band-buckle", "bag-strap",
-      "strap-adjuster", "jacket-zip", "zipper-pull", "pocket-flap-stitch", "scarf-collar", "hair-lock"]);
+    const hidden = new Set(["bag-strap", "strap-adjuster", "jacket-zip", "zipper-pull", "pocket-flap-stitch", "scarf-collar"]);
     for (const mesh of this.runner.getChildMeshes()) {
       if (hidden.has(mesh.name)) mesh.setEnabled(false);
-      if (mesh.name === "eye") mesh.scaling.scaleInPlace(1.9);
-      if (mesh.name === "eye-glint") { mesh.scaling.scaleInPlace(1.7); mesh.position.z += 0.022; }
     }
     this.backpack.setEnabled(false); this.scarf.setEnabled(false);
     this.head.scaling.setAll(1.12);
-    this.part("sphere", "officer-bob", [0.78,0.63,0.53], "#211e2a", [0,0.24,-0.16], this.head);
     for (const side of [-1,1]) {
-      this.part("capsule", "officer-side-hair", [0.17,0.48,0.28], "#211e2a", [side*0.31,0.21,0], this.head);
       const epaulette=this.part("box", "officer-epaulette", [0.24,0.05,0.22], "#40588e", [side*0.34,0.67,0], this.torso);
       epaulette.rotation.z=-side*0.12;
       this.part("sphere", "officer-shoulder-button", [0.055,0.035,0.055], "#ffd16f", [side*0.3,0.705,0.02], this.torso);
       const collar=this.part("box", "officer-collar", [0.16,0.18,0.06], "#40588e", [side*0.09,0.64,0.22], this.torso);
       collar.rotation.z=side*0.48;
     }
-    for (let i=0;i<5;i++) this.part("capsule", "officer-fringe", [0.13,0.21,0.075], "#211e2a", [(i-2)*0.115,0.43,0.27], this.head);
-    const cap=this.part("sphere", "officer-cap-crown", [0.98,0.36,0.82], "#2e427b", [0,0.66,0], this.head,24);
+    const cap=this.part("sphere", "officer-cap-crown", [1.02,0.34,0.84], "#2e427b", [0,0.735,0], this.head,24);
     cap.rotation.x=-0.08;
-    const band=CreateCylinder("officer-cap-gold-band", {height:0.065,diameter:0.76,tessellation:32},this.scene);
-    band.parent=this.head;band.position.set(0,0.535,0);band.material=this.mat("#ffcf64");
-    const visor=this.part("sphere", "officer-gloss-visor", [0.8,0.075,0.5], "#171d33", [0,0.48,0.22], this.head,24);
+    const band=CreateCylinder("officer-cap-gold-band", {height:0.065,diameter:0.8,tessellation:32},this.scene);
+    band.parent=this.head;band.position.set(0,0.61,0);band.material=this.mat("#ffcf64");
+    const visor=this.part("sphere", "officer-gloss-visor", [0.88,0.075,0.5], "#171d33", [0,0.555,0.22], this.head,24);
     (visor.material as StandardMaterial).specularColor.setAll(0.4);
-    this.part("sphere", "officer-visor-shine", [0.26,0.015,0.1], "#8b9bbc", [-0.17,0.52,0.33], this.head);
+    this.part("sphere", "officer-visor-shine", [0.26,0.015,0.1], "#8b9bbc", [-0.17,0.595,0.33], this.head);
     const badge=(parent:TransformNode,x:number,y:number,z:number,scale:number)=>{
       const root=this.joint("officer-shield-badge",[x,y,z],parent);root.scaling.setAll(scale);
       this.part("sphere","badge-shield",[0.2,0.23,0.055],"#e99a30",[0,0,0],root);
@@ -1360,9 +1359,9 @@ export class ForestScene {
       this.seam("badge-star",star,0.012,"#ffe187",root);
       return root;
     };
-    badge(this.head,0,0.68,0.405,1.05);badge(this.torso,0.2,0.44,0.265,0.77);
+    badge(this.head,0,0.755,0.415,1.05);badge(this.torso,0.2,0.44,0.265,0.77);
     for(const side of [-1,1])for(let i=0;i<4;i++) {
-      const leaf=this.part("sphere","cap-laurel",[0.035,0.07,0.025],"#ffd16f",[side*(0.15+i*0.028),0.57+i*0.023,0.384-i*0.012],this.head);
+      const leaf=this.part("sphere","cap-laurel",[0.035,0.07,0.025],"#ffd16f",[side*(0.15+i*0.028),0.645+i*0.023,0.394-i*0.012],this.head);
       leaf.rotation.z=side*-0.7;
     }
     this.part("box","officer-tie",[0.085,0.3,0.045],"#171d33",[0,0.45,0.28],this.torso);
