@@ -5,6 +5,8 @@ import { daylightBlend } from "./daylight.ts";
 import { NightSky } from "./night-sky.ts";
 import { WolfModel } from "./wolf-model.ts";
 import { createOfficerHead } from "./officer-head.ts";
+import { createOfficerTorso, createOfficerLeg, createOfficerArm } from "./officer-body.ts";
+import { officerMaterial, updateOfficerLighting } from "./officer-materials.ts";
 import { RegionalCombatView } from "./regional-combat-view.ts";
 import { SquidView } from "./squid-view.ts";
 import type { CharacterId } from "./economy.ts";
@@ -404,7 +406,10 @@ export class ForestScene {
       "backpack-flap",
       "backpack-pocket",
     ].includes(name);
-    const key = `${kind}-${color}-${detail}${sculpted ? `-${name}` : ""}`;
+    const officerPart = this.visualCharacter === "officer" && /^(officer-|badge-|cap-laurel|radio-)/.test(name);
+    const officerSurface = !officerPart ? null : /visor|tie|belt|holster/.test(name) ? "leather"
+      : /badge|laurel|button|buckle|radio/.test(name) ? "metal" : "cloth";
+    const key = `${officerSurface ? `officer-${officerSurface}-` : ""}${kind}-${color}-${detail}${sculpted ? `-${name}` : ""}`;
     let source = this.templates.get(key);
     if (!source) {
       source =
@@ -460,7 +465,7 @@ export class ForestScene {
                     },
                     this.scene,
                   );
-      source.material = this.mat(color);
+      source.material = officerSurface ? officerMaterial(this.scene, officerSurface, color) : this.mat(color);
       if (sculpted) {
         const vertices = source.getVerticesData(VertexBuffer.PositionKind)!;
         for (let i = 0; i < vertices.length; i += 3) {
@@ -526,7 +531,8 @@ export class ForestScene {
       },
       this.scene,
     );
-    mesh.material = this.mat(color);
+    mesh.material = this.visualCharacter === "officer" && name.startsWith("badge-")
+      ? officerMaterial(this.scene, "metal", color) : this.mat(color);
     mesh.parent = parent;
     mesh.receiveShadows = true;
     return mesh;
@@ -741,88 +747,93 @@ export class ForestScene {
     this.runner = new TransformNode("explorer", this.scene);
     this.hips = this.joint("hips", [0, 0.95, 0], this.runner);
     this.torso = this.joint("torso", [0, 0, 0], this.hips);
-    this.part(
-      "sphere",
-      "trouser-seat",
-      [0.6, 0.28, 0.42],
-      "#345d50",
-      [0, -0.035, -0.02],
-      this.hips,
-      16,
-    );
-    this.part(
-      "sphere",
-      "padded-jacket",
-      [0.78, 0.8, 0.53],
-      "#dd7445",
-      [0, 0.38, 0],
-      this.torso,
-      20,
-    );
-    this.part(
-      "capsule",
-      "jacket-hem",
-      [0.7, 0.17, 0.48],
-      "#b95e38",
-      [0, 0.04, 0],
-      this.torso,
-    );
-    this.seam(
-      "jacket-zip",
-      [
-        [0, 0.08, 0.24],
-        [0, 0.3, 0.268],
-        [0, 0.5, 0.262],
-        [0, 0.7, 0.205],
-      ],
-      0.012,
-      "#f4c584",
-      this.torso,
-    );
-    this.part(
-      "capsule",
-      "zipper-pull",
-      [0.045, 0.07, 0.025],
-      "#e4bf75",
-      [0, 0.66, 0.235],
-      this.torso,
-    );
-    for (const side of [-1, 1]) {
+    const officer = this.visualCharacter === "officer";
+    if (officer) {
+      createOfficerTorso(this.scene, this.hips, this.torso);
+    } else {
       this.part(
-        "capsule",
-        "pocket",
-        [0.2, 0.17, 0.06],
-        "#c7673e",
-        [side * 0.21, 0.18, 0.24],
+        "sphere",
+        "trouser-seat",
+        [0.6, 0.28, 0.42],
+        "#345d50",
+        [0, -0.035, -0.02],
+        this.hips,
+        16,
+      );
+      this.part(
+        "sphere",
+        "padded-jacket",
+        [0.78, 0.8, 0.53],
+        "#dd7445",
+        [0, 0.38, 0],
         this.torso,
+        20,
       );
       this.part(
         "capsule",
-        "bag-strap",
-        [0.085, 0.62, 0.06],
-        "#ddbf84",
-        [side * 0.25, 0.4, 0.21],
-        this.torso,
-      ).rotation.z = side * -0.15;
-      this.part(
-        "capsule",
-        "strap-adjuster",
-        [0.09, 0.07, 0.03],
-        "#e4bf75",
-        [side * 0.25, 0.23, 0.258],
+        "jacket-hem",
+        [0.7, 0.17, 0.48],
+        "#b95e38",
+        [0, 0.04, 0],
         this.torso,
       );
       this.seam(
-        "pocket-flap-stitch",
+        "jacket-zip",
         [
-          [side * 0.21 - 0.075, 0.21, 0.274],
-          [side * 0.21, 0.19, 0.278],
-          [side * 0.21 + 0.075, 0.21, 0.274],
+          [0, 0.08, 0.24],
+          [0, 0.3, 0.268],
+          [0, 0.5, 0.262],
+          [0, 0.7, 0.205],
         ],
-        0.006,
-        "#e7b37d",
+        0.012,
+        "#f4c584",
         this.torso,
       );
+      this.part(
+        "capsule",
+        "zipper-pull",
+        [0.045, 0.07, 0.025],
+        "#e4bf75",
+        [0, 0.66, 0.235],
+        this.torso,
+      );
+      for (const side of [-1, 1]) {
+        this.part(
+          "capsule",
+          "pocket",
+          [0.2, 0.17, 0.06],
+          "#c7673e",
+          [side * 0.21, 0.18, 0.24],
+          this.torso,
+        );
+        this.part(
+          "capsule",
+          "bag-strap",
+          [0.085, 0.62, 0.06],
+          "#ddbf84",
+          [side * 0.25, 0.4, 0.21],
+          this.torso,
+        ).rotation.z = side * -0.15;
+        this.part(
+          "capsule",
+          "strap-adjuster",
+          [0.09, 0.07, 0.03],
+          "#e4bf75",
+          [side * 0.25, 0.23, 0.258],
+          this.torso,
+        );
+        this.seam(
+          "pocket-flap-stitch",
+          [
+            [side * 0.21 - 0.075, 0.21, 0.274],
+            [side * 0.21, 0.19, 0.278],
+            [side * 0.21 + 0.075, 0.21, 0.274],
+          ],
+          0.006,
+          "#e7b37d",
+          this.torso,
+        );
+      }
     }
     this.head = this.joint("head-joint", [0, 0.75, 0], this.torso);
     if (this.visualCharacter === "officer") {
@@ -1004,350 +1015,357 @@ export class ForestScene {
       );
     }
     this.backpack = this.joint("backpack-joint", [0, 0.42, -0.33], this.torso);
-    this.part(
-      "sphere",
-      "backpack",
-      [0.6, 0.7, 0.35],
-      "#386e60",
-      [0, 0, 0],
-      this.backpack,
-    );
-    this.part(
-      "sphere",
-      "backpack-flap",
-      [0.62, 0.25, 0.39],
-      "#5f9075",
-      [0, 0.25, -0.01],
-      this.backpack,
-    );
-    this.part(
-      "sphere",
-      "backpack-pocket",
-      [0.41, 0.26, 0.12],
-      "#52836d",
-      [0, -0.15, -0.2],
-      this.backpack,
-    );
-    this.part(
-      "capsule",
-      "backpack-buckle",
-      [0.11, 0.12, 0.04],
-      "#e4bf75",
-      [0, 0.1, -0.22],
-      this.backpack,
-    );
-    this.part(
-      "sphere",
-      "trail-patch",
-      [0.19, 0.14, 0.025],
-      "#dec78b",
-      [0, -0.13, -0.27],
-      this.backpack,
-    );
-    this.seam(
-      "embroidered-mountains",
-      [
-        [-0.064, -0.16, -0.286],
-        [-0.022, -0.095, -0.29],
-        [0.005, -0.135, -0.291],
-        [0.026, -0.11, -0.29],
-        [0.064, -0.16, -0.286],
-        [-0.064, -0.16, -0.286],
-      ],
-      0.006,
-      "#455d50",
-      this.backpack,
-    );
-    this.seam(
-      "backpack-pocket-zip",
-      [
-        [-0.16, -0.025, -0.253],
-        [0, -0.025, -0.267],
-        [0.16, -0.025, -0.253],
-      ],
-      0.007,
-      "#ddbf84",
-      this.backpack,
-    );
-    const roll = CreateCylinder(
-      "rolled-groundsheet",
-      { height: 0.58, diameter: 0.15, tessellation: 20 },
-      this.scene,
-    );
-    roll.rotation.z = Math.PI / 2;
-    roll.position.set(0, -0.39, -0.03);
-    roll.material = this.mat("#ddbf84");
-    roll.parent = this.backpack;
-    for (const side of [-1, 1]) {
+    if (!officer) {
+      this.part(
+        "sphere",
+        "backpack",
+        [0.6, 0.7, 0.35],
+        "#386e60",
+        [0, 0, 0],
+        this.backpack,
+      );
+      this.part(
+        "sphere",
+        "backpack-flap",
+        [0.62, 0.25, 0.39],
+        "#5f9075",
+        [0, 0.25, -0.01],
+        this.backpack,
+      );
+      this.part(
+        "sphere",
+        "backpack-pocket",
+        [0.41, 0.26, 0.12],
+        "#52836d",
+        [0, -0.15, -0.2],
+        this.backpack,
+      );
       this.part(
         "capsule",
-        "bedroll-strap",
-        [0.045, 0.19, 0.16],
-        "#82664d",
-        [side * 0.18, -0.37, -0.03],
+        "backpack-buckle",
+        [0.11, 0.12, 0.04],
+        "#e4bf75",
+        [0, 0.1, -0.22],
+        this.backpack,
+      );
+      this.part(
+        "sphere",
+        "trail-patch",
+        [0.19, 0.14, 0.025],
+        "#dec78b",
+        [0, -0.13, -0.27],
         this.backpack,
       );
       this.seam(
-        "backpack-edge-seam",
+        "embroidered-mountains",
         [
-          [side * 0.245, -0.27, -0.13],
-          [side * 0.282, -0.2, -0.15],
-          [side * 0.282, 0.13, -0.15],
-          [side * 0.23, 0.27, -0.14],
+          [-0.064, -0.16, -0.286],
+          [-0.022, -0.095, -0.29],
+          [0.005, -0.135, -0.291],
+          [0.026, -0.11, -0.29],
+          [0.064, -0.16, -0.286],
+          [-0.064, -0.16, -0.286],
         ],
-        0.008,
-        "#83a18a",
+        0.006,
+        "#455d50",
         this.backpack,
       );
-      const rollEnd = CreateTorus(
-        "bedroll-fold",
-        { diameter: 0.105, thickness: 0.012, tessellation: 20 },
+      this.seam(
+        "backpack-pocket-zip",
+        [
+          [-0.16, -0.025, -0.253],
+          [0, -0.025, -0.267],
+          [0.16, -0.025, -0.253],
+        ],
+        0.007,
+        "#ddbf84",
+        this.backpack,
+      );
+      const roll = CreateCylinder(
+        "rolled-groundsheet",
+        { height: 0.58, diameter: 0.15, tessellation: 20 },
         this.scene,
       );
-      rollEnd.parent = this.backpack;
-      rollEnd.rotation.z = Math.PI / 2;
-      rollEnd.position.set(side * 0.295, -0.39, -0.03);
-      rollEnd.material = this.mat("#c5ab7b");
+      roll.rotation.z = Math.PI / 2;
+      roll.position.set(0, -0.39, -0.03);
+      roll.material = this.mat("#ddbf84");
+      roll.parent = this.backpack;
+      for (const side of [-1, 1]) {
+        this.part(
+          "capsule",
+          "bedroll-strap",
+          [0.045, 0.19, 0.16],
+          "#82664d",
+          [side * 0.18, -0.37, -0.03],
+          this.backpack,
+        );
+        this.seam(
+          "backpack-edge-seam",
+          [
+            [side * 0.245, -0.27, -0.13],
+            [side * 0.282, -0.2, -0.15],
+            [side * 0.282, 0.13, -0.15],
+            [side * 0.23, 0.27, -0.14],
+          ],
+          0.008,
+          "#83a18a",
+          this.backpack,
+        );
+        const rollEnd = CreateTorus(
+          "bedroll-fold",
+          { diameter: 0.105, thickness: 0.012, tessellation: 20 },
+          this.scene,
+        );
+        rollEnd.parent = this.backpack;
+        rollEnd.rotation.z = Math.PI / 2;
+        rollEnd.position.set(side * 0.295, -0.39, -0.03);
+        rollEnd.material = this.mat("#c5ab7b");
+        this.part(
+          "capsule",
+          "pocket-seam",
+          [0.018, 0.2, 0.018],
+          "#708b6e",
+          [side * 0.18, -0.15, -0.263],
+          this.backpack,
+        );
+      }
+      const bottle = CreateCylinder(
+        "water-bottle",
+        { height: 0.33, diameter: 0.14, tessellation: 20 },
+        this.scene,
+      );
+      bottle.position.set(0.355, -0.07, -0.02);
+      bottle.material = this.mat("#a4b0a1");
+      bottle.parent = this.backpack;
+      const bottleCap = CreateCylinder(
+        "bottle-cap",
+        { height: 0.055, diameter: 0.1, tessellation: 16 },
+        this.scene,
+      );
+      bottleCap.position.set(0.355, 0.12, -0.02);
+      bottleCap.material = this.mat("#455d50");
+      bottleCap.parent = this.backpack;
       this.part(
         "capsule",
-        "pocket-seam",
-        [0.018, 0.2, 0.018],
-        "#708b6e",
-        [side * 0.18, -0.15, -0.263],
-        this.backpack,
+        "scarf-collar",
+        [0.47, 0.14, 0.45],
+        "#edc260",
+        [0, 0.76, 0],
+        this.torso,
       );
     }
-    const bottle = CreateCylinder(
-      "water-bottle",
-      { height: 0.33, diameter: 0.14, tessellation: 20 },
-      this.scene,
-    );
-    bottle.position.set(0.355, -0.07, -0.02);
-    bottle.material = this.mat("#a4b0a1");
-    bottle.parent = this.backpack;
-    const bottleCap = CreateCylinder(
-      "bottle-cap",
-      { height: 0.055, diameter: 0.1, tessellation: 16 },
-      this.scene,
-    );
-    bottleCap.position.set(0.355, 0.12, -0.02);
-    bottleCap.material = this.mat("#455d50");
-    bottleCap.parent = this.backpack;
-    this.part(
-      "capsule",
-      "scarf-collar",
-      [0.47, 0.14, 0.45],
-      "#edc260",
-      [0, 0.76, 0],
-      this.torso,
-    );
     this.scarf = this.joint("scarf-tail", [0.23, 0.73, -0.22], this.torso);
-    this.part(
-      "capsule",
-      "scarf-fabric",
-      [0.16, 0.04, 0.6],
-      "#edc260",
-      [0, 0, -0.22],
-      this.scarf,
-    );
+    if (!officer) {
+      this.part(
+        "capsule",
+        "scarf-fabric",
+        [0.16, 0.04, 0.6],
+        "#edc260",
+        [0, 0, -0.22],
+        this.scarf,
+      );
+    }
     for (const side of [-1, 1]) {
-      const upper = this.joint("hip-joint", [side * 0.205, 0, 0], this.hips);
-      this.part(
-        "capsule",
-        "trousers",
-        [0.265, 0.48, 0.29],
-        "#345d50",
-        [0, -0.23, 0],
-        upper,
-      );
+      const upper = this.joint("hip-joint", [side * (officer ? 0.185 : 0.205), 0, 0], this.hips);
       const lower = this.joint("knee", [0, -0.42, 0], upper);
-      this.part(
-        "sphere",
-        "fabric-knee",
-        [0.24, 0.22, 0.255],
-        "#345d50",
-        [0, -0.005, 0.005],
-        lower,
-        16,
-      );
-      this.part(
-        "capsule",
-        "shin",
-        [0.22, 0.38, 0.24],
-        "#3e6c5b",
-        [0, -0.15, 0],
-        lower,
-      );
-      this.part(
-        "capsule",
-        "sock",
-        [0.22, 0.12, 0.23],
-        "#e4d9b6",
-        [0, -0.29, 0],
-        lower,
-      );
       const foot = this.joint("ankle", [0, -0.37, 0], lower);
-      this.part(
-        "capsule",
-        "boot-collar",
-        [0.28, 0.13, 0.31],
-        "#c68d56",
-        [0, 0.12, -0.012],
-        foot,
-      );
-      this.part(
-        "capsule",
-        "sole",
-        [0.34, 0.09, 0.53],
-        "#e9dcc0",
-        [0, -0.055, 0.1],
-        foot,
-      );
-      this.part(
-        "sphere",
-        "hiking-shoe",
-        [0.33, 0.22, 0.49],
-        "#c68d56",
-        [0, 0.02, 0.09],
-        foot,
-        16,
-      );
-      this.part(
-        "capsule",
-        "shoe-laces",
-        [0.2, 0.025, 0.14],
-        "#f1ddb3",
-        [0, 0.13, 0.12],
-        foot,
-      );
-      this.part(
-        "capsule",
-        "rubber-toe",
-        [0.31, 0.09, 0.17],
-        "#82664d",
-        [0, 0.012, 0.265],
-        foot,
-      );
-      this.part(
-        "capsule",
-        "boot-heel",
-        [0.28, 0.1, 0.16],
-        "#82664d",
-        [0, -0.035, -0.075],
-        foot,
-      );
-      for (let lace = 0; lace < 3; lace++) {
-        const stitch = this.part(
-          "capsule",
-          "lace-crossing",
-          [0.18, 0.014, 0.025],
-          "#d8c7a3",
-          [0, 0.135 - lace * 0.005, 0.06 + lace * 0.048],
-          foot,
-        );
-        stitch.rotation.y = (lace % 2 ? 1 : -1) * 0.2;
-      }
-      for (let tread = 0; tread < 3; tread++)
+      if (officer) {
+        createOfficerLeg(this.scene, upper, lower, foot);
+      } else {
         this.part(
-          "box",
-          "boot-tread",
-          [0.28, 0.025, 0.09],
-          "#82664d",
-          [0, -0.105, -0.05 + tread * 0.14],
+          "capsule",
+          "trousers",
+          [0.265, 0.48, 0.29],
+          "#345d50",
+          [0, -0.23, 0],
+          upper,
+        );
+        this.part(
+          "sphere",
+          "fabric-knee",
+          [0.24, 0.22, 0.255],
+          "#345d50",
+          [0, -0.005, 0.005],
+          lower,
+          16,
+        );
+        this.part(
+          "capsule",
+          "shin",
+          [0.22, 0.38, 0.24],
+          "#3e6c5b",
+          [0, -0.15, 0],
+          lower,
+        );
+        this.part(
+          "capsule",
+          "sock",
+          [0.22, 0.12, 0.23],
+          "#e4d9b6",
+          [0, -0.29, 0],
+          lower,
+        );
+        this.part(
+          "capsule",
+          "boot-collar",
+          [0.28, 0.13, 0.31],
+          "#c68d56",
+          [0, 0.12, -0.012],
           foot,
         );
+        this.part(
+          "capsule",
+          "sole",
+          [0.34, 0.09, 0.53],
+          "#e9dcc0",
+          [0, -0.055, 0.1],
+          foot,
+        );
+        this.part(
+          "sphere",
+          "hiking-shoe",
+          [0.33, 0.22, 0.49],
+          "#c68d56",
+          [0, 0.02, 0.09],
+          foot,
+          16,
+        );
+        this.part(
+          "capsule",
+          "shoe-laces",
+          [0.2, 0.025, 0.14],
+          "#f1ddb3",
+          [0, 0.13, 0.12],
+          foot,
+        );
+        this.part(
+          "capsule",
+          "rubber-toe",
+          [0.31, 0.09, 0.17],
+          "#82664d",
+          [0, 0.012, 0.265],
+          foot,
+        );
+        this.part(
+          "capsule",
+          "boot-heel",
+          [0.28, 0.1, 0.16],
+          "#82664d",
+          [0, -0.035, -0.075],
+          foot,
+        );
+        for (let lace = 0; lace < 3; lace++) {
+          const stitch = this.part(
+            "capsule",
+            "lace-crossing",
+            [0.18, 0.014, 0.025],
+            "#d8c7a3",
+            [0, 0.135 - lace * 0.005, 0.06 + lace * 0.048],
+            foot,
+          );
+          stitch.rotation.y = (lace % 2 ? 1 : -1) * 0.2;
+        }
+        for (let tread = 0; tread < 3; tread++)
+          this.part(
+            "box",
+            "boot-tread",
+            [0.28, 0.025, 0.09],
+            "#82664d",
+            [0, -0.105, -0.05 + tread * 0.14],
+            foot,
+          );
+      }
       this.legs.push({ upper, lower, foot, side });
       const shoulder = this.joint(
         "shoulder",
-        [side * 0.43, 0.6, 0],
+        [side * (officer ? 0.355 : 0.43), officer ? 0.58 : 0.6, 0],
         this.torso,
       );
-      this.part(
-        "capsule",
-        "sleeve",
-        [0.25, 0.4, 0.27],
-        "#dd7445",
-        [0, -0.15, 0],
-        shoulder,
-      );
       const elbow = this.joint("elbow", [0, -0.31, 0], shoulder);
-      this.part(
-        "sphere",
-        "fabric-elbow",
-        [0.225, 0.21, 0.235],
-        "#dd7445",
-        [0, 0, 0],
-        elbow,
-        16,
-      );
-      this.part(
-        "capsule",
-        "forearm",
-        [0.21, 0.32, 0.22],
-        "#dd7445",
-        [0, -0.12, 0],
-        elbow,
-      );
-      this.part(
-        "capsule",
-        "cuff",
-        [0.22, 0.075, 0.23],
-        "#b95e38",
-        [0, -0.25, 0],
-        elbow,
-      );
-      this.part(
-        "sphere",
-        "hand",
-        [0.23, 0.25, 0.23],
-        "#e8b58a",
-        [0, -0.34, 0.02],
-        elbow,
-        16,
-      );
-      this.part(
-        "sphere",
-        "thumb",
-        [0.1, 0.14, 0.11],
-        "#dba57d",
-        [-side * 0.1, -0.31, 0.05],
-        elbow,
-        12,
-      );
-      for (let finger = 0; finger < 3; finger++)
+      if (officer) {
+        createOfficerArm(this.scene, shoulder, elbow, side);
+      } else {
         this.part(
           "capsule",
-          "knuckle",
-          [0.045, 0.1, 0.035],
-          "#dba57d",
-          [(finger - 1) * 0.055, -0.365, 0.12],
+          "sleeve",
+          [0.25, 0.4, 0.27],
+          "#dd7445",
+          [0, -0.15, 0],
+          shoulder,
+        );
+        this.part(
+          "sphere",
+          "fabric-elbow",
+          [0.225, 0.21, 0.235],
+          "#dd7445",
+          [0, 0, 0],
+          elbow,
+          16,
+        );
+        this.part(
+          "capsule",
+          "forearm",
+          [0.21, 0.32, 0.22],
+          "#dd7445",
+          [0, -0.12, 0],
           elbow,
         );
+        this.part(
+          "capsule",
+          "cuff",
+          [0.22, 0.075, 0.23],
+          "#b95e38",
+          [0, -0.25, 0],
+          elbow,
+        );
+        this.part(
+          "sphere",
+          "hand",
+          [0.23, 0.25, 0.23],
+          "#e8b58a",
+          [0, -0.34, 0.02],
+          elbow,
+          16,
+        );
+        this.part(
+          "sphere",
+          "thumb",
+          [0.1, 0.14, 0.11],
+          "#dba57d",
+          [-side * 0.1, -0.31, 0.05],
+          elbow,
+          12,
+        );
+        for (let finger = 0; finger < 3; finger++)
+          this.part(
+            "capsule",
+            "knuckle",
+            [0.045, 0.1, 0.035],
+            "#dba57d",
+            [(finger - 1) * 0.055, -0.365, 0.12],
+            elbow,
+          );
+      }
       this.arms.push({ upper: shoulder, lower: elbow, side });
     }
     if (this.visualCharacter === "officer") this.createOfficerUniform();
   }
 
   private createOfficerUniform() {
-    const hidden = new Set(["bag-strap", "strap-adjuster", "jacket-zip", "zipper-pull", "pocket-flap-stitch", "scarf-collar"]);
-    for (const mesh of this.runner.getChildMeshes()) {
-      if (hidden.has(mesh.name)) mesh.setEnabled(false);
-    }
     this.backpack.setEnabled(false); this.scarf.setEnabled(false);
     this.head.scaling.setAll(1.12);
     for (const side of [-1,1]) {
-      const epaulette=this.part("box", "officer-epaulette", [0.24,0.05,0.22], "#40588e", [side*0.34,0.67,0], this.torso);
-      epaulette.rotation.z=-side*0.12;
-      this.part("sphere", "officer-shoulder-button", [0.055,0.035,0.055], "#ffd16f", [side*0.3,0.705,0.02], this.torso);
+      const epaulette=this.part("capsule", "officer-epaulette", [0.19,0.04,0.18], "#7a8db3", [side*0.29,0.66,0], this.torso);
+      epaulette.rotation.z=-side*0.18;
+      this.part("sphere", "officer-shoulder-button", [0.05,0.03,0.05], "#ffd16f", [side*0.27,0.69,0.02], this.torso);
       const collar=this.part("box", "officer-collar", [0.16,0.18,0.06], "#40588e", [side*0.09,0.64,0.22], this.torso);
       collar.rotation.z=side*0.48;
     }
     const cap=this.part("sphere", "officer-cap-crown", [1.02,0.34,0.84], "#2e427b", [0,0.735,0], this.head,24);
     cap.rotation.x=-0.08;
     const band=CreateCylinder("officer-cap-gold-band", {height:0.065,diameter:0.8,tessellation:32},this.scene);
-    band.parent=this.head;band.position.set(0,0.61,0);band.material=this.mat("#ffcf64");
-    const visor=this.part("sphere", "officer-gloss-visor", [0.88,0.075,0.5], "#171d33", [0,0.555,0.22], this.head,24);
-    (visor.material as StandardMaterial).specularColor.setAll(0.4);
+    band.parent=this.head;band.position.set(0,0.61,0);band.material=officerMaterial(this.scene,"metal","#ffcf64");
+    this.part("sphere", "officer-gloss-visor", [0.88,0.075,0.5], "#30394c", [0,0.555,0.22], this.head,24);
     this.part("sphere", "officer-visor-shine", [0.26,0.015,0.1], "#8b9bbc", [-0.17,0.595,0.33], this.head);
     const badge=(parent:TransformNode,x:number,y:number,z:number,scale:number)=>{
       const root=this.joint("officer-shield-badge",[x,y,z],parent);root.scaling.setAll(scale);
@@ -1359,20 +1377,20 @@ export class ForestScene {
       this.seam("badge-star",star,0.012,"#ffe187",root);
       return root;
     };
-    badge(this.head,0,0.755,0.415,1.05);badge(this.torso,0.2,0.44,0.265,0.77);
+    badge(this.head,0,0.755,0.415,1.05);badge(this.torso,0.18,0.44,0.225,0.77);
     for(const side of [-1,1])for(let i=0;i<4;i++) {
       const leaf=this.part("sphere","cap-laurel",[0.035,0.07,0.025],"#ffd16f",[side*(0.15+i*0.028),0.645+i*0.023,0.394-i*0.012],this.head);
       leaf.rotation.z=side*-0.7;
     }
-    this.part("box","officer-tie",[0.085,0.3,0.045],"#171d33",[0,0.45,0.28],this.torso);
-    this.part("sphere","officer-tie-knot",[0.11,0.1,0.06],"#171d33",[0,0.61,0.255],this.torso);
-    this.part("box","officer-radio",[0.14,0.19,0.09],"#222936",[-0.29,0.54,0.27],this.torso);
-    for(let i=0;i<3;i++)this.part("box","radio-speaker",[0.1,0.018,0.012],"#7c8c9e",[-0.29,0.58-i*0.04,0.322],this.torso);
-    this.part("capsule","radio-antenna",[0.02,0.16,0.02],"#171d33",[-0.32,0.69,0.27],this.torso);
-    this.part("capsule","officer-belt",[0.65,0.09,0.46],"#171d33",[0,-0.01,0],this.hips);
-    this.part("box","officer-belt-buckle",[0.1,0.09,0.035],"#ffd16f",[0,-0.01,0.245],this.hips);
-    this.part("box","officer-holster",[0.14,0.24,0.16],"#171d33",[0.36,-0.13,0],this.hips);
-    this.holsteredPistol=this.createPistol(this.hips,[0.36,-0.1,0]);
+    this.part("capsule","officer-tie",[0.075,0.29,0.035],"#30394c",[0,0.45,0.225],this.torso);
+    this.part("sphere","officer-tie-knot",[0.095,0.09,0.055],"#30394c",[0,0.61,0.228],this.torso);
+    this.part("box","officer-radio",[0.12,0.175,0.08],"#394354",[-0.235,0.54,0.235],this.torso);
+    for(let i=0;i<3;i++)this.part("box","radio-speaker",[0.08,0.015,0.012],"#7c8c9e",[-0.235,0.58-i*0.035,0.28],this.torso);
+    this.part("capsule","radio-antenna",[0.02,0.15,0.02],"#30394c",[-0.265,0.68,0.225],this.torso);
+    this.part("capsule","officer-belt",[0.62,0.085,0.435],"#30394c",[0,-0.01,0],this.hips);
+    this.part("box","officer-belt-buckle",[0.09,0.08,0.03],"#ffd16f",[0,-0.01,0.232],this.hips);
+    this.part("capsule","officer-holster",[0.12,0.23,0.145],"#30394c",[0.323,-0.13,0],this.hips);
+    this.holsteredPistol=this.createPistol(this.hips,[0.323,-0.1,0]);
     this.holsteredPistol.rotation.x=Math.PI;
     this.pistol=this.createPistol(this.arms.find(a=>a.side>0)!.lower,[0,-0.36,0.09]);
     this.pistol.setEnabled(false);
@@ -2427,6 +2445,7 @@ export class ForestScene {
     const inlandGround = Color3.Lerp(Color3.FromHexString("#698463"), Color3.FromHexString("#a88a67"), canyonBlend);
     this.sky.groundColor = Color3.Lerp(Color3.Lerp(inlandGround, Color3.FromHexString("#a8b9ce"), snowLight),
       Color3.FromHexString("#6880a3"), moon * 0.42);
+    if (this.visualCharacter === "officer") updateOfficerLighting(this.scene, light.night, darkness, immersed);
     this.forestVisible = canyonBlend < 0.5 && snowLight < 0.55;
     let forestSnowFade = snowLight;
     if (section.biome === "snow-transition" && section.from === "forest")

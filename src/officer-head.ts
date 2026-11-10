@@ -4,9 +4,9 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { officerMaterial } from "./officer-materials.ts";
 
 type Point = [number, number, number];
 
@@ -77,19 +77,14 @@ function faceTexture(scene: Scene) {
   ellipse(0.007, 0.065, 0.042, 0.034, "#ffa5ad");
   ctx.restore(); ctx.strokeStyle = "#b9454b"; ctx.lineWidth = 0.005; ctx.stroke(mouthShape);
   ellipse(-0.006, 0.217, 0.009, 0.005, "#fff0dfb3");
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  // Reserved opaque color swatches for the ears, outside the face UV footprint.
-  ctx.fillStyle = "#ffddc9"; ctx.fillRect(0, 0, 16, 16);
-  ctx.fillStyle = "#ef9f99"; ctx.fillRect(size - 16, 0, 16, 16);
   texture.anisotropicFilteringLevel = 4;
   texture.update();
   return texture;
 }
 
 function skinMesh(scene: Scene) {
-  const material = new StandardMaterial("officer-skin", scene);
+  const material = officerMaterial(scene, "face");
   material.diffuseTexture = faceTexture(scene);
-  material.specularColor.setAll(0.015);
   const face = CreateSphere("officer-rounded-face", {diameter: 1, segments: 24, updatable: true}, scene);
   const positions = face.getVerticesData(VertexBuffer.PositionKind)!;
   const uvs = face.getVerticesData(VertexBuffer.UVKind)!;
@@ -110,29 +105,14 @@ function skinMesh(scene: Scene) {
   face.updateVerticesData(VertexBuffer.NormalKind, normals);
   face.updateVerticesData(VertexBuffer.UVKind, uvs);
   face.material = material;
-  const pieces = [face];
-  for (const side of [-1, 1]) for (const inner of [false, true]) {
-    const ear = CreateSphere("officer-ear", {diameter: 1, segments: 12, updatable: true}, scene);
-    ear.scaling.set(inner ? 0.065 : 0.12, inner ? 0.106 : 0.16, inner ? 0.022 : 0.1);
-    ear.position.set(side * 0.356, 0.225, inner ? 0.199 : 0.15);
-    const earUvs = ear.getVerticesData(VertexBuffer.UVKind)!;
-    for (let i = 0; i < earUvs.length; i += 2) {
-      earUvs[i] = inner ? 0.985 : 0.015; earUvs[i + 1] = 0.985;
-    }
-    ear.updateVerticesData(VertexBuffer.UVKind, earUvs);
-    ear.material = material; ear.bakeCurrentTransformIntoVertices(); pieces.push(ear);
-  }
-  const merged = Mesh.MergeMeshes(pieces, true, false)!;
-  merged.name = "officer-skin-template";
-  return merged;
+  face.name = "officer-skin-template";
+  return face;
 }
 
 function hairMesh(scene: Scene) {
-  const material = new StandardMaterial("officer-hair", scene);
-  material.specularColor.set(0.065, 0.05, 0.065);
-  material.specularPower = 64;
-  const dark = Color3.FromHexString("#211b24").toLinearSpace();
-  const shine = Color3.FromHexString("#66505d").toLinearSpace();
+  const material = officerMaterial(scene, "hair");
+  const dark = Color3.FromHexString("#30303d").toLinearSpace();
+  const shine = Color3.FromHexString("#8990ad").toLinearSpace();
   const pieces: Mesh[] = [];
   // Closed curved sheets give the bob and fringe thickness without capsule seams.
   const sheet = (name: string, rows: number, columns: number, point: (u: number, v: number, inner: boolean) => Point) => {
@@ -141,7 +121,11 @@ function hairMesh(scene: Scene) {
     for (const inner of [false, true]) for (let row = 0; row <= rows; row++) for (let col = 0; col <= columns; col++) {
       const u = col / columns, v = row / rows;
       positions.push(...point(u, v, inner)); uvs.push(u, v);
-      const highlight = inner ? 0 : Math.sin(v * Math.PI) ** 4 * (0.12 + 0.32 * Math.sin(u * Math.PI) ** 8);
+      const bob = name === "officer-bob-shell";
+      const arc = Math.exp(-(((v - 0.3 - Math.cos(u * Math.PI * 2) * 0.07) / 0.14) ** 2));
+      const highlight = inner ? 0 : bob
+        ? Math.sin(v * Math.PI) ** 2 * (0.12 + 0.34 * Math.sin(u * Math.PI * 5 + v * 0.3) ** 6) + arc * 0.24
+        : Math.sin(v * Math.PI) ** 4 * (0.12 + 0.25 * Math.sin(u * Math.PI) ** 8);
       const color = Color3.Lerp(dark, shine, highlight);
       colors.push(color.r, color.g, color.b, 1);
     }
@@ -167,14 +151,15 @@ function hairMesh(scene: Scene) {
   };
   // y, half-width, depth, and opening angle: the front stays open around the face.
   const profile = [[0.625, 0.18, 0.17, 0.15], [0.57, 0.33, 0.28, 0.4], [0.47, 0.395, 0.34, 0.65],
-    [0.31, 0.423, 0.36, 0.72], [0.13, 0.428, 0.35, 0.78], [0.015, 0.405, 0.33, 0.82], [-0.035, 0.355, 0.28, 0.89]];
+    [0.31, 0.423, 0.36, 0.69], [0.13, 0.428, 0.35, 0.75], [0.015, 0.405, 0.33, 0.8], [-0.035, 0.355, 0.28, 0.87]];
   sheet("officer-bob-shell", 18, 40, (u, v, inner) => {
     const at = v * (profile.length - 1), row = Math.min(profile.length - 2, Math.floor(at)), t = at - row;
     const sample = (axis: number) => profile[row][axis] * (1 - t) + profile[row + 1][axis] * t;
     const y = sample(0), inset = inner ? 0.028 : 0, angle = sample(3) + u * (Math.PI * 2 - sample(3) * 2);
-    const scallop = Math.sin(u * Math.PI * 10) ** 2 * Math.max(0, (v - 0.78) / 0.22) * 0.016;
-    return [Math.sin(angle) * (sample(1) - inset), y + scallop,
-      Math.cos(angle) * (sample(2) - inset) - 0.005];
+    const ripple = Math.sin(angle * 5 + v * 0.35) ** 2 * Math.sin(v * Math.PI) * 0.009;
+    const scallop = (Math.sin(u * Math.PI * 10) ** 2 * 0.022 + Math.sin(u * Math.PI * 4) * 0.006) * Math.max(0, (v - 0.78) / 0.22);
+    return [Math.sin(angle) * (sample(1) - inset + ripple), y + scallop,
+      Math.cos(angle) * (sample(2) - inset + ripple) - 0.005];
   });
   for (let lock = 0; lock < 5; lock++) {
     const center = (lock - 2) * 0.123, width = lock === 2 ? 0.13 : 0.126;
