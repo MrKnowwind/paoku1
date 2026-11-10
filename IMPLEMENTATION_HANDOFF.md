@@ -162,6 +162,7 @@
 - ImageGen制作透明备用弹药技能图标：深蓝警用弹药袋、金色弹药及青绿色补充箭头。母版art-source/ui-reserve-ammo.png，256px透明WebP位于public/art/icons-v3/reserve-ammo.webp，接入角色技能介绍和游戏主动按钮，沿用BASE_URL。
 - 性能：静态图标按需加载；分页只挂载当前两张卡，翻页才重建；HUD仅角色最大血量变化时重建心节点，无每帧资源生成。未新增依赖外观细节的测试。
 - 验证：源码和差异审阅；按项目约定未运行本地测试、构建或浏览器验收，CI保留。提交后由自动流水线检查，视觉和手机布局待用户验收。
+- 实现提交`0678a30`，生命值数值类型修正`4ad9421`；[GitHub Actions](https://github.com/MrKnowwind/paoku1/actions/runs/42743445474)测试、构建及Pages部署均成功。
 
 ### 43.15 巡警身形、手鞋与夜间背影优化（2026-11-10）
 
