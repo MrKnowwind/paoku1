@@ -1,3 +1,5 @@
+import { ForestHorizon } from "./forest-horizon.ts";
+import { coastalSkyBlend } from "./coast-layout.ts";
 import { openingFog } from "./opening.ts";
 import { fishWarning } from "./fish.ts";
 import { CONFIG } from "./config.ts";
@@ -65,6 +67,7 @@ type Particle = {
   velocity: Vector3;
   size: number;
   gravity: number;
+  groundDust: boolean;
 };
 type Limb = {
   upper: TransformNode;
@@ -143,7 +146,7 @@ export class ForestScene {
   private snowChunks: Mesh[] = [];
   private softTexture!: DynamicTexture;
   private terrainView!: TerrainScene;
-  private forestBackdrop!: TransformNode;
+  private forestBackdrop!: ForestHorizon;
   private sky: HemisphericLight;
   private sun: DirectionalLight;
   private shieldAura!: TransformNode;
@@ -576,17 +579,7 @@ export class ForestScene {
 
   private createWorld() {
     this.terrainView = new TerrainScene(this.scene, this.props, this.ocean, () => this.snowProps);
-    this.forestBackdrop = new TransformNode("forest-hills", this.scene);
-    for (let i = 0; i < 12; i++)
-      this.part(
-        "sphere",
-        "distant-hill",
-        [30 + i * 2, 17 + (i % 3) * 6, 40],
-        i % 2 ? "#91aa96" : "#a6b49b",
-        [(i % 2 ? 1 : -1) * (35 + i * 3), 0, 100 + i * 8],
-        this.forestBackdrop,
-        12,
-      );
+    this.forestBackdrop = new ForestHorizon(this.scene, color => this.mat(color));
     for (let chunk = 0; chunk < 5; chunk++) {
       const root = new TransformNode("woodland-" + chunk, this.scene);
       this.chunks.push(root);
@@ -1629,6 +1622,7 @@ export class ForestScene {
     size = 0.2,
     gravity = 1,
     snowChunks = false,
+    groundDust = false,
   ) {
     if (!this.high) count = Math.ceil(count / 2);
     const pool = snowChunks ? this.snowChunks : this.pool;
@@ -1652,6 +1646,7 @@ export class ForestScene {
       mesh.setEnabled(true);
       mesh.visibility = 1;
       this.particles.push({
+        groundDust,
         mesh,
         duration,
         life: duration,
@@ -2404,9 +2399,7 @@ export class ForestScene {
       Color3.FromHexString("#ddc9ad"),
       canyonBlend,
     );
-    const coastalSky = section.biome === "beach" || section.biome === "water" ? 1
-      : section.biome === "shore" ? 1 - smooth((cameraDistance - section.start - 50) / 30)
-      : section.biome === "canyon" && this.track.at(section.end).biome === "beach" ? smooth((cameraDistance - section.end + 80) / 80) : 0;
+    const coastalSky = coastalSkyBlend(cameraDistance, this.track);
     const snowLight = snowBlend(cameraDistance, this.track);
     const storm = game.blizzard;
     const snowSky = Color3.Lerp(Color3.FromHexString("#d6e7f4"), Color3.FromHexString("#8da5bd"), storm * 0.84);
@@ -2453,9 +2446,7 @@ export class ForestScene {
     if (section.biome === "snow" && section.from === "forest")
       forestSnowFade = (cameraDistance - section.start + CONFIG.snowTransition) / (CONFIG.snowTransition + 90);
     const forestHorizon = (1 - canyonBlend) * (1 - smooth(forestSnowFade)) * (1 - coastalSky) * (1 - immersed);
-    this.forestBackdrop.position.y = -12 * smooth(forestSnowFade);
-    this.forestBackdrop.setEnabled(forestHorizon > 0.005);
-    for (const hill of this.forestBackdrop.getChildMeshes()) hill.visibility = forestHorizon;
+    this.forestBackdrop.update(forestHorizon, -12 * smooth(forestSnowFade));
     const revisionChanged = this.chunkRevision !== this.track.revision;
     this.chunks.forEach((root, i) => {
       const base = i * 40 + 40;
@@ -2745,10 +2736,11 @@ export class ForestScene {
     this.contact.position.z = this.runner.position.z;
     this.restStop.position.z = REST_Z - scroll;
     this.restStop.setEnabled(this.restStop.position.z > -24);
+    const groundSurface = !game.swimming && !game.transitioning && game.waterBlend < 0.01 && !game.boosting && !game.wallSide && !game.struggling;
     this.contact.scaling.setAll(1 / (1 + (ready ? 0 : game.y) * 0.3));
-    this.contact.visibility = game.lastHit === "pool" ? 0 : 1 / (1 + (ready ? 0 : game.y) * 0.65);
+    this.contact.visibility = !groundSurface || game.lastHit === "pool" ? 0 : 1 / (1 + (ready ? 0 : game.y) * 0.65);
     if (
-      running &&
+      running && groundSurface &&
       !airborne &&
       Math.abs(pose.turn) > 0.65 &&
       this.lastTurn <= 0.65
@@ -2760,10 +2752,10 @@ export class ForestScene {
         1.7,
         0.38,
         0.26,
-        0,
+        0, false, true,
       );
     this.lastTurn = Math.abs(pose.turn);
-    if (running && airborne && !this.airborne)
+    if (running && groundSurface && airborne && !this.airborne)
       this.burst(
         new Vector3(game.x, 0.12, 0),
         "#e4cc9c",
@@ -2771,10 +2763,10 @@ export class ForestScene {
         1.8,
         0.35,
         0.33,
-        0,
+        0, false, true,
       );
     this.airborne = airborne;
-    if (running && pose.landing > 0.8 && this.lastLanding < 0.8)
+    if (running && groundSurface && pose.landing > 0.8 && this.lastLanding < 0.8)
       this.burst(
         new Vector3(game.x, 0.12, 0),
         "#ddc09a",
@@ -2782,10 +2774,10 @@ export class ForestScene {
         2.8,
         0.6,
         0.42,
-        0,
+        0, false, true,
       );
     const footfall = Math.floor(pose.phase / Math.PI);
-    if (running && !game.icy && game.y === 0 && footfall !== this.lastPhase)
+    if (running && groundSurface && !game.icy && game.y === 0 && footfall !== this.lastPhase)
       this.burst(
         new Vector3(game.x, 0.12, -0.13),
         game.inSnow ? "#e7f4ff" : "#d7b98d",
@@ -2793,7 +2785,7 @@ export class ForestScene {
         0.7,
         0.4,
         game.sliding ? 0.5 : 0.28,
-        0,
+        0, false, true,
       );
     this.lastPhase = footfall;
     this.lastLanding = pose.landing;
@@ -2917,6 +2909,9 @@ export class ForestScene {
     this.lastCoins = game.coins;
     if (!paused) {
       this.particles = this.particles.filter((p) => {
+        if(p.groundDust && !groundSurface) {
+          p.mesh.setEnabled(false);this.pool.push(p.mesh);return false;
+        }
         p.life -= dt;
         p.velocity.y -= p.gravity * dt;
         p.mesh.position.addInPlace(p.velocity.scale(dt));

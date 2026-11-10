@@ -3,7 +3,8 @@ import { coastGridIndices, reefRockGeometry } from "./ocean-geometry.ts";
 import { canyonRidgeGeometry, canyonRidgeStrength } from "./canyon-landform.ts";
 import type { TrackSection } from "./track.ts";
 import { TrackPlan, terrainCellSpans } from "./track.ts";
-import { coastHeight } from "./coast-layout.ts";
+import { coastHeight, coastalSkyBlend, COAST_COLUMNS } from "./coast-layout.ts";
+import { ForestHorizon } from "./forest-horizon.ts";
 import { SquidView } from "./squid-view.ts";
 import { RunnerGame } from "./game.ts";
 import { CONFIG } from "./config.ts";
@@ -203,6 +204,36 @@ test("terrain cells split at actual biome boundaries after quick starts and comb
         if(i)assert.equal(spans[i-1].end,s.start);
       }
     }
+  }
+});
+
+test("forest horizon fades on real meshes and can reappear after returning from the coast",()=>{
+  const engine=new NullEngine();
+  try {
+    const scene=new Scene(engine),material=new StandardMaterial("hills",scene);
+    const horizon=new ForestHorizon(scene,()=>material);
+    for(const opacity of [1,0.7,0.2,0.001,0,0.4,1]) {
+      horizon.update(opacity,-3);
+      assert.equal(horizon.root.isEnabled(),opacity>0);
+      for(const hill of horizon.root.getChildMeshes()) {
+        assert.equal(hill instanceof InstancedMesh,false);
+        assert.equal(hill.visibility,opacity);
+      }
+    }
+  } finally {engine.dispose();}
+});
+
+test("forest-to-beach sky fades continuously and coast vertices preserve the flat grass verge",()=>{
+  const plan=new TrackPlan(4,"water",true),beach=plan.at(12);
+  assert.equal(coastalSkyBlend(beach.start-0.0001,plan),0);
+  assert.equal(coastalSkyBlend(beach.start,plan),0);
+  assert.ok(coastalSkyBlend(beach.start+20,plan)>0&&coastalSkyBlend(beach.start+20,plan)<1);
+  assert.equal(coastalSkyBlend(beach.start+40,plan),1);
+  for(const side of [-1,1]) {
+    const verge=COAST_COLUMNS.filter(x=>side*x>=4.3&&side*x<=74.3);
+    assert.ok(verge.some(x=>side*x===4.3));
+    for(const x of verge)assert.equal(coastHeight(x,beach.start,plan),0);
+    assert.ok(COAST_COLUMNS.some(x=>side*x<4.3&&side*x>4.29));
   }
 });
 

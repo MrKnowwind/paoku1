@@ -1,5 +1,5 @@
 import { CoastSurface } from "./coast-surface.ts";
-import { coastHeight, coastWeights, coastSandUV } from "./coast-layout.ts";
+import { coastHeight, coastWeights, coastSandUV, COAST_COLUMNS } from "./coast-layout.ts";
 import type { Material } from "@babylonjs/core/Materials/material";
 import { coastGridIndices } from "./ocean-geometry.ts";
 import { canyonRidgeGeometry, canyonRidgeStrength } from "./canyon-landform.ts";
@@ -454,11 +454,11 @@ export class TerrainScene {
     const section = sectionAt(world + length / 2, this.plan);
     const underwater = section.biome === "water";
     const positions: number[] = [], uvs: number[] = [], colors: number[] = [];
-    const columns = 40, rows = 5;
+    const columns = COAST_COLUMNS.length - 1, rows = 5;
     for (let row = 0; row <= rows; row++) {
       const z = row * length / rows, d = world + z;
       for (let col = 0; col <= columns; col++) {
-        const x = (col - columns / 2) * 4;
+        const x = COAST_COLUMNS[col];
         const height = this.coastHeight(x, d);
         positions.push(x, height, z); uvs.push(...coastSandUV(x, d, this.plan));
         colors.push(...coastWeights(d, this.plan));

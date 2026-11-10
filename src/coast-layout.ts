@@ -4,6 +4,20 @@ import { winterGroundHeight } from "./snow-layout.ts";
 
 const smooth = (value: number) => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t); };
 
+// Preserve both sides of the road/verge step in the mesh, rather than interpolating over 4m.
+export const COAST_COLUMNS = [...new Set([
+  ...Array.from({length:41},(_,i)=>(i-20)*4),-74.3,-5.7,-4.3,-4.298,4.298,4.3,5.7,74.3,
+])].sort((a,b)=>a-b);
+
+export function coastalSkyBlend(distance: number, plan = defaultTrack) {
+  const s=plan.at(distance);
+  if(s.biome==="beach")return s.from==="canyon"?1:smooth((distance-s.start)/40);
+  if(s.biome==="water")return 1;
+  if(s.biome==="shore")return 1-smooth((distance-s.start-50)/30);
+  if(s.biome==="canyon"&&plan.at(s.end).biome==="beach")return smooth((distance-s.end+80)/80);
+  return 0;
+}
+
 export function coastFloor(distance: number, plan = defaultTrack): number {
   const s = sectionAt(distance, plan);
   if (s.biome === "beach") return 0.06 + (CONFIG.seabedHeight - 0.06) * smooth((distance - s.end + 24) / 24);
@@ -25,7 +39,7 @@ export function coastHeight(x: number, distance: number, plan = defaultTrack): n
   const canyon = s.biome === "beach" && s.from === "canyon" ? 1 - smooth((distance - s.start) / 30)
     : s.biome === "shore" && s.to === "canyon" ? smooth((distance - s.end + 30) / 30) : s.biome === "canyon" ? 1 : 0;
   const snow = snowBlend(distance, plan);
-  const verge = -0.06 * forest * smooth((ax - 4.3) / 1.4);
+  const verge = -0.06 * forest * (ax >= 4.3 ? 1 : 0);
   const valley = (-18 - 0.06) * canyon * smooth((ax - 5.7) / 7);
   return coastFloor(distance, plan) + ((1 - submerged) * dunes + submerged * seabed + verge + valley) * (1 - snow)
     + snow * (winterGroundHeight(x, distance, 1, 4.3) - 0.06);
