@@ -2704,12 +2704,14 @@ export class ForestScene {
       const t=struggle.elapsed+struggle.ending+this.failedStruggleTime;
       const release=struggle.phase==="released"?smooth(struggle.ending/0.7):0;
       const effort=struggle.phase==="failed"?1-smooth(this.failedStruggleTime/0.8):1;
-      this.runner.rotation.set(0.1,Math.sin(t*5)*0.23*effort,Math.sin(t*8)*0.15*effort);
-      this.runner.position.z=-release*0.7;
-      this.torso.rotation.x=-0.12+Math.sin(t*9)*0.1*effort;
+      this.runner.rotation.set(0.1,Math.sin(t*2.6)*0.1*effort,Math.sin(t*3.2)*0.055*effort);
+      this.runner.position.z=-Math.sin(release*Math.PI)*0.5;
+      this.torso.rotation.x=-0.12+Math.sin(t*3.2)*0.045*effort;
       if(struggle.phase==="failed") { this.head.rotation.x+=smooth(this.failedStruggleTime)*0.65;this.runner.position.y-=smooth(this.failedStruggleTime)*0.45; }
-      for(const arm of this.arms){arm.upper.rotation.set(-1.05+Math.sin(t*8+arm.side)*0.3*effort,0,arm.side*0.6);arm.lower.rotation.set(-0.85,0,0);}
-      for(const leg of this.legs){leg.upper.rotation.x=Math.sin(t*7+leg.side*2)*0.4*effort+release*0.6;leg.lower.rotation.x=0.5;}
+      const attacker=game.nightCombat.ocean.state.enemies.find(e=>e.id===struggle.enemy);
+      const side=Math.sign(attacker?.homeX??1);
+      for(const arm of this.arms){const push=(0.5+0.5*Math.sin(t*3.2+arm.side*0.6))*effort,w=1-release;arm.upper.rotation.x+=(-0.8-push*0.22-arm.upper.rotation.x)*w;arm.upper.rotation.y+=(side*0.65-arm.upper.rotation.y)*w;arm.upper.rotation.z+=(arm.side*0.22-arm.upper.rotation.z)*w;arm.lower.rotation.x+=(-0.8+push*0.25-arm.lower.rotation.x)*w;}
+      for(const leg of this.legs){leg.upper.rotation.x+=(Math.sin(t*3.2+leg.side*2)*0.18*effort+Math.sin(release*Math.PI)*0.6-leg.upper.rotation.x)*(1-release);leg.lower.rotation.x+=(0.5-leg.lower.rotation.x)*(1-release);}
     }
     const impactDistance = CONFIG.iceDistance - ICE_IMPACT_METRES;
     if (running && game.iceRemaining > 0 && this.lastIceRemaining > impactDistance && game.iceRemaining <= impactDistance)
@@ -3021,7 +3023,7 @@ export class ForestScene {
       this.guideBackdrop = undefined;
       if (guide) {
         const backdrop = new Layer("guide-backdrop", null, this.scene);
-        const texture = new Texture(import.meta.env.BASE_URL + `art/guide-${guide}.webp`, this.scene, true);
+        const texture = new Texture(import.meta.env.BASE_URL + `art/guide-${guide === "squid" ? "ocean" : guide}.webp`, this.scene, true);
         texture.isBlocking = false;
         texture.wrapU = texture.wrapV = Texture.CLAMP_ADDRESSMODE;
         backdrop.texture = texture;

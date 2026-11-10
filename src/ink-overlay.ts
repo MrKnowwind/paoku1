@@ -14,22 +14,24 @@ export class InkOverlay {
     this.cancel(); this.mask.fill(0); this.total = this.left = 0;
     this.ctx.clearRect(0, 0, 240, 240); this.canvas.hidden = true;
   }
-  splat() {
+  splat(random = Math.random) {
     const ctx = this.ctx;
     // Replace rather than accumulate: repeated ink never blankets the entire screen.
     ctx.clearRect(0, 0, 240, 240); ctx.globalCompositeOperation = "source-over";
     ctx.fillStyle = "rgba(9, 12, 28, .91)";
+    const cx=80+random()*80,cy=95+random()*50,rx=62+random()*14,ry=52+random()*12;
+    const phase=random()*Math.PI*2,phase2=random()*Math.PI*2,lobes=5+Math.floor(random()*4);
     ctx.beginPath();
     for (let i = 0; i <= 96; i++) {
-      const a = i / 96 * Math.PI * 2, r = 1 + 0.1 * Math.sin(a * 7) + 0.06 * Math.cos(a * 11);
-      const x = 120 + Math.cos(a) * 81 * r, y = 121 + Math.sin(a) * 66 * r;
+      const a = i / 96 * Math.PI * 2, r = 1 + 0.15 * Math.sin(a * lobes+phase) + 0.09 * Math.cos(a * 11+phase2);
+      const x = cx + Math.cos(a) * rx * r, y = cy + Math.sin(a) * ry * r;
       if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.closePath(); ctx.fill();
     for (let i = 0; i < 15; i++) {
-      const a = i * 2.39996;
-      ctx.beginPath(); ctx.ellipse(120 + Math.cos(a) * 90, 121 + Math.sin(a) * 73,
-        2 + i % 4, 3 + i % 5, a, 0, Math.PI * 2); ctx.fill();
+      const a = i * 2.39996+phase,r=1.12+random()*0.18;
+      ctx.beginPath(); ctx.ellipse(cx + Math.cos(a) * rx*r, cy + Math.sin(a) * ry*r,
+        2 + random()*5, 3 + random()*6, a, 0, Math.PI * 2); ctx.fill();
     }
     const data = ctx.getImageData(0, 0, 240, 240).data;
     this.total = 0;

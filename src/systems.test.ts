@@ -1294,11 +1294,12 @@ test("struggle freezes the world and tools, supports escape, and times out regar
     assert.equal(combat.throwBomb(game,()=>{throw Error("must not consume");}),false);
     const elapsed=ocean.struggle!.elapsed;
     game.pause();game.update(2);assert.equal(ocean.struggle!.elapsed,elapsed);game.resume();
-    if(outcome==="timeout")for(let i=0;i<8;i++)ocean.tap(-1);
-    for(let i=0;i<810&&ocean.struggle?.phase==="playing";i++) {
+    if(outcome==="timeout")ocean.steer(-1);
+    for(let i=0;i<CONFIG.squid.escapeSeconds/0.01+10&&ocean.struggle?.phase==="playing";i++) {
       if(outcome==="escape") {
         const q=ocean.struggle!;
-        if(Math.abs(q.cursor-q.safe)>0.04)ocean.tap(Math.sign(q.safe-q.cursor));
+        const desired=0.23*1.75*Math.cos(q.elapsed*1.75)+0.07*3.1*Math.cos(q.elapsed*3.1)+(q.safe-q.cursor)*6;
+        ocean.steer(Math.abs(desired-(q.velocity??0))>0.02?Math.sign(desired-(q.velocity??0)):0);
       }
       game.update(0.01);
     }
@@ -1313,6 +1314,15 @@ test("struggle freezes the world and tools, supports escape, and times out regar
       assert.ok(game.reserveCooldown>110);
     }
   }
+});
+
+test("escape steering has inertia and preserves its cursor while paused",()=>{
+  const f=squidFixture();f.game.struggleNeedsGuide=false;squidImpact(f,"grab");
+  const q=f.ocean.struggle!,before=q.cursor;
+  f.ocean.steer(1);assert.equal(q.cursor,before);
+  f.game.update(0.1);assert.ok(q.cursor>before&&q.cursor<before+0.08);
+  const cursor=q.cursor;f.game.pause();f.game.update(2);assert.equal(q.cursor,cursor);
+  f.game.resume();f.ocean.steer(0);f.game.update(0.1);assert.ok(q.cursor>cursor);
 });
 
 test("squid packs stay bounded, survive sunrise, and retire on leaving the ocean",()=>{

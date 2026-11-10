@@ -7,7 +7,7 @@ const onPath = (item: TrackItem, x: number) =>
     ? underRockShelf(item.shelf, x)
     : Math.abs(item.lane * 2.5 - x) < 1.1;
 
-export type TerrainGuideId = "snow" | "ocean";
+export type TerrainGuideId = "snow" | "ocean" | "squid";
 const guidePageCounts = { basic: 1, ocean: 3, snow: 3, night: 3, burn: 1, squid: 3 } as const;
 export type GuideId = keyof typeof guidePageCounts;
 export type LessonId =

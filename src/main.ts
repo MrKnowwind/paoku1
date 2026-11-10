@@ -353,6 +353,7 @@ function renderDialog() {
 }
 
 function openDialog(type: NonNullable<typeof activeDialog>) {
+  game.nightCombat.ocean.steer(0);
   gesture = guideSwipe = null;
   ink.cancel();
   focusBeforeDialog = document.activeElement as HTMLElement;
@@ -518,9 +519,9 @@ const guidePages: Record<GuideId, {title: MessageKey; copy: MessageKey; detail?:
   ],
   burn: [{title: "extinguish", copy: "burnGuideCopy", detail: "burnGuideDetail", symbols: ["fire-pat", "snowflake"]}],
   squid: [
-    {title: "squidInk", copy: "squidInkCopy", symbols: ["squid", "drop"]},
-    {title: "squidGrab", copy: "squidGrabCopy", symbols: ["cube", "shield"]},
-    {title: "squidEscape", copy: "squidEscapeCopy", detail: "squidDeadline", symbols: ["escape", "clock"]},
+    {title: "squidInk", copy: "squidInkCopy", },
+    {title: "squidGrab", copy: "squidGrabCopy", },
+    {title: "squidEscape", copy: "squidEscapeCopy", detail: "squidDeadline"},
   ],
 };
 
@@ -1097,7 +1098,7 @@ window.addEventListener("keydown", (event) => {
   if (activeDialog) return;
   if (game.struggling && (event.code === "ArrowLeft" || event.code === "ArrowRight" || event.code === "KeyA" || event.code === "KeyD")) {
     event.preventDefault();
-    if (!event.repeat && game.mode === "running") game.nightCombat.ocean.tap(event.code === "ArrowLeft" || event.code === "KeyA" ? -1 : 1);
+    if (!event.repeat && game.mode === "running") game.nightCombat.ocean.steer(event.code === "ArrowLeft" || event.code === "KeyA" ? -1 : 1);
     return;
   }
   if (event.code === "KeyR") { event.preventDefault(); if (!event.repeat) act("reserve"); return; }
@@ -1131,6 +1132,9 @@ window.addEventListener("keydown", (event) => {
     if (!event.repeat) control(keys[event.code]);
   }
 });
+window.addEventListener("keyup", event => {
+  if (["ArrowLeft","ArrowRight","KeyA","KeyD"].includes(event.code)) game.nightCombat.ocean.steer(0);
+});
 let gesture: {
   x: number;
   y: number;
@@ -1149,7 +1153,7 @@ window.addEventListener("pointerdown", (event) => {
   }
   if (game.mode === "running" && !activeDialog && !(event.target as HTMLElement).closest("button,a,dialog")) {
     if (game.struggling) {
-      if (event.isPrimary && event.button === 0) game.nightCombat.ocean.tap(event.clientX < innerWidth / 2 ? -1 : 1);
+      if (event.isPrimary && event.button === 0) game.nightCombat.ocean.steer(event.clientX < innerWidth / 2 ? -1 : 1);
       return;
     }
     ink.down(event);
@@ -1174,6 +1178,7 @@ window.addEventListener("pointerdown", (event) => {
   };
 });
 window.addEventListener("pointermove", (event) => {
+  if(game.struggling && event.buttons === 1 && game.mode === "running" && !activeDialog && !tutorial.guide) game.nightCombat.ocean.steer(event.clientX < innerWidth/2 ? -1 : 1);
   if (game.struggling || activeDialog || tutorial.guide || game.mode !== "running") { ink.cancel(); gesture = null; return; }
   ink.move(event);
   if (game.icy || tutorial.guide) { gesture = null; return; }
@@ -1207,6 +1212,7 @@ window.addEventListener("pointermove", (event) => {
   gesture.y = event.clientY;
 });
 window.addEventListener("pointerup", (event) => {
+  game.nightCombat.ocean.steer(0);
   ink.up(event);
   if (guideSwipe?.id === event.pointerId) {
     const dx = event.clientX - guideSwipe.x, dy = event.clientY - guideSwipe.y;
@@ -1226,6 +1232,7 @@ window.addEventListener("pointerup", (event) => {
   if (id !== undefined) game.nightCombat.fire(id, game);
 });
 window.addEventListener("pointercancel", (event) => {
+  game.nightCombat.ocean.steer(0);
   ink.up(event);
   if (guideSwipe?.id === event.pointerId) guideSwipe = null;
   if (gesture?.id === event.pointerId) gesture = null;
@@ -1317,7 +1324,7 @@ try {
       world!.adjustResolution(loaded && wasRunning && game.mode === "running" && !guide ? frameTime : 0);
       world!.update(game, guide ? 0 : game.mode === "over" ? dt : simulationDt,
         tutorial.active?.id === "wallEntry" && !tutorial.knows("wallEntry"),
-        guide === "snow" || guide === "ocean" ? guide : null,
+        guide === "snow" || guide === "ocean" || guide === "squid" ? guide : null,
         guide ? tutorial.guideStep : 0);
       if (pickedAmmo && game.mode === "running" && !guide && game.nightCombat.refillGain > 0) {
         const glyph = game.nightCombat.weapon === "bow" ? "arrow-ammo" : "stone";

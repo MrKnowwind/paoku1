@@ -10,7 +10,7 @@ export interface SquidAttack {
   start: number; releaseAt: number; impactAt: number;
   x: number; y: number; worldZ: number;
   fromX: number; fromY: number; fromZ: number;
-  spent: boolean; launched?: boolean;
+  spent: boolean; launched?: boolean; hit?: boolean;
 }
 export interface OceanHunt {
   enemies: RegionalEnemy[]; attacks: SquidAttack[];
@@ -18,6 +18,7 @@ export interface OceanHunt {
 }
 export interface Struggle {
   enemy: number; elapsed: number; progress: number; cursor: number; safe: number;
+  velocity?: number; control?: number;
   waiting: boolean; phase: "playing" | "released" | "failed"; ending: number;
 }
 
@@ -32,7 +33,7 @@ export class OceanCombat {
   clearInk() { this.inkCovered = false; this.clearInkSerial++; }
   clearInteraction() { this.struggle = undefined; this.clearInk(); }
   clear() { this.state.enemies = []; this.state.attacks = []; this.clearInteraction(); }
-  cancel(id: number) { this.state.attacks = this.state.attacks.filter(a => a.enemy !== id); }
+  cancel(id: number) { this.state.attacks = this.state.attacks.filter(a => a.enemy !== id || a.kind === "ink" && a.launched); }
   snapshot(): OceanHunt {
     return {...this.state, enemies: this.state.enemies.map(e => ({...e})), attacks: this.state.attacks.map(a => ({...a}))};
   }
@@ -48,18 +49,22 @@ export class OceanCombat {
     const t = game.worldTime, entry = Math.max(0, 1 - (t - enemy.enteredAt) / 1.8);
     const held = this.struggle?.enemy === enemy.id ? this.struggle : undefined;
     const release = held?.phase === "released" ? Math.min(1, held.ending / 0.7) : 0;
-    const animationTime = held ? held.elapsed + held.ending : t;
-    return {x: held ? game.x + Math.sign(enemy.homeX) * (1.05 + release * 3) : enemy.homeX + Math.sign(enemy.homeX) * entry * 6,
-      y: held ? game.visualWaterY + 1 : enemy.homeY + Math.sin(t * 1.6 + enemy.id) * 0.22,
-      z: held ? 0.6 + release * 3 : enemy.homeZ + Math.sin(t + enemy.id) * 0.5,
-      yaw: held ? -Math.sign(enemy.homeX) * Math.PI / 2 : Math.atan2(game.x - enemy.homeX, -enemy.homeZ),
+    const animationTime = held ? t + held.elapsed + held.ending : t;
+    const grab=this.state.attacks.find(a=>a.enemy===enemy.id && a.kind==="grab");
+    const approach=grab?Math.max(0,Math.min(1,(t-grab.start)/(grab.impactAt-grab.start))):0;
+    const dash=Math.max(0,Math.min(1,(approach-0.65)/0.35));
+    const back=grab?Math.max(0,Math.min(1,(t-grab.impactAt)/0.35)):0;
+    const weight=dash*dash*(3-2*dash)*(1-back*back*(3-2*back)), side=Math.sign(enemy.homeX);
+    const normalYaw=Math.atan2(game.x-enemy.homeX,-enemy.homeZ),heldYaw=-side*Math.PI/2;
+    return {x: held ? (game.x+side*1.65)*(1-release)+enemy.homeX*release : enemy.homeX + side * entry * 6 + (grab ? (grab.x+side*1.65-enemy.homeX)*weight : 0),
+      y: held ? (game.visualWaterY+1.1)*(1-release)+(enemy.homeY+Math.sin(t*1.6+enemy.id)*0.22)*release : enemy.homeY + Math.sin(t * 1.6 + enemy.id) * 0.22*(1-weight)+(grab?(grab.y+0.15-enemy.homeY)*weight:0),
+      z: held ? 0.8*(1-release)+(enemy.homeZ+Math.sin(t+enemy.id)*0.5)*release : enemy.homeZ + Math.sin(t + enemy.id) * 0.5*(1-weight)+(grab?(grab.worldZ-game.distance+0.8-enemy.homeZ)*weight:0),
+      yaw: normalYaw+(heldYaw-normalYaw)*(held?1-release:weight),
       crouch: 0, leap: 0, bite: held ? 1 - release : 0, animationTime};
   }
-  tap(side: number) {
-    const q = this.struggle;
-    if (!q || q.waiting || q.phase !== "playing") return false;
-    q.cursor = Math.max(0, Math.min(1, q.cursor + Math.sign(side) * rules.tapStep));
-    return true;
+  steer(side: number) {
+    const q=this.struggle;
+    if(q)q.control=q.waiting||q.phase!=="playing"?0:Math.sign(side);
   }
   updateStruggle(game: RunnerGame, dt: number) {
     const q = this.struggle;
@@ -76,7 +81,10 @@ export class OceanCombat {
     // Integrate up to the deadline; progress achieved before it wins a tie.
     const step = Math.min(dt, rules.escapeSeconds - q.elapsed);
     q.elapsed += step;
-    q.safe = 0.5 + Math.sin(q.elapsed * 1.45) * 0.25;
+    q.safe = 0.5 + Math.sin(q.elapsed * 1.75) * 0.23 + Math.sin(q.elapsed * 3.1) * 0.07;
+    q.velocity=(q.velocity??0)+((q.control??0)*0.72-(q.velocity??0))*(1-Math.exp(-step*7));
+    q.cursor=Math.max(0,Math.min(1,q.cursor+q.velocity*step));
+    if(q.cursor===0||q.cursor===1)q.velocity=0;
     q.progress = Math.max(0, Math.min(100, q.progress + step *
       (Math.abs(q.cursor - q.safe) <= rules.safeWidth / 2 ? rules.escapeGain : -rules.escapeLoss)));
     if (q.progress >= 100) { q.phase = "released"; q.ending = 0; }
@@ -131,7 +139,8 @@ export class OceanCombat {
       s.nextPack = t + rules.packInterval;
     }
     if (game.boosting || game.terrain.end - game.distance < CONFIG.waterSafety) { s.attacks = []; return; }
-    s.attacks = s.attacks.filter(a => t <= a.impactAt + 0.35 && s.enemies.some(e => e.id === a.enemy && health(e) > 0));
+    s.attacks = s.attacks.filter(a => t <= a.impactAt + (a.kind==="ink"&&!a.hit?1.2:0.35) &&
+      (a.kind==="ink"&&a.launched || s.enemies.some(e => e.id === a.enemy && health(e) > 0)));
     for (const a of s.attacks) {
       if (a.kind === "ink" && !a.launched && t >= a.releaseAt) {
         const e = s.enemies.find(e => e.id === a.enemy)!;
@@ -145,6 +154,7 @@ export class OceanCombat {
         Math.abs(game.visualWaterY + 0.95 - a.y) > rules.halfHeight ||
         Math.abs(game.distance - a.worldZ) > rules.halfDepth) continue;
       if (a.kind === "ink") {
+        a.hit = true;
         this.inkCovered = true; this.inkSerial++; this.inkAt = t;
       } else if (game.protectionTime <= 0) {
         if (game.shield) {

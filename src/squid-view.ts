@@ -3,21 +3,23 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder.js";
 import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder.js";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder.js";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder.js";
 import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder.js";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { Color4 } from "@babylonjs/core/Maths/math.color.js";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
 import type { Scene } from "@babylonjs/core/scene.js";
 import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
 import type { RunnerGame } from "./game.ts";
 import { CONFIG } from "./config.ts";
 
 type Material = (color: string, glow?: boolean) => StandardMaterial;
-class SquidModel {
+export class SquidModel {
   root: TransformNode;
   private arms: {mesh: Mesh; path: Vector3[]}[] = [];
   private fins: Mesh[] = [];
   private pips: Mesh[] = [];
+  private bar: TransformNode;
   private shownHealth = -1;
   private lastTime = -Infinity;
   constructor(scene: Scene, material: Material, high: boolean) {
@@ -45,13 +47,17 @@ class SquidModel {
       mesh.parent = this.root; mesh.material = material(i < 8 ? "#b17abb" : "#e0a3d1");
       this.arms.push({mesh, path});
     }
-    for (let i = 0; i < 4; i++) {
-      const pip = CreateSphere("squid-health", {diameter: 0.14, segments: 6}, scene);
-      pip.parent = this.root; pip.position.set((i - 1.5) * 0.21, 1.8, 0);
-      pip.material = material("#ff9aaf", true); pip.isPickable = false; this.pips.push(pip);
-    }
+    this.bar=new TransformNode("squid-health",scene);this.bar.parent=this.root;
+    this.bar.position.y=1.8;this.bar.billboardMode=Mesh.BILLBOARDMODE_ALL;
+    const bar=(width:number,height:number,x:number,z:number,color:string)=>{
+      const m=CreatePlane("enemy-health",{width,height,sideOrientation:Mesh.DOUBLESIDE},scene);
+      m.parent=this.bar;m.position.set(x,0,z);m.material=material(color,true);m.isPickable=false;return m;
+    };
+    bar(1.14,0.18,0,0.015,"#a8b8c5");bar(1.08,0.13,0,0.006,"#243248");
+    for(let i=0;i<4;i++)this.pips.push(bar(1.02/4-0.025,0.085,(i+0.5)*1.02/4-0.51,0,"#ff7781"));
   }
-  animate(time: number, id: number, health: number, attack: number, hold: number, hit: number) {
+  animate(time: number, id: number, health: number, attack: number, hold: number, hit: number, grab?:Vector3) {
+    this.bar.setEnabled(health>0);
     if (this.shownHealth !== health) { this.shownHealth = health; this.pips.forEach((p, i) => p.setEnabled(i < health)); }
     if (time >= this.lastTime && time - this.lastTime < 1 / 30) return;
     this.lastTime = time;
@@ -67,6 +73,14 @@ class SquidModel {
         path[j].set(Math.cos(angle) * (0.27 + t * 0.4) + Math.sin(curl) * 0.15 * t,
           -0.64 - t * length * (1 - hold * 0.8) + Math.sin(t * 6 + time * 2) * t * hold * 0.23,
           Math.sin(angle) * 0.24 + t * (attack * 2.3 + hold * 1.7) + Math.cos(curl) * 0.12 * t);
+        if(grab&&(i>=8||hold>0)) {
+          const w=t*t*(3-2*t),reach=hold>0?1:attack;
+          const wrap=hold*Math.sin(t*Math.PI/2),phase=angle+t*4.2;
+          const x=Math.cos(angle)*0.27*(1-w)+grab.x*w+Math.cos(phase)*0.44*wrap;
+          const y=-0.64*(1-w)+grab.y*w+Math.sin(phase)*0.28*wrap;
+          const z=Math.sin(angle)*0.24*(1-w)+grab.z*w+Math.sin(phase)*0.4*wrap;
+          path[j].set(path[j].x+(x-path[j].x)*reach,path[j].y+(y-path[j].y)*reach,path[j].z+(z-path[j].z)*reach);
+        }
       }
       CreateTube("squid-arm", {path, instance: mesh});
     }
@@ -96,9 +110,13 @@ export class SquidView {
       let m = this.models.get(e.id);
       if (!m) { m = this.pool.pop() ?? new SquidModel(this.scene, this.material, high); m.bind(e.id); this.models.set(e.id, m); }
       const p = ocean.position(e, game), a = s.attacks.find(a => a.enemy === e.id);
-      const attack = a ? Math.max(0, Math.min(1, (time - a.start) / (a.impactAt - a.start))) : 0;
+      const progress = a ? Math.max(0, Math.min(1, (time - a.start) / (a.impactAt - a.start))) : 0;
+      const attack=a?.kind==="grab"?Math.max(0,(progress-0.65)/0.35):progress;
       m.root.setEnabled(true); m.root.position.set(p.x, p.y, p.z); m.root.rotation.y = p.yaw;
-      m.animate(p.animationTime, e.id, game.nightCombat.health(e), attack, p.bite, time - e.hitAt);
+      const target=p.bite>0?new Vector3(game.x,game.visualWaterY+1.05,0):a?.kind==="grab"?new Vector3(a.x,a.y,a.worldZ-game.distance):undefined;
+      const local=target?Vector3.TransformCoordinates(target,m.root.computeWorldMatrix(true).clone().invert()):undefined;
+      if(local&&local.length()>2.6)local.normalize().scaleInPlace(2.6);
+      m.animate(p.animationTime, e.id, game.nightCombat.health(e), attack, p.bite, time - e.hitAt,local);
     }
     for (let i = 0; i < Math.max(this.effects.length, s.attacks.length); i++) {
       let fx = this.effects[i];
@@ -115,9 +133,9 @@ export class SquidView {
         for (const m of [box, line, ball]) m.isPickable = false;
         fx = {box, line, ball}; this.effects.push(fx);
       }
-      const a = s.attacks[i], show = !!a && !a.spent && game.mode !== "over";
-      fx.box.setEnabled(show && a.kind === "grab");
-      fx.line.setEnabled(show && a.kind === "ink" && time < a.releaseAt);
+      const a = s.attacks[i], show = !!a && (!a.spent || a.kind==="ink"&&!a.hit) && game.mode !== "over";
+      fx.box.setEnabled(show && !a.spent && a.kind === "grab");
+      fx.line.setEnabled(show && !a.spent && a.kind === "ink" && time < a.releaseAt);
       fx.ball.setEnabled(show && a.kind === "ink" && time >= a.releaseAt);
       if (!show) continue;
       fx.box.position.set(a.x, a.y, a.worldZ - game.distance);
@@ -129,7 +147,7 @@ export class SquidView {
       fx.line.position.copyFrom(from.add(to).scale(0.5)); fx.line.scaling.y = delta.length();
       fx.line.rotation.set(Math.acos(delta.y / Math.max(0.001, delta.length())), Math.atan2(delta.x, delta.z), 0);
       fx.line.visibility = 0.35 + (Math.sin(time * 22) + 1) * 0.32;
-      Vector3.LerpToRef(from, to, Math.max(0, Math.min(1, (time - a.releaseAt) / CONFIG.squid.inkFlight)), fx.ball.position);
+      Vector3.LerpToRef(from, to, Math.max(0, (time - a.releaseAt) / CONFIG.squid.inkFlight), fx.ball.position);
     }
   }
 }

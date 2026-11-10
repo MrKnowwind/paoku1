@@ -7,6 +7,7 @@ import { coastHeight } from "./coast-layout.ts";
 import { SquidView } from "./squid-view.ts";
 import { RunnerGame } from "./game.ts";
 import { CONFIG } from "./config.ts";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -264,6 +265,13 @@ for(const high of [false,true])for(const kind of ["ink","grab"] as const) {
         game.worldTime+=1.2;
         assert.doesNotThrow(()=>view.update(game,high));
         assert.equal(scene.getMeshByName("squid-ink-projectile")!.isEnabled(),true);
+        const shot=ocean.state.attacks[0];shot.spent=true;shot.hit=false;
+        game.worldTime=shot.impactAt+0.1;view.update(game,high);
+        const projectile=scene.getMeshByName("squid-ink-projectile")!;
+        const previous=projectile.position.clone();
+        game.worldTime+=0.2;view.update(game,high);
+        assert.equal(projectile.isEnabled(),true,"missed ink stays in flight past the target");
+        assert.ok(Vector3.Distance(previous,projectile.position)>0.1);
       }
       ocean.clear();view.update(game,high);
       assert.equal(box.isEnabled(),false);

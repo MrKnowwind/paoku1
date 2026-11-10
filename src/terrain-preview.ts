@@ -14,6 +14,8 @@ import type { TerrainGuideId } from "./tutorial.ts";
 import type { TrackItem } from "./game.ts";
 import { makeCoral } from "./coral.ts";
 import { CONFIG } from "./config.ts";
+import { SquidModel } from "./squid-view.ts";
+import { Color4 } from "@babylonjs/core/Maths/math.color";
 
 export class TerrainPreview {
   static readonly layerMask = 0x10000000;
@@ -25,6 +27,7 @@ export class TerrainPreview {
   private frameHeight = 3.55;
   private overhead = 0.41;
   private targetY = 0.9;
+  private squidDemo?: {model: SquidModel; runner: TransformNode};
 
   constructor(
     scene: Scene, source: TransformNode, readonly guide: TerrainGuideId, readonly step: number,
@@ -39,7 +42,52 @@ export class TerrainPreview {
     this.camera.maxZ = 45;
     this.camera.fov = 0.66;
 
-    if (step === 1) {
+    if (guide === "squid") {
+      this.frameWidth=7.2;this.frameHeight=4.6;this.targetY=1.65;this.overhead=0.16;
+      const palette=new Map<string,StandardMaterial>();
+      const paint=(color:string,glow=false)=>{
+        const key=color+glow;
+        if(!palette.has(key)) {
+          const m=new StandardMaterial("squid-lesson-material",scene);m.diffuseColor=Color3.FromHexString(color);
+          if(glow)m.emissiveColor=m.diffuseColor.scale(0.5);
+          palette.set(key,m);this.diagramMaterials.push(m);
+        }
+        return palette.get(key)!;
+      };
+      const squid=new SquidModel(scene,paint,true);squid.root.parent=this.root;
+      squid.root.position.set(step===1?-1.8:-0.6,1.9,0.3);squid.root.rotation.y=1.2;
+      const explorer=source.clone("squid-lesson-runner",this.root)!;
+      explorer.position.set(1.3,0.1,0);explorer.rotation.set(0,-0.8,0);explorer.scaling.setAll(0.85);
+      for(const node of explorer.getDescendants())if(node instanceof TransformNode) {
+        if(/aura|jet|pulse|booster|snow-liquor|slingshot|hunting-bow|officer-pistol|pistol-muzzle/.test(node.name))node.setEnabled(false);
+        if(/(hips|shoulder|elbow|hip-joint|knee|ankle|torso|head-joint)$/.test(node.name))node.rotation.set(0,0,0);
+        if(node.name.endsWith("hips"))node.position.set(0,0.95,0);
+        if(node.name.endsWith("torso")){node.position.y=0;node.scaling.setAll(1);}
+        if(node.name.endsWith("shoulder"))node.rotation.x=step===3?-1.2:-0.6;
+        if(node.name.endsWith("elbow"))node.rotation.x=-0.8;
+        if(node.name.endsWith("knee"))node.rotation.x=0.3;
+      }
+      const target=Vector3.TransformCoordinates(new Vector3(1001.3,1.15,0),squid.root.computeWorldMatrix(true).clone().invert());
+      squid.animate(1,0,4,step===2?0.95:0,step===3?1:0,Infinity,step>1?target:undefined);
+      this.squidDemo={model:squid,runner:explorer};
+      if(step===1) {
+        const ray=CreateTube("guide-ink-warning",{path:[new Vector3(-1.6,1.4,0.6),new Vector3(1.3,1.15,0)],radius:0.025,tessellation:5},scene);
+        ray.parent=this.root;ray.material=paint("#ff3156",true);
+        for(let i=0;i<3;i++) {
+          const ink=CreateSphere("guide-ink-projectile",{diameter:0.32-i*0.06,segments:10},scene);
+          ink.parent=this.root;ink.position.set(-0.8+i*0.6,1.34-i*0.05,0.3);ink.material=paint("#2b163e");
+        }
+      } else if(step===2) {
+        const box=CreateBox("guide-grab-volume",{width:1.5,height:2.5,depth:1.4},scene);
+        box.parent=this.root;box.position.set(1.3,1.15,0);box.material=paint("#ff3156",true);box.visibility=0.16;
+        box.enableEdgesRendering();box.edgesWidth=2.5;box.edgesColor=new Color4(1,0.15,0.3,1);
+      } else {
+        for(const [name,width,height,x,color] of [["track",4,0.22,0,"#243248"],["safe",0.88,0.24,0.5,"#59c79c"],["float",0.1,0.48,0.45,"#ffd270"]] as const) {
+          const mesh=CreateBox("guide-escape-"+name,{width,height,depth:0.12},scene);
+          mesh.parent=this.root;mesh.position.set(x,-0.1,-1.3);mesh.material=paint(color,true);
+        }
+      }
+    } else if (step === 1) {
       const explorer = source.clone("lesson-explorer", this.root)!;
       explorer.position.set(0, 0, 0);
       explorer.rotation.set(0, Math.PI + 0.18, 0);
@@ -222,6 +270,17 @@ export class TerrainPreview {
   }
 
   frame(rect: DOMRect, canvas: DOMRect) {
+    if(this.squidDemo) {
+      const time=performance.now()/1000,phase=time%4;
+      const p=Math.max(0,Math.min(1,(phase-1.2)/0.6));
+      const back=Math.max(0,Math.min(1,(phase-2.8)/0.7));
+      const dash=p*p*(3-2*p)*(1-back*back*(3-2*back));
+      const model=this.squidDemo.model;
+      model.root.position.x=this.step===2?-2.2+dash*1.6:this.step===3?-0.6:-1.8;
+      const grip=Vector3.TransformCoordinates(new Vector3(1001.3,1.15,0),model.root.computeWorldMatrix(true).clone().invert());
+      if(grip.length()>2.6)grip.normalize().scaleInPlace(2.6);
+      model.animate(time,0,4,this.step===2?dash:0,this.step===3?1:0,Infinity,this.step>1?grip:undefined);
+    }
     this.camera.viewport = new Viewport((rect.left - canvas.left) / canvas.width, (canvas.bottom - rect.bottom) / canvas.height, rect.width / canvas.width, rect.height / canvas.height);
     const aspect = Math.max(0.5, rect.width / Math.max(1, rect.height));
     const distance = Math.max(this.frameHeight, this.frameWidth / aspect) / (2 * Math.tan(this.camera.fov / 2)) * 1.07;
