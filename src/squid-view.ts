@@ -75,11 +75,13 @@ class SquidModel {
 }
 
 export class SquidView {
+  private scene: Scene;
+  private material: Material;
   private high = true;
   private models = new Map<number, SquidModel>();
   private pool: SquidModel[] = [];
   private effects: {box: Mesh; line: Mesh; ball: Mesh}[] = [];
-  constructor(private scene: Scene, private material: Material) {}
+  constructor(scene: Scene, material: Material) { this.scene = scene; this.material = material; }
   get size() { return this.models.size; }
   update(game: RunnerGame, high: boolean) {
     if (this.high !== high) {
